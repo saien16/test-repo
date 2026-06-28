@@ -28,6 +28,9 @@ const CONFIG = {
   CPU_CATCH_P: { 1: 0.35, 2: 0.45, 3: 0.55, 4: 0.65, 5: 0.75 },
   CPU_CHASE_R: 9,       // この範囲内のけはいへ追跡
   WIN_BONUS: 50,        // 対戦勝利ボーナス
+  // あみ（フィールドに落ちている変種網）
+  NET_ITEM_TARGET: 3,   // 場に出す あみアイテムの 目安数
+  NET_RESPAWN_MS: 9000, // ひろわれた後 つぎが出るまで
 };
 
 /* ---- ゲーム全体の状態 ---- */
@@ -51,6 +54,11 @@ const G = {
   player: { tx: 0, ty: 0, x: 0, y: 0, dir: 'down', moving: false, mvT: 0, fx: 0, fy: 0, busy: false },
   cpu: { tx: 0, ty: 0, x: 0, y: 0, dir: 'down', moving: false, mvT: 0, fx: 0, fy: 0, stopUntil: 0, path: null, targetId: null },
   input: { dx: 0, dy: 0 }, // 押されている方向
+  // あみ（変種網のもちもの。id→こすう。きほんのあみ'basic'は常備で無限）
+  nets: {},          // 例 { close:2, long:1 }
+  curNet: 'basic',   // いま えらんでいる網id（捕獲シーンをまたいで記憶）
+  netItems: [],      // フィールドに落ちている網 [{tx,ty,id,iid}]（field-cpu が管理）
+  netSeq: 0,
   // 捕獲シーン
   cs: null,
   // 保存
@@ -157,6 +165,7 @@ function startRun() {
   resetGiveup(); // 「やめる」かくにん じょうたいの リセット
   G.timeLeft = CONFIG.ROUND_SEC;
   G.signs = []; G.signSeq = 0;
+  G.nets = {}; G.curNet = 'basic'; G.netItems = []; G.netSeq = 0;
   G.input.dx = 0; G.input.dy = 0;
   G.player.busy = false;
 
@@ -222,6 +231,16 @@ function showToast(html, ms) {
   pulseEl(t, 'toast-pop', 700);
   if (_toastH) clearTimeout(_toastH);
   _toastH = setTimeout(function () { if (t) t.style.display = 'none'; }, ms || 1400);
+}
+
+/* フィールドで あみを ひろう（field-cpu から よばれる） */
+function pickupNet(id) {
+  if (typeof NETS === 'undefined' || !NETS[id]) return;
+  G.nets[id] = (G.nets[id] || 0) + 1;
+  var nm = NETS[id].name || 'あみ';
+  showToast('<span class="t-main">🥅 ' + nm + ' を ひろった！</span><br><span class="t-net">' + (NETS[id].short || '') + '</span>', 1500);
+  if (Sound && Sound.sfx && Sound.sfx.select) Sound.sfx.select();
+  updateHud();
 }
 
 /* 捕獲シーンから もどる。result = {caught:bool, key, name, pts, mm, big} | null */

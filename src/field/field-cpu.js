@@ -258,6 +258,11 @@ function genMap() {
   // けはいを SIGN_TARGET こ ばらまく
   G.signs = [];
   for (let i = 0; i < CONFIG.SIGN_TARGET; i++) spawnSign();
+
+  // あみアイテムを NET_ITEM_TARGET こ ばらまく（NETS が なくても おちない）
+  G.netItems = [];
+  const netTarget = (CONFIG && CONFIG.NET_ITEM_TARGET) ? CONFIG.NET_ITEM_TARGET : 3;
+  for (let i = 0; i < netTarget; i++) spawnNetItem();
 }
 
 /* 歩けて だれとも かぶらない タイルへ けはいを ついか */
@@ -276,6 +281,62 @@ function spawnSign() {
     G.signs.push({ tx, ty, key: pickSpecies(G.night), id: ++G.signSeq });
     return;
   }
+}
+
+/* ============================================================
+   あみアイテム（フィールドに おちている 変種網）
+   ============================================================ */
+
+/* basic いがいを dropW の おもみで ぬきだす かるい ちゅうせん。
+   NETS が なくても・へんな ばあいでも おちないように ガードする。 */
+function pickNetId() {
+  try {
+    if (typeof NETS === 'undefined' || !NETS) return null;
+    const ids = [];
+    const ws = [];
+    let total = 0;
+    for (const k in NETS) {
+      const n = NETS[k];
+      if (!n || n.basic) continue;           // basic は おちない
+      const w = (typeof n.dropW === 'number' && n.dropW > 0) ? n.dropW : 0;
+      if (w <= 0) continue;                    // dropW 0/なし は のぞく
+      ids.push(k); ws.push(w); total += w;
+    }
+    if (!ids.length || total <= 0) return null;
+    let r = U.rnd() * total;
+    for (let i = 0; i < ids.length; i++) {
+      r -= ws[i];
+      if (r <= 0) return ids[i];
+    }
+    return ids[ids.length - 1];
+  } catch (e) { return null; }
+}
+
+/* 歩けて だれとも・なにとも かぶらない タイルへ あみアイテムを ついか。
+   れいがいで おちない。NET_ITEM_TARGET を こえないよう よびだしがわで しらべる。 */
+function spawnNetItem() {
+  try {
+    if (typeof NETS === 'undefined' || !NETS) return; // データが なければ なにも しない
+    if (!G.map) return;
+    if (!Array.isArray(G.netItems)) G.netItems = [];
+    const id = pickNetId();
+    if (!id) return;
+    const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
+    const occupied = (tx, ty) => {
+      if (G.player && G.player.tx === tx && G.player.ty === ty) return true;
+      if (G.mode === 'vs' && G.cpu && G.cpu.tx === tx && G.cpu.ty === ty) return true;
+      if (G.signs && G.signs.some(s => s.tx === tx && s.ty === ty)) return true;
+      return G.netItems.some(it => it.tx === tx && it.ty === ty);
+    };
+    for (let tries = 0; tries < 400; tries++) {
+      const tx = U.rint(1, W - 2), ty = U.rint(1, H - 2);
+      if (!U.walkable(tx, ty)) continue;
+      if (G.player && Math.abs(tx - G.player.tx) + Math.abs(ty - G.player.ty) < 2) continue;
+      if (occupied(tx, ty)) continue;
+      G.netItems.push({ tx, ty, id, iid: ++G.netSeq });
+      return;
+    }
+  } catch (e) { /* むし */ }
 }
 
 /* ============================================================
@@ -478,6 +539,7 @@ function _update(dtMs, now) {
     if (t >= 1) {
       p.moving = false;
       p.x = _tileCx(p.tx); p.y = _tileCy(p.ty);
+      _checkReachNetItem(); // あみアイテムを ひろう（捕獲へ いくまえに）
       _checkReachSign();
     }
   } else {
@@ -512,6 +574,22 @@ function _topUpSigns(dtMs) {
     const target = (typeof CONFIG !== 'undefined' && CONFIG.SIGN_TARGET) ? CONFIG.SIGN_TARGET : 9;
     // 既存の respawn タイマも うごくので、ここでは「いちじるしく たりない」ときだけ 1こ
     if (G.signs.length < target - 1) spawnSign();
+  } catch (e) { /* むし */ }
+}
+
+/* プレイヤーが あみアイテムタイルへ → ひろって もちものへ。
+   NET_RESPAWN_MS ご に かずを たもつ。れいがいで おちない。 */
+function _checkReachNetItem() {
+  try {
+    const p = G.player;
+    if (!Array.isArray(G.netItems)) return;
+    const idx = G.netItems.findIndex(it => it && it.tx === p.tx && it.ty === p.ty);
+    if (idx < 0) return;
+    const item = G.netItems[idx];
+    G.netItems.splice(idx, 1);
+    if (typeof pickupNet === 'function') pickupNet(item.id);
+    // しばらく したら かずを たもつ（G.running の ときだけ）
+    setTimeout(function () { try { if (G.running) spawnNetItem(); } catch (e) { /* むし */ } }, CONFIG.NET_RESPAWN_MS);
   } catch (e) { /* むし */ }
 }
 
@@ -644,6 +722,14 @@ function _drawField(now) {
     if (s.tx < x0 - 1 || s.tx > x1 + 1 || s.ty < y0 - 1 || s.ty > y1 + 1) continue;
     draws.push({ y: (s.ty + 1) * TS, kind: 'sign', sign: s });
   }
+  // あみアイテム（おちている網）
+  if (Array.isArray(G.netItems)) {
+    for (const it of G.netItems) {
+      if (!it) continue;
+      if (it.tx < x0 - 1 || it.tx > x1 + 1 || it.ty < y0 - 1 || it.ty > y1 + 1) continue;
+      draws.push({ y: (it.ty + 1) * TS, kind: 'netitem', item: it });
+    }
+  }
   // CPU・プレイヤー（足元＝x,y はピクセル中心なので 下ばしまで すこし たす）
   if (G.mode === 'vs' && G.cpu) draws.push({ y: G.cpu.y + TS * 0.5, kind: 'cpu' });
   draws.push({ y: G.player.y + TS * 0.5, kind: 'player' });
@@ -687,6 +773,10 @@ function _drawField(now) {
         }
       } else { ctx.fillStyle = '#3e7e36'; ctx.beginPath(); ctx.arc(cx, cy, TS * 0.25 * scale, 0, 7); ctx.fill(); }
       if (rare === 1) _drawSignSparkle(ctx, cx, cy, TS, s, time); // レアは 星の きらめきを うえに
+    } else if (it.kind === 'netitem') {
+      const item = it.item;
+      const cx = sX(_tileCx(item.tx)), cy = sY(_tileCy(item.ty));
+      _drawNetItem(ctx, cx, cy, TS, item, time);
     } else if (it.kind === 'cpu') {
       const c = G.cpu;
       const cx = sX(c.x), cy = sY(c.y);
@@ -833,6 +923,65 @@ function _drawStar(ctx, x, y, r, a) {
     ctx.beginPath();
     ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  } catch (e) { /* むし */ }
+}
+
+/* おちている あみアイテムを かく（小さな おち影＋ふわっと 上下、gold は きらり ひかる）。
+   drawNetGlyph を つかう。NETS／drawNetGlyph が なくても おちない。 */
+function _drawNetItem(ctx, cx, cy, ts, item, time) {
+  try {
+    const t = (time || 0) * 0.001;
+    const id = item && item.id;
+    let isGold = false;
+    try { isGold = !!(typeof NETS !== 'undefined' && NETS && NETS[id] && NETS[id].rare); } catch (e) { isGold = false; }
+    // ふわっと 上下（iid で いちぶ ずらして そろわないように）
+    const seedId = (item && item.iid) ? item.iid : 1;
+    const bob = Math.sin(t * 2.2 + seedId * 0.9) * ts * 0.08;
+    const size = ts * 0.5;
+
+    ctx.save();
+    // 小さな おち影（じめんに ぺたっと）
+    ctx.fillStyle = 'rgba(15,30,8,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + ts * 0.22, ts * 0.26, ts * 0.10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // gold は したに ふんわり ひかり（明滅）
+    if (isGold) {
+      const puls = 0.5 + 0.5 * Math.sin(t * 3.0 + seedId);
+      let g = null;
+      try { g = ctx.createRadialGradient(cx, cy - ts * 0.05 + bob, ts * 0.08, cx, cy - ts * 0.05 + bob, ts * 0.6); }
+      catch (e) { g = null; }
+      if (g) {
+        const a = 0.30 * (0.55 + 0.45 * puls);
+        g.addColorStop(0, 'rgba(255,214,74,' + a + ')');
+        g.addColorStop(0.6, 'rgba(255,214,74,' + (a * 0.5) + ')');
+        g.addColorStop(1, 'rgba(255,214,74,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - ts * 0.05 + bob, ts * 0.6, ts * 0.46, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // 本体（ふわっと 上下しながら）
+    if (typeof drawNetGlyph === 'function') {
+      drawNetGlyph(ctx, cx, cy - ts * 0.06 + bob, size, id);
+    } else {
+      // フォールバック：かんたんな まる
+      ctx.fillStyle = isGold ? '#ffd54a' : '#cfe8ff';
+      ctx.beginPath();
+      ctx.arc(cx, cy - ts * 0.06 + bob, size * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // gold は うえに きらり（小さな星）
+    if (isGold) {
+      const tw = 0.5 + 0.5 * Math.sin(t * 5 + seedId * 1.7);
+      const sxp = cx + ts * 0.22, syp = cy - ts * 0.34 + bob;
+      _drawStar(ctx, sxp, syp, ts * (0.06 + 0.04 * tw), 0.5 + 0.5 * tw);
+    }
     ctx.restore();
   } catch (e) { /* むし */ }
 }

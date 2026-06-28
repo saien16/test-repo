@@ -371,6 +371,87 @@ body {
 /* レイアウトが くずれない ようにする ねんのため（高さ固定は styles.css がもつ） */
 .cs-arena { position: relative; }
 
+/* ---- あみセレクタ（横ならびチップ・コンパクト）---- */
+/* アリーナ(flex:1)が縮んで収まるよう、セレクタは固定高さ寄りにする。
+   #catch-screen の overflow:hidden / 高さ固定は こわさない。 */
+.cs-nets {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 3px 4px 5px;
+  flex: 0 0 auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.cs-nets.locked { opacity: .6; pointer-events: none; }
+
+.cs-net-chip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px 4px 5px;
+  border: 2px solid rgba(0,0,0,.12);
+  border-radius: 12px;
+  background: #fbf7ee;
+  color: #2a2118;
+  font: inherit;
+  cursor: pointer;
+  line-height: 1.05;
+  max-width: 46vw;
+  transition: transform .08s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.cs-net-chip:active { transform: scale(.96); }
+.cs-net-chip.active {
+  border-color: #2e9d57;
+  background: #eafaf0;
+  box-shadow: 0 0 0 2px rgba(46,157,87,.35), 0 2px 6px rgba(0,0,0,.12);
+}
+/* こわれやすさで ふちの 色みを かえる（lv2=あかみ / lv1=きみ / lv0=みどり） */
+.cs-net-chip.risk2 { background: #fdf0ee; }
+.cs-net-chip.risk1 { background: #fdf7ea; }
+.cs-net-chip.risk0 { background: #eef8f0; }
+
+.cs-nc-ico { font-size: 18px; line-height: 1; }
+.cs-nc-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cs-nc-name {
+  font-size: 11px; font-weight: 800; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.cs-nc-cnt { font-size: 10px; font-weight: 700; color: #6b5d44; }
+.cs-nc-sub { font-size: 10px; font-weight: 700; white-space: nowrap; }
+.cs-nc-risk { font-weight: 800; }
+.cs-nc-risk.lv0 { color: #1f9d4d; }
+.cs-nc-risk.lv1 { color: #c98512; }
+.cs-nc-risk.lv2 { color: #d83a2a; }
+
+/* てづかみチップ（えらべない・じょうたい表示） */
+.cs-net-chip.hand {
+  border-color: #d83a2a;
+  background: #fdecea;
+  box-shadow: 0 0 0 2px rgba(216,58,42,.30);
+  cursor: default;
+}
+.cs-net-chip.hand:active { transform: none; }
+.cs-net-chip.hand .cs-nc-sub { color: #b13322; }
+
+/* ---- 網が われる 小演出 ---- */
+.cs-break {
+  position: absolute; inset: 0; pointer-events: none; z-index: 6;
+  display: flex; align-items: center; justify-content: center;
+}
+.cs-break span {
+  font-size: 54px; opacity: 0;
+  animation: cs-break .8s ease-out forwards;
+}
+@keyframes cs-break {
+  0%   { opacity: 0; transform: scale(.4) rotate(-12deg); }
+  25%  { opacity: 1; transform: scale(1.25) rotate(6deg); }
+  60%  { opacity: 1; transform: scale(1) rotate(-4deg); }
+  100% { opacity: 0; transform: scale(1.4) rotate(0); }
+}
+
 </style>
 </head>
 <body>
@@ -774,6 +855,205 @@ function drawBugMini(ctx, key, cx, cy, r) {
 }
 
 
+/* ===== src/data/nets.js ===== */
+/* ============================================================
+   むしとりバトル — data/nets.js（あみデータ＆小関数）
+   ・NETS … あみのずかん（きほん＋変種5種）
+   ・netHit(id, distM) … きょり別の命中率（0.05〜0.97）
+   ・netHitMark(p) … ◎○△のめやす（catch.js と整合）
+   ・netRiskLabel(id) … こわれやすさのめやす（lv 0..2）
+   ・drawNetGlyph(ctx,cx,cy,size,id) … Canvas に あみアイコン
+   ※ import/export しない。グローバル共有。トップレベルで document を触らない。
+   ※ 例外でおちない（try/catch・ガードあり）。
+   ============================================================ */
+
+/* ---- あみずかん（キー＝英数id） ----
+   range … いちばん とくいな きょり(m)
+   hit   … きょり(0..3 など)ごとの 命中率（0..1）
+   breakP… 1かい ふるごとの こわれる かくりつ（0..1）
+   basic … きほんのあみ（つねに もっている・むげん）
+   rare  … レア（フィールドで でにくい）
+   dropW … フィールドの でやすさ（おおきいほど でやすい・basicは0）
+
+   せんりゃくの ねらい:
+   ・ちかいほど あたるが こわれやすい（close）
+   ・とおくでも あんしんだが あたりにくい（long）
+   ・じょうぶで バランスよい（reinf）
+   ・ひろいはんいで そこそこ（big）
+   ・どこでも つよくて こわれにくい けど めったに でない（gold） */
+const NETS = {
+  basic: {
+    id: 'basic', name: 'きほんのあみ', short: '2mで げんき・ちかいほど あたる・こわれやすい',
+    color: '#cfe8ff', range: 2,
+    hit: { 0: 0.45, 1: 0.80, 2: 0.62, 3: 0.30 },
+    breakP: 0.18, basic: true, rare: false, dropW: 0
+  },
+  close: {
+    id: 'close', name: '1mのあみ', short: 'すごく ちかづくと どんぴしゃ・でも こわれやすい',
+    color: '#ffd1e0', range: 1,
+    hit: { 0: 0.74, 1: 0.93, 2: 0.44, 3: 0.16 },
+    breakP: 0.30, basic: false, rare: false, dropW: 0.9
+  },
+  long: {
+    id: 'long', name: '3mのあみ', short: 'とおくから そっと・あたりにくいが こわれにくい',
+    color: '#cfead0', range: 3,
+    hit: { 0: 0.34, 1: 0.50, 2: 0.57, 3: 0.62 },
+    breakP: 0.06, basic: false, rare: false, dropW: 0.9
+  },
+  reinf: {
+    id: 'reinf', name: 'じょうぶな2mのあみ', short: '2mで バランスよし・とても じょうぶ',
+    color: '#e0d3b8', range: 2,
+    hit: { 0: 0.50, 1: 0.86, 2: 0.74, 3: 0.42 },
+    breakP: 0.05, basic: false, rare: false, dropW: 0.8
+  },
+  big: {
+    id: 'big', name: 'おおあみ', short: 'ひろい はんい・なかきょりに つよい',
+    color: '#bfe3f0', range: 2,
+    hit: { 0: 0.42, 1: 0.70, 2: 0.80, 3: 0.66 },
+    breakP: 0.12, basic: false, rare: false, dropW: 0.8
+  },
+  gold: {
+    id: 'gold', name: '👑きんのあみ', short: 'どこでも つよくて こわれにくい・レア！',
+    color: '#ffd54a', range: 2,
+    hit: { 0: 0.65, 1: 0.86, 2: 0.82, 3: 0.76 },
+    breakP: 0.04, basic: false, rare: true, dropW: 0.15
+  }
+};
+
+/* ---- きょり別 命中率 ----
+   表を つかい d=clamp(round(distM),0,maxKey)。
+   とおすぎ(round(distM)>=4)は きゅうに さがる:
+     さいえん値×0.4 から さらに -0.05/m、0.05が したかぎり。
+   さいごに 0.05〜0.97 に clamp。 */
+function netHit(id, distM) {
+  try {
+    var n = (typeof NETS !== 'undefined' && NETS[id]) ? NETS[id] : null;
+    if (!n || !n.hit) return 0.3;
+    var keys = Object.keys(n.hit).map(Number);
+    if (!keys.length) return 0.3;
+    var mx = Math.max.apply(null, keys);
+    var dRaw = Math.round(Number(distM));
+    if (!isFinite(dRaw)) dRaw = 0;
+    var far = (typeof n.hit[mx] === 'number') ? n.hit[mx] : 0.3;
+    var v;
+    if (dRaw >= 4) {
+      // とおすぎ：きゅうに げんすい
+      v = far * 0.4 - (dRaw - 3) * 0.05;
+    } else {
+      var d = Math.max(0, Math.min(mx, dRaw));
+      v = (typeof n.hit[d] === 'number') ? n.hit[d] : 0.3;
+    }
+    return Math.max(0.05, Math.min(0.97, v));
+  } catch (e) {
+    return 0.3;
+  }
+}
+
+/* ---- ◎○△ のめやす（catch.js の csHitMark と おなじ きじゅん） ---- */
+function netHitMark(p) {
+  var v = (typeof p === 'number' && isFinite(p)) ? p : 0;
+  if (v >= 0.75) return { mark: '◎', cls: 'good', word: 'ねらいめ！' };
+  if (v >= 0.55) return { mark: '○', cls: 'ok', word: 'いけそう' };
+  return { mark: '△', cls: 'bad', word: 'むずかしい' };
+}
+
+/* ---- こわれやすさ の めやす（lv 0..2） ----
+   breakP>=0.25 → こわれやすい(2) / >=0.10 → ふつう(1) / それ未満 → じょうぶ(0) */
+function netRiskLabel(id) {
+  var n = (typeof NETS !== 'undefined' && NETS[id]) ? NETS[id] : null;
+  var p = (n && typeof n.breakP === 'number') ? n.breakP : 0.15;
+  if (p >= 0.25) return { word: 'こわれやすい', lv: 2 };
+  if (p >= 0.10) return { word: 'ふつう', lv: 1 };
+  return { word: 'じょうぶ', lv: 0 };
+}
+
+/* ---- Canvas に あみアイコンを かく ----
+   color で わ／え／あみめ の いろどり。gold は きんいろ。
+   size は だいたいの はんけい(px)。れいがいじは かんたんな まる。 */
+function drawNetGlyph(ctx, cx, cy, size, id) {
+  if (!ctx) return;
+  var s = (typeof size === 'number' && size > 0) ? size : 16;
+  var n = null;
+  try { n = (typeof NETS !== 'undefined' && NETS[id]) ? NETS[id] : null; } catch (e) { n = null; }
+  var col = n ? n.color : '#cfe8ff';
+  var isGold = !!(n && n.rare) || id === 'gold';
+  try {
+    ctx.save();
+    // え（とって）：ななめした へ のびる ぼう
+    var hx = cx - s * 0.34, hy = cy + s * 0.62;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = isGold ? '#a87a14' : '#7a4a22';
+    ctx.lineWidth = Math.max(2, s * 0.14);
+    ctx.beginPath();
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(cx - s * 0.04, cy + s * 0.06);
+    ctx.stroke();
+
+    // わ（リング）：ふちどり
+    var ringX = cx, ringY = cy - s * 0.14, r = s * 0.42;
+    ctx.lineWidth = Math.max(2, s * 0.12);
+    ctx.strokeStyle = isGold ? '#caa029' : '#9a7a4a';
+    ctx.beginPath();
+    ctx.arc(ringX, ringY, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // あみ（うちがわ）：いろつき
+    ctx.fillStyle = col;
+    ctx.globalAlpha = isGold ? 0.92 : 0.78;
+    ctx.beginPath();
+    ctx.arc(ringX, ringY, r * 0.86, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // あみめ（がら）：たて・よこの ほそい せん
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(ringX, ringY, r * 0.86, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.strokeStyle = isGold ? 'rgba(120,90,10,0.55)' : 'rgba(60,50,40,0.30)';
+    ctx.lineWidth = Math.max(0.6, s * 0.04);
+    var step = r * 0.42;
+    for (var gx = ringX - r; gx <= ringX + r; gx += step) {
+      ctx.beginPath(); ctx.moveTo(gx, ringY - r); ctx.lineTo(gx, ringY + r); ctx.stroke();
+    }
+    for (var gy = ringY - r; gy <= ringY + r; gy += step) {
+      ctx.beginPath(); ctx.moveTo(ringX - r, gy); ctx.lineTo(ringX + r, gy); ctx.stroke();
+    }
+    ctx.restore();
+
+    // ツヤ
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(ringX - r * 0.32, ringY - r * 0.34, r * 0.26, r * 0.16, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // gold は きらり
+    if (isGold) {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      var sx = ringX + r * 0.5, sy = ringY - r * 0.5, sr = Math.max(1.5, s * 0.1);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - sr); ctx.lineTo(sx + sr * 0.3, sy - sr * 0.3);
+      ctx.lineTo(sx + sr, sy); ctx.lineTo(sx + sr * 0.3, sy + sr * 0.3);
+      ctx.lineTo(sx, sy + sr); ctx.lineTo(sx - sr * 0.3, sy + sr * 0.3);
+      ctx.lineTo(sx - sr, sy); ctx.lineTo(sx - sr * 0.3, sy - sr * 0.3);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  } catch (e) {
+    // れいがい：かんたんな まる で フォールバック
+    try {
+      ctx.save();
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(cx, cy, s * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } catch (e2) { /* むし */ }
+  }
+}
+
+
 /* ===== src/audio/sound.js ===== */
 /* ============================================================
    むしとりバトル — sound.js（おとエンジン / Web Audio 合成のみ）
@@ -1135,6 +1415,9 @@ const CONFIG = {
   CPU_CATCH_P: { 1: 0.35, 2: 0.45, 3: 0.55, 4: 0.65, 5: 0.75 },
   CPU_CHASE_R: 9,       // この範囲内のけはいへ追跡
   WIN_BONUS: 50,        // 対戦勝利ボーナス
+  // あみ（フィールドに落ちている変種網）
+  NET_ITEM_TARGET: 3,   // 場に出す あみアイテムの 目安数
+  NET_RESPAWN_MS: 9000, // ひろわれた後 つぎが出るまで
 };
 
 /* ---- ゲーム全体の状態 ---- */
@@ -1158,6 +1441,11 @@ const G = {
   player: { tx: 0, ty: 0, x: 0, y: 0, dir: 'down', moving: false, mvT: 0, fx: 0, fy: 0, busy: false },
   cpu: { tx: 0, ty: 0, x: 0, y: 0, dir: 'down', moving: false, mvT: 0, fx: 0, fy: 0, stopUntil: 0, path: null, targetId: null },
   input: { dx: 0, dy: 0 }, // 押されている方向
+  // あみ（変種網のもちもの。id→こすう。きほんのあみ'basic'は常備で無限）
+  nets: {},          // 例 { close:2, long:1 }
+  curNet: 'basic',   // いま えらんでいる網id（捕獲シーンをまたいで記憶）
+  netItems: [],      // フィールドに落ちている網 [{tx,ty,id,iid}]（field-cpu が管理）
+  netSeq: 0,
   // 捕獲シーン
   cs: null,
   // 保存
@@ -1264,6 +1552,7 @@ function startRun() {
   resetGiveup(); // 「やめる」かくにん じょうたいの リセット
   G.timeLeft = CONFIG.ROUND_SEC;
   G.signs = []; G.signSeq = 0;
+  G.nets = {}; G.curNet = 'basic'; G.netItems = []; G.netSeq = 0;
   G.input.dx = 0; G.input.dy = 0;
   G.player.busy = false;
 
@@ -1329,6 +1618,16 @@ function showToast(html, ms) {
   pulseEl(t, 'toast-pop', 700);
   if (_toastH) clearTimeout(_toastH);
   _toastH = setTimeout(function () { if (t) t.style.display = 'none'; }, ms || 1400);
+}
+
+/* フィールドで あみを ひろう（field-cpu から よばれる） */
+function pickupNet(id) {
+  if (typeof NETS === 'undefined' || !NETS[id]) return;
+  G.nets[id] = (G.nets[id] || 0) + 1;
+  var nm = NETS[id].name || 'あみ';
+  showToast('<span class="t-main">🥅 ' + nm + ' を ひろった！</span><br><span class="t-net">' + (NETS[id].short || '') + '</span>', 1500);
+  if (Sound && Sound.sfx && Sound.sfx.select) Sound.sfx.select();
+  updateHud();
 }
 
 /* 捕獲シーンから もどる。result = {caught:bool, key, name, pts, mm, big} | null */
@@ -1587,6 +1886,9 @@ function enterCatch(sign) {
     busyAnim: false, // 吸い込み／逃走の アニメ中（right を いじらない）
     warned: false, // 「にげそう!」予告ずみか
     graced: false, // 予告の 1かい ゆうよを つかったか
+    // あみ（網）: えらんでいる網id。変種が もちもの>0 なら それ、なければ basic
+    net: (G.curNet !== 'basic' && (G.nets[G.curNet] || 0) > 0) ? G.curNet : 'basic',
+    basicBroken: false, // basicが こわれた→このエンカウントだけ てづかみ
   };
 
   G.player.busy = true;
@@ -1632,6 +1934,7 @@ function buildCatchUI() {
       '<div class="cs-hunter" id="cs-hunter">🥅</div>' +
     '</div>' +
     '<div class="cs-log" id="cs-log"></div>' +
+    '<div class="cs-nets" id="cs-nets"></div>' +
     '<div class="cs-actions">' +
       '<button class="cs-btn approach" id="cs-approach">ちかよる<small>2m すすむ・ばれやすい</small></button>' +
       '<button class="cs-btn sneak" id="cs-sneak">そっと<small>1m すすむ・しずか</small></button>' +
@@ -1643,6 +1946,97 @@ function buildCatchUI() {
   document.getElementById('cs-sneak').onclick = function () { csAct('sneak'); };
   document.getElementById('cs-wait').onclick = function () { csAct('wait'); };
   document.getElementById('cs-net').onclick = function () { csSwing(); };
+
+  csBuildNetSelector();
+}
+
+/* ---- あみセレクタ（横ならびチップ）を くみたてる ----
+   basicは つねに／変種は G.nets[id]>0 のものだけ。
+   各チップ: 絵文字＋なまえ＋いまの きょりの ◎○△＋こわれ目安（＋変種は ×のこり）。
+   てづかみ中（basicBroken）は てづかみチップを みせる。 */
+function csBuildNetSelector() {
+  var box = document.getElementById('cs-nets');
+  if (!box) return;
+  var cs = G.cs;
+  if (!cs) { box.innerHTML = ''; return; }
+  var html = '';
+
+  if (cs.basicBroken) {
+    // てづかみ中: 専用チップ（えらべない・アクティブ表示のみ）
+    html += '<div class="cs-net-chip active hand" id="cs-netchip-hand">' +
+      '<span class="cs-nc-ico">🤚</span>' +
+      '<span class="cs-nc-body">' +
+        '<span class="cs-nc-name">てづかみ</span>' +
+        '<span class="cs-nc-sub">あみが こわれた…</span>' +
+      '</span>' +
+    '</div>';
+    box.innerHTML = html;
+    return;
+  }
+
+  var ids = csNetList();
+  for (var i = 0; i < ids.length; i++) {
+    html += csNetChipHTML(ids[i]);
+  }
+  box.innerHTML = html;
+
+  // タップで きりかえ
+  for (var j = 0; j < ids.length; j++) {
+    (function (id) {
+      var el = document.getElementById('cs-netchip-' + id);
+      if (el) el.onclick = function () { csPickNet(id); };
+    })(ids[j]);
+  }
+}
+
+/* えらべる網idの いちらん（basic＋もちもの>0の変種・NETSの じゅんばん） */
+function csNetList() {
+  var out = ['basic'];
+  try {
+    var keys = Object.keys(NETS);
+    for (var i = 0; i < keys.length; i++) {
+      var id = keys[i];
+      if (id === 'basic') continue;
+      if ((G.nets[id] || 0) > 0) out.push(id);
+    }
+  } catch (e) { /* NETS なくても basic だけ */ }
+  return out;
+}
+
+/* チップ1まいの HTML */
+function csNetChipHTML(id) {
+  var cs = G.cs;
+  var n = (typeof NETS !== 'undefined' && NETS[id]) ? NETS[id] : null;
+  var name = n ? n.name : 'あみ';
+  var rate = netHit(id, cs.dist);
+  var hm = netHitMark(rate);
+  var risk = netRiskLabel(id);
+  var active = (id === cs.net);
+  var isBasic = (id === 'basic');
+  var cntTxt = isBasic ? '∞' : ('×' + (G.nets[id] || 0));
+  return '<button class="cs-net-chip risk' + risk.lv + (active ? ' active' : '') + '" id="cs-netchip-' + id + '">' +
+      '<span class="cs-nc-ico">' + (id === 'gold' ? '👑' : '🥅') + '</span>' +
+      '<span class="cs-nc-body">' +
+        '<span class="cs-nc-name">' + name + ' <span class="cs-nc-cnt">' + cntTxt + '</span></span>' +
+        '<span class="cs-nc-sub">' +
+          '<span class="cs-mark ' + hm.cls + '">' + hm.mark + '</span> ' +
+          '<span class="cs-nc-risk lv' + risk.lv + '">' + risk.word + '</span>' +
+        '</span>' +
+      '</span>' +
+    '</button>';
+}
+
+/* 網を えらぶ（cs.net＋G.curNet 更新→再描画） */
+function csPickNet(id) {
+  var cs = G.cs;
+  if (!cs || cs.over || cs.busy || cs.basicBroken) return;
+  if (id !== 'basic' && (G.nets[id] || 0) <= 0) return; // ねんのため
+  if (cs.net === id) return;
+  cs.net = id;
+  G.curNet = id; // 捕獲シーンを またいで きおく（core共有）
+  Sound.sfx.select();
+  csBuildNetSelector();
+  csRender();
 }
 
 /* むしの 見た目サイズ(px)。個体差で すこし おおきく */
@@ -1657,13 +2051,20 @@ function csLog(html) {
   if (el) el.innerHTML = html;
 }
 
-/* きょり(m) → あみの 実効 命中りつ(0〜1) */
+/* きょり(m) → えらんでいる網の 実効 命中りつ(0〜1)
+   ・基本: netHit(cs.net, cs.dist)
+   ・basicBroken（てづかみ）: 0mなら0.30・それ以外0.05 */
 function csHitRate() {
-  var d = U.clamp(Math.round(G.cs.dist), 0, 2);
-  var base = CONFIG.NET_HIT[d] != null ? CONFIG.NET_HIT[d] : 0.3;
-  // 近接ボーナス: 0mで +0.12 / 1mで +0.06 / 2mで +0
-  var bonus = (2 - d) * 0.06;
-  return U.clamp(base + bonus, 0.05, 0.97);
+  var cs = G.cs;
+  if (!cs) return 0.3;
+  if (cs.basicBroken) {
+    return (Math.round(cs.dist) <= 0) ? 0.30 : 0.05;
+  }
+  try {
+    return netHit(cs.net, cs.dist);
+  } catch (e) {
+    return 0.3;
+  }
 }
 
 /* 命中りつ → めやす記号 ◎/○/△ と クラス名 */
@@ -1727,13 +2128,32 @@ function csRender() {
     bugEl.classList.toggle('tremble', aClamp >= 70 && !cs.over);
   }
 
-  // あみ命中りつ ひょうじ（記号＋%）。0mは「ちかすぎ！」を出す
+  // 網ボタンの メイン名（えらんでいる網名／てづかみ）
+  var mainEl = document.querySelector('#cs-net .cs-net-main');
+  if (mainEl) {
+    if (cs.basicBroken) {
+      mainEl.textContent = 'てづかみ！';
+    } else {
+      var nn = (typeof NETS !== 'undefined' && NETS[cs.net]) ? NETS[cs.net] : null;
+      mainEl.textContent = (nn ? nn.name : 'あみ') + ' を ふる！';
+    }
+  }
+
+  // あみ命中りつ ひょうじ（記号＋%＋こわれ目安）。てづかみ・0mは ちゅういを出す
   var accEl = document.getElementById('cs-net-acc');
   if (accEl) {
-    if (round0) {
-      accEl.innerHTML = '<span class="cs-mark ' + hm.cls + '">' + hm.mark + '</span> ちかすぎ！ てづかみは むずかしい';
+    var riskTxt = '';
+    if (!cs.basicBroken) {
+      var risk = netRiskLabel(cs.net);
+      riskTxt = ' ・<span class="cs-nc-risk lv' + risk.lv + '">' + risk.word + '</span>';
+    }
+    if (cs.basicBroken) {
+      accEl.innerHTML = '<span class="cs-mark ' + hm.cls + '">' + hm.mark + '</span> てづかみ やく ' + Math.round(rate * 100) + '%'
+        + (round0 ? '（ちかいと とれる！）' : '（ちかづこう）');
+    } else if (round0) {
+      accEl.innerHTML = '<span class="cs-mark ' + hm.cls + '">' + hm.mark + '</span> ちかすぎ！ やく ' + Math.round(rate * 100) + '%' + riskTxt;
     } else {
-      accEl.innerHTML = '<span class="cs-mark ' + hm.cls + '">' + hm.mark + '</span> めいちゅう やく ' + Math.round(rate * 100) + '%';
+      accEl.innerHTML = '<span class="cs-mark ' + hm.cls + '">' + hm.mark + '</span> めいちゅう やく ' + Math.round(rate * 100) + '%' + riskTxt;
     }
   }
   var netBtn = document.getElementById('cs-net');
@@ -1746,6 +2166,9 @@ function csRender() {
 
   // ⑤ 予告中の さそい「いま あみ！」
   csUpdateWarnPop(cs.warned && !cs.over && aClamp >= CONFIG.ALERT_WARN);
+
+  // 網チップの ◎○△ は きょりで かわる→ さい構築
+  csBuildNetSelector();
 
   // ボタン ゆうこう／むこう
   csSetButtons(!cs.busy && !cs.over);
@@ -1791,6 +2214,9 @@ function csSetButtons(enabled) {
     var sn = document.getElementById('cs-sneak');
     if (cs.dist <= 0) { if (ap) ap.disabled = true; if (sn) sn.disabled = true; }
   }
+  // 網チップも えんしゅつ中は さわれない見た目に
+  var nets = document.getElementById('cs-nets');
+  if (nets) nets.classList.toggle('locked', !enabled);
 }
 
 /* 行動: approach / sneak / wait */
@@ -1932,15 +2358,27 @@ function csSwing() {
   Sound.sfx.select();
 
   var rate = csHitRate();
-  csLog('🥅 えいっ！ あみを ふった！');
+  var swungNet = cs.net;            // この スイングで つかった網id
+  var handMode = cs.basicBroken;    // てづかみ中は こわれ判定なし
+  csLog(handMode ? '🤚 えいっ！ てを のばした！' : '🥅 えいっ！ あみを ふった！');
 
   // ① 網スイングアニメ（虫へ ふる）
   csClassFor(document.getElementById('cs-hunter'), 'swing', 460);
 
   setTimeout(function () {
     if (!cs || cs.over) return;
-    if (U.chance(rate)) {
-      // めいちゅう → ほかく せいこう
+    var caught = U.chance(rate);
+
+    // ---- 破損判定: 毎スイング（成功・失敗とも）。てづかみは こわれない ----
+    var broke = false;
+    if (!handMode) {
+      var bp = (typeof NETS !== 'undefined' && NETS[swungNet] && typeof NETS[swungNet].breakP === 'number')
+        ? NETS[swungNet].breakP : 0;
+      broke = U.chance(bp);
+    }
+
+    if (caught) {
+      // めいちゅう → ほかく せいこう（壊れても とれていれば OK）
       cs.over = true;
       cs.busyAnim = true;
       Sound.sfx.catch();
@@ -1951,6 +2389,8 @@ function csSwing() {
       if (cs.big) { Sound.sfx.big(); csSparkle(); } // big は キラキラ追加・音
       csLog('🎉 やったー！ <b>' + cs.name + '</b>（' + cs.mm + 'mm）を つかまえた！ +' + cs.pts + 'てん'
         + (cs.big ? '（でかボーナス ×2！）' : ''));
+      // とれた後の こわれは もちもの整理だけ（演出は ひかえめ）
+      if (broke) csApplyBreak(swungNet, true);
       csFinish(true);
     } else {
       // はずれ → 虫が 素早く回避＋小ゆれ → けいかい大up
@@ -1958,9 +2398,15 @@ function csSwing() {
       cs.alert = U.clamp(cs.alert + 35, 0, 200);
       var bugEl2 = document.getElementById('cs-bug');
       csClassFor(bugEl2, 'dodge', 360); // ① 素早い回避＋小ゆれ
+
+      if (broke) {
+        csApplyBreak(swungNet, false);
+      } else {
+        csLog('😖 はずした！ ' + cs.name + 'が けいかい している…');
+      }
       csRender();
       if (cs.alert >= CONFIG.ALERT_FLEE) {
-        csLog('😖 はずした…！ ' + cs.name + 'が おどろいた！');
+        if (!broke) csLog('😖 はずした…！ ' + cs.name + 'が おどろいた！');
         setTimeout(function () { csFlee('💨 ' + cs.name + 'は にげてしまった！'); }, 600);
         return;
       }
@@ -1969,11 +2415,51 @@ function csSwing() {
         Sound.sfx.warn();
         csShowWarnPop();
       }
-      csLog('😖 はずした！ ' + cs.name + 'が けいかい している…');
       cs.busy = false;
       csRender();
     }
   }, 460);
+}
+
+/* 網が こわれた ときの しょり（basic→てづかみ・変種→もちもの-1＋basicへ）
+   caught: つかまえた スイングでの 破損か（演出を ひかえめに） */
+function csApplyBreak(id, caught) {
+  var cs = G.cs;
+  if (!cs) return;
+  Sound.sfx.miss(); // 破損音（既存ながれ）
+  csBreakFx();      // 網が われる 小演出
+  var n = (typeof NETS !== 'undefined' && NETS[id]) ? NETS[id] : null;
+  var nm = n ? n.name : 'あみ';
+
+  if (id === 'basic') {
+    // basic → このエンカウントだけ てづかみ
+    cs.basicBroken = true;
+    if (!caught) csLog('💥 あみが こわれた！ <b>てづかみ</b>で がんばれ！');
+  } else {
+    // 変種 → もちものを へらす（0で delete）
+    if (G.nets[id] > 0) {
+      G.nets[id]--;
+      if (G.nets[id] <= 0) delete G.nets[id];
+    }
+    if (!caught) csLog('💥 ' + nm + 'が こわれた！');
+    // アクティブを basic へ もどす（basic自体は こわれていれば てづかみ表示になる）
+    if (cs.net === id) {
+      cs.net = 'basic';
+      G.curNet = 'basic';
+    }
+  }
+  csBuildNetSelector();
+}
+
+/* 網が われる 小演出（アリーナに ひびと かけら） */
+function csBreakFx() {
+  var arena = document.getElementById('cs-arena');
+  if (!arena) return;
+  var fx = document.createElement('div');
+  fx.className = 'cs-break';
+  fx.innerHTML = '<span>💥</span>';
+  arena.appendChild(fx);
+  setTimeout(function () { if (fx.parentNode) fx.remove(); }, 800);
 }
 
 /* にげられた */
@@ -3092,6 +3578,11 @@ function genMap() {
   // けはいを SIGN_TARGET こ ばらまく
   G.signs = [];
   for (let i = 0; i < CONFIG.SIGN_TARGET; i++) spawnSign();
+
+  // あみアイテムを NET_ITEM_TARGET こ ばらまく（NETS が なくても おちない）
+  G.netItems = [];
+  const netTarget = (CONFIG && CONFIG.NET_ITEM_TARGET) ? CONFIG.NET_ITEM_TARGET : 3;
+  for (let i = 0; i < netTarget; i++) spawnNetItem();
 }
 
 /* 歩けて だれとも かぶらない タイルへ けはいを ついか */
@@ -3110,6 +3601,62 @@ function spawnSign() {
     G.signs.push({ tx, ty, key: pickSpecies(G.night), id: ++G.signSeq });
     return;
   }
+}
+
+/* ============================================================
+   あみアイテム（フィールドに おちている 変種網）
+   ============================================================ */
+
+/* basic いがいを dropW の おもみで ぬきだす かるい ちゅうせん。
+   NETS が なくても・へんな ばあいでも おちないように ガードする。 */
+function pickNetId() {
+  try {
+    if (typeof NETS === 'undefined' || !NETS) return null;
+    const ids = [];
+    const ws = [];
+    let total = 0;
+    for (const k in NETS) {
+      const n = NETS[k];
+      if (!n || n.basic) continue;           // basic は おちない
+      const w = (typeof n.dropW === 'number' && n.dropW > 0) ? n.dropW : 0;
+      if (w <= 0) continue;                    // dropW 0/なし は のぞく
+      ids.push(k); ws.push(w); total += w;
+    }
+    if (!ids.length || total <= 0) return null;
+    let r = U.rnd() * total;
+    for (let i = 0; i < ids.length; i++) {
+      r -= ws[i];
+      if (r <= 0) return ids[i];
+    }
+    return ids[ids.length - 1];
+  } catch (e) { return null; }
+}
+
+/* 歩けて だれとも・なにとも かぶらない タイルへ あみアイテムを ついか。
+   れいがいで おちない。NET_ITEM_TARGET を こえないよう よびだしがわで しらべる。 */
+function spawnNetItem() {
+  try {
+    if (typeof NETS === 'undefined' || !NETS) return; // データが なければ なにも しない
+    if (!G.map) return;
+    if (!Array.isArray(G.netItems)) G.netItems = [];
+    const id = pickNetId();
+    if (!id) return;
+    const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
+    const occupied = (tx, ty) => {
+      if (G.player && G.player.tx === tx && G.player.ty === ty) return true;
+      if (G.mode === 'vs' && G.cpu && G.cpu.tx === tx && G.cpu.ty === ty) return true;
+      if (G.signs && G.signs.some(s => s.tx === tx && s.ty === ty)) return true;
+      return G.netItems.some(it => it.tx === tx && it.ty === ty);
+    };
+    for (let tries = 0; tries < 400; tries++) {
+      const tx = U.rint(1, W - 2), ty = U.rint(1, H - 2);
+      if (!U.walkable(tx, ty)) continue;
+      if (G.player && Math.abs(tx - G.player.tx) + Math.abs(ty - G.player.ty) < 2) continue;
+      if (occupied(tx, ty)) continue;
+      G.netItems.push({ tx, ty, id, iid: ++G.netSeq });
+      return;
+    }
+  } catch (e) { /* むし */ }
 }
 
 /* ============================================================
@@ -3312,6 +3859,7 @@ function _update(dtMs, now) {
     if (t >= 1) {
       p.moving = false;
       p.x = _tileCx(p.tx); p.y = _tileCy(p.ty);
+      _checkReachNetItem(); // あみアイテムを ひろう（捕獲へ いくまえに）
       _checkReachSign();
     }
   } else {
@@ -3346,6 +3894,22 @@ function _topUpSigns(dtMs) {
     const target = (typeof CONFIG !== 'undefined' && CONFIG.SIGN_TARGET) ? CONFIG.SIGN_TARGET : 9;
     // 既存の respawn タイマも うごくので、ここでは「いちじるしく たりない」ときだけ 1こ
     if (G.signs.length < target - 1) spawnSign();
+  } catch (e) { /* むし */ }
+}
+
+/* プレイヤーが あみアイテムタイルへ → ひろって もちものへ。
+   NET_RESPAWN_MS ご に かずを たもつ。れいがいで おちない。 */
+function _checkReachNetItem() {
+  try {
+    const p = G.player;
+    if (!Array.isArray(G.netItems)) return;
+    const idx = G.netItems.findIndex(it => it && it.tx === p.tx && it.ty === p.ty);
+    if (idx < 0) return;
+    const item = G.netItems[idx];
+    G.netItems.splice(idx, 1);
+    if (typeof pickupNet === 'function') pickupNet(item.id);
+    // しばらく したら かずを たもつ（G.running の ときだけ）
+    setTimeout(function () { try { if (G.running) spawnNetItem(); } catch (e) { /* むし */ } }, CONFIG.NET_RESPAWN_MS);
   } catch (e) { /* むし */ }
 }
 
@@ -3478,6 +4042,14 @@ function _drawField(now) {
     if (s.tx < x0 - 1 || s.tx > x1 + 1 || s.ty < y0 - 1 || s.ty > y1 + 1) continue;
     draws.push({ y: (s.ty + 1) * TS, kind: 'sign', sign: s });
   }
+  // あみアイテム（おちている網）
+  if (Array.isArray(G.netItems)) {
+    for (const it of G.netItems) {
+      if (!it) continue;
+      if (it.tx < x0 - 1 || it.tx > x1 + 1 || it.ty < y0 - 1 || it.ty > y1 + 1) continue;
+      draws.push({ y: (it.ty + 1) * TS, kind: 'netitem', item: it });
+    }
+  }
   // CPU・プレイヤー（足元＝x,y はピクセル中心なので 下ばしまで すこし たす）
   if (G.mode === 'vs' && G.cpu) draws.push({ y: G.cpu.y + TS * 0.5, kind: 'cpu' });
   draws.push({ y: G.player.y + TS * 0.5, kind: 'player' });
@@ -3521,6 +4093,10 @@ function _drawField(now) {
         }
       } else { ctx.fillStyle = '#3e7e36'; ctx.beginPath(); ctx.arc(cx, cy, TS * 0.25 * scale, 0, 7); ctx.fill(); }
       if (rare === 1) _drawSignSparkle(ctx, cx, cy, TS, s, time); // レアは 星の きらめきを うえに
+    } else if (it.kind === 'netitem') {
+      const item = it.item;
+      const cx = sX(_tileCx(item.tx)), cy = sY(_tileCy(item.ty));
+      _drawNetItem(ctx, cx, cy, TS, item, time);
     } else if (it.kind === 'cpu') {
       const c = G.cpu;
       const cx = sX(c.x), cy = sY(c.y);
@@ -3667,6 +4243,65 @@ function _drawStar(ctx, x, y, r, a) {
     ctx.beginPath();
     ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  } catch (e) { /* むし */ }
+}
+
+/* おちている あみアイテムを かく（小さな おち影＋ふわっと 上下、gold は きらり ひかる）。
+   drawNetGlyph を つかう。NETS／drawNetGlyph が なくても おちない。 */
+function _drawNetItem(ctx, cx, cy, ts, item, time) {
+  try {
+    const t = (time || 0) * 0.001;
+    const id = item && item.id;
+    let isGold = false;
+    try { isGold = !!(typeof NETS !== 'undefined' && NETS && NETS[id] && NETS[id].rare); } catch (e) { isGold = false; }
+    // ふわっと 上下（iid で いちぶ ずらして そろわないように）
+    const seedId = (item && item.iid) ? item.iid : 1;
+    const bob = Math.sin(t * 2.2 + seedId * 0.9) * ts * 0.08;
+    const size = ts * 0.5;
+
+    ctx.save();
+    // 小さな おち影（じめんに ぺたっと）
+    ctx.fillStyle = 'rgba(15,30,8,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + ts * 0.22, ts * 0.26, ts * 0.10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // gold は したに ふんわり ひかり（明滅）
+    if (isGold) {
+      const puls = 0.5 + 0.5 * Math.sin(t * 3.0 + seedId);
+      let g = null;
+      try { g = ctx.createRadialGradient(cx, cy - ts * 0.05 + bob, ts * 0.08, cx, cy - ts * 0.05 + bob, ts * 0.6); }
+      catch (e) { g = null; }
+      if (g) {
+        const a = 0.30 * (0.55 + 0.45 * puls);
+        g.addColorStop(0, 'rgba(255,214,74,' + a + ')');
+        g.addColorStop(0.6, 'rgba(255,214,74,' + (a * 0.5) + ')');
+        g.addColorStop(1, 'rgba(255,214,74,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy - ts * 0.05 + bob, ts * 0.6, ts * 0.46, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // 本体（ふわっと 上下しながら）
+    if (typeof drawNetGlyph === 'function') {
+      drawNetGlyph(ctx, cx, cy - ts * 0.06 + bob, size, id);
+    } else {
+      // フォールバック：かんたんな まる
+      ctx.fillStyle = isGold ? '#ffd54a' : '#cfe8ff';
+      ctx.beginPath();
+      ctx.arc(cx, cy - ts * 0.06 + bob, size * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // gold は うえに きらり（小さな星）
+    if (isGold) {
+      const tw = 0.5 + 0.5 * Math.sin(t * 5 + seedId * 1.7);
+      const sxp = cx + ts * 0.22, syp = cy - ts * 0.34 + bob;
+      _drawStar(ctx, sxp, syp, ts * (0.06 + 0.04 * tw), 0.5 + 0.5 * tw);
+    }
     ctx.restore();
   } catch (e) { /* むし */ }
 }

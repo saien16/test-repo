@@ -11,6 +11,7 @@ const R = (p) => resolve(__dir, p);
 // 連結順（依存の都合）: データ → 音 → コア → 捕獲 → フィールド/CPU
 const ORDER = [
   'src/data/bugs.js',
+  'src/data/nets.js',
   'src/audio/sound.js',
   'src/game/core.js',
   'src/game/catch.js',

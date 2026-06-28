@@ -170,3 +170,84 @@
 
 /* レイアウトが くずれない ようにする ねんのため（高さ固定は styles.css がもつ） */
 .cs-arena { position: relative; }
+
+/* ---- あみセレクタ（横ならびチップ・コンパクト）---- */
+/* アリーナ(flex:1)が縮んで収まるよう、セレクタは固定高さ寄りにする。
+   #catch-screen の overflow:hidden / 高さ固定は こわさない。 */
+.cs-nets {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 3px 4px 5px;
+  flex: 0 0 auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.cs-nets.locked { opacity: .6; pointer-events: none; }
+
+.cs-net-chip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px 4px 5px;
+  border: 2px solid rgba(0,0,0,.12);
+  border-radius: 12px;
+  background: #fbf7ee;
+  color: #2a2118;
+  font: inherit;
+  cursor: pointer;
+  line-height: 1.05;
+  max-width: 46vw;
+  transition: transform .08s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.cs-net-chip:active { transform: scale(.96); }
+.cs-net-chip.active {
+  border-color: #2e9d57;
+  background: #eafaf0;
+  box-shadow: 0 0 0 2px rgba(46,157,87,.35), 0 2px 6px rgba(0,0,0,.12);
+}
+/* こわれやすさで ふちの 色みを かえる（lv2=あかみ / lv1=きみ / lv0=みどり） */
+.cs-net-chip.risk2 { background: #fdf0ee; }
+.cs-net-chip.risk1 { background: #fdf7ea; }
+.cs-net-chip.risk0 { background: #eef8f0; }
+
+.cs-nc-ico { font-size: 18px; line-height: 1; }
+.cs-nc-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cs-nc-name {
+  font-size: 11px; font-weight: 800; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.cs-nc-cnt { font-size: 10px; font-weight: 700; color: #6b5d44; }
+.cs-nc-sub { font-size: 10px; font-weight: 700; white-space: nowrap; }
+.cs-nc-risk { font-weight: 800; }
+.cs-nc-risk.lv0 { color: #1f9d4d; }
+.cs-nc-risk.lv1 { color: #c98512; }
+.cs-nc-risk.lv2 { color: #d83a2a; }
+
+/* てづかみチップ（えらべない・じょうたい表示） */
+.cs-net-chip.hand {
+  border-color: #d83a2a;
+  background: #fdecea;
+  box-shadow: 0 0 0 2px rgba(216,58,42,.30);
+  cursor: default;
+}
+.cs-net-chip.hand:active { transform: none; }
+.cs-net-chip.hand .cs-nc-sub { color: #b13322; }
+
+/* ---- 網が われる 小演出 ---- */
+.cs-break {
+  position: absolute; inset: 0; pointer-events: none; z-index: 6;
+  display: flex; align-items: center; justify-content: center;
+}
+.cs-break span {
+  font-size: 54px; opacity: 0;
+  animation: cs-break .8s ease-out forwards;
+}
+@keyframes cs-break {
+  0%   { opacity: 0; transform: scale(.4) rotate(-12deg); }
+  25%  { opacity: 1; transform: scale(1.25) rotate(6deg); }
+  60%  { opacity: 1; transform: scale(1) rotate(-4deg); }
+  100% { opacity: 0; transform: scale(1.4) rotate(0); }
+}
