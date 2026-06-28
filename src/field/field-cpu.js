@@ -1,119 +1,158 @@
 /* ============================================================
    むしとりバトル — field-cpu.js（フィールド＆CPU対戦）
-   マップせいせい・たんさく・えがく・CPUライバルを ぜんぶ ここで。
-   core.js の G / CONFIG / U と、bugs.js の BUGS / pickSpecies / drawBugMini を つかう。
+   マップせいせい・たんさく・カメラ追従の立体えがき・CPUライバルを ぜんぶ ここで。
+   core.js の G / CONFIG / U / D / enterCatch / updateHud と、
+   bugs.js の BUGS / pickSpecies、render/tiles.js の Tiles を つかう。
    ※ import/export しない。関数宣言で genMap/startField/stopField/setupCpu/cpuTick をだす。
+   tiles.js（Tiles）が さきに 連結されている まえてい。Tiles参照は ループ内（実行時）だけ。
    ============================================================ */
 
-/* タイルのいろ（0草 1水 2岩 3木 4道 5砂利） */
-const FIELD_COLORS = {
-  grass:  '#5ba84e', grass2: '#52a045',  // 草（チェッカーで2しょく）
-  water:  '#3a8fd0', water2: '#338ac9',  // 水
-  rock:   '#8a8a82', rockHi: '#a2a29a',  // 岩
-  tree:   '#2f6b3a', treeHi: '#3c7d46',  // 木（こい みどり）
-  path:   '#c9b079', path2:  '#c1a86f',  // 道
-  gravel: '#b8b2a0', gravel2:'#aea899',  // 砂利
-};
+/* タイルのいみ（tiles）: 0草 / 1水 / 2崖(壁) / 3森(壁) / 4道 / 5砂利 — 歩けるのは 0/4/5
+   かざり（deco・歩けるタイルの上だけ）: 0なし / 1花 / 2せいたか草 / 3小石 / 4丸太 / 5きのこ */
 
-/* タイルのサイズ（Canvas 420 / MAP_W）と たて中央よせのオフセット */
-function _tileSize() { return 420 / CONFIG.MAP_W; }      // = 30px (14マス)
-function _mapPixH()  { return _tileSize() * CONFIG.MAP_H; }
-function _offY()     { return (600 - _mapPixH()) / 2; }   // たて中央よせ
+/* タイルの ピクセルサイズ＝カメラのズーム感。VIEW_TILE を そのまま タイルpx にする */
+function _ts() { return CONFIG.VIEW_TILE; }              // = 40px
+function _mapPixW() { return _ts() * CONFIG.MAP_W; }
+function _mapPixH() { return _ts() * CONFIG.MAP_H; }
 
-/* タイル中心の ピクセル座標 */
-function _tileCx(tx) { return tx * _tileSize() + _tileSize() / 2; }
-function _tileCy(ty) { return _offY() + ty * _tileSize() + _tileSize() / 2; }
+/* タイル中心の「ワールド」ピクセル座標（カメラまえ） */
+function _tileCx(tx) { return tx * _ts() + _ts() / 2; }
+function _tileCy(ty) { return ty * _ts() + _ts() / 2; }
+
+/* canvas の ろんり（CSS）サイズ */
+const VIEW_W = 420, VIEW_H = 600;
 
 /* ============================================================
-   マップせいせい
+   マップせいせい（30×34・しぜんな ちけい）
    ============================================================ */
 function genMap() {
   const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
   const tiles = new Int8Array(W * H);
+  const deco = new Int8Array(W * H);
   const at = (x, y) => y * W + x;
+  const inBounds = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
 
   // ぜんめん 草 でうめる
   tiles.fill(0);
 
-  // そとわくは 木（3）
+  // そとわくは 森（3）で かこむ
   for (let x = 0; x < W; x++) { tiles[at(x, 0)] = 3; tiles[at(x, H - 1)] = 3; }
   for (let y = 0; y < H; y++) { tiles[at(0, y)] = 3; tiles[at(W - 1, y)] = 3; }
 
-  // よこに よこぎる 川（1）を 2〜3ほん。1マスぶん「はし＝道(4)」をあけて つうろをしぼる
+  // ---- うねる 川（1）を よこに わたす。とちゅう 1〜2か所「はし＝道(4)」で つうろを のこす ----
   const riverRows = [];
   {
     const cands = [];
-    for (let y = 4; y < H - 4; y++) cands.push(y);
-    // ばらけて 2〜3ほん えらぶ
+    for (let y = 5; y < H - 5; y++) cands.push(y);
     const want = U.rint(2, 3);
     for (let i = 0; i < want && cands.length; i++) {
       const idx = U.rint(0, cands.length - 1);
       const ry = cands[idx];
-      // ちかすぎる行は のぞく
-      for (let k = cands.length - 1; k >= 0; k--) if (Math.abs(cands[k] - ry) < 3) cands.splice(k, 1);
+      for (let k = cands.length - 1; k >= 0; k--) if (Math.abs(cands[k] - ry) < 4) cands.splice(k, 1);
       riverRows.push(ry);
     }
   }
   for (const ry of riverRows) {
-    for (let x = 1; x < W - 1; x++) tiles[at(x, ry)] = 1;
-    // はし（道）を 1〜2か所あけて わたれるように
+    // うねうね する: 行を サインで すこし 上下させ、はばも 1〜2 で ゆらす
+    let phase = U.rnd() * 6.28;
+    for (let x = 1; x < W - 1; x++) {
+      const wob = Math.round(Math.sin(phase + x * 0.5) * 1.4);
+      const cy = U.clamp(ry + wob, 1, H - 2);
+      const half = U.rnd() < 0.4 ? 1 : 0; // ところどころ はばひろ
+      for (let dy = -half; dy <= half; dy++) {
+        const yy = U.clamp(cy + dy, 1, H - 2);
+        if (tiles[at(x, yy)] !== 3) tiles[at(x, yy)] = 1;
+      }
+    }
+    // はし（道）を 1〜2か所
     const gaps = U.rint(1, 2);
     for (let g = 0; g < gaps; g++) {
-      const gx = U.rint(2, W - 3);
-      tiles[at(gx, ry)] = 4; // はし
+      const gx = U.rint(3, W - 4);
+      for (let y = 1; y < H - 1; y++) if (tiles[at(gx, y)] === 1) tiles[at(gx, y)] = 4;
     }
   }
 
-  // たてに 岩山（2）の つい立てを 1〜2ほん。すきまに 砂利(5)の つうろ
+  // ---- 湖／池（1）を 1〜2こ おく（だ円っぽい かたまり） ----
+  {
+    const ponds = U.rint(1, 2);
+    for (let i = 0; i < ponds; i++) {
+      const cx = U.rint(4, W - 5), cy = U.rint(6, H - 7);
+      const rx = U.rint(2, 4), ry = U.rint(2, 3);
+      for (let y = cy - ry; y <= cy + ry; y++) for (let x = cx - rx; x <= cx + rx; x++) {
+        if (!inBounds(x, y) || x === 0 || y === 0 || x === W - 1 || y === H - 1) continue;
+        const nx = (x - cx) / (rx + 0.5), ny = (y - cy) / (ry + 0.5);
+        if (nx * nx + ny * ny <= 1 && tiles[at(x, y)] !== 3) tiles[at(x, y)] = 1;
+      }
+    }
+  }
+
+  // ---- 崖の 尾根（2）で 高低差。たてに 1〜2ほん。すきまを 砂利(5) で あける ----
   {
     const want = U.rint(1, 2);
     for (let i = 0; i < want; i++) {
-      const rx = U.rint(3, W - 4);
+      const rx = U.rint(4, W - 5);
+      let phase = U.rnd() * 6.28;
       for (let y = 1; y < H - 1; y++) {
-        if (tiles[at(rx, y)] === 1 || tiles[at(rx, y)] === 4) continue; // 川/はし は のこす
-        tiles[at(rx, y)] = 2;
+        const wob = Math.round(Math.sin(phase + y * 0.45) * 1.2);
+        const xx = U.clamp(rx + wob, 1, W - 2);
+        if (tiles[at(xx, y)] === 1 || tiles[at(xx, y)] === 4) continue; // 川/はし は のこす
+        if (tiles[at(xx, y)] !== 3) tiles[at(xx, y)] = 2;
       }
       // すきまを 1〜2か所 砂利で あける
       const gaps = U.rint(1, 2);
       for (let g = 0; g < gaps; g++) {
         const gy = U.rint(2, H - 3);
-        if (tiles[at(rx, gy)] === 2) tiles[at(rx, gy)] = 5;
+        for (let y = gy; y < H - 1; y++) { // たてに ちかい 崖を いくつか けずる
+          let cleared = false;
+          for (let x = 1; x < W - 1; x++) if (tiles[at(x, y)] === 2) { tiles[at(x, y)] = 5; cleared = true; break; }
+          if (cleared) break;
+        }
       }
     }
   }
 
-  // ちょっとした かざり: ところどころ 岩・道・砂利を ちらす（歩けるところを へらしすぎない）
-  for (let n = 0; n < Math.floor(W * H * 0.04); n++) {
+  // ---- 森の かたまり（3）を 2〜4こ ちらす（まるい くさむら状） ----
+  {
+    const blobs = U.rint(2, 4);
+    for (let i = 0; i < blobs; i++) {
+      const cx = U.rint(3, W - 4), cy = U.rint(3, H - 4);
+      const r = U.rint(1, 3);
+      for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+        if (!inBounds(x, y) || x === 0 || y === 0 || x === W - 1 || y === H - 1) continue;
+        const dd = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+        if (dd <= r * r && tiles[at(x, y)] === 0 && U.rnd() < 0.8) tiles[at(x, y)] = 3;
+      }
+    }
+  }
+
+  // ---- 道(4)／砂利(5) の こみち を ちらす（歩けるところを へらしすぎない） ----
+  for (let n = 0; n < Math.floor(W * H * 0.05); n++) {
     const x = U.rint(1, W - 2), y = U.rint(1, H - 2);
     if (tiles[at(x, y)] !== 0) continue;
     tiles[at(x, y)] = U.pick([4, 5]); // 道 or 砂利（どちらも歩ける）
   }
 
-  G.map = { w: W, h: H, tiles };
+  G.map = { w: W, h: H, tiles, deco };
 
-  // ---- れんけつせいを ほしょう ----
-  // 歩けるタイルを れんけつせいぶん（コンポーネント）に わける。
-  // いちばん 大きいかたまりを「本体」とし、ほかの かたまりは
-  // つうろを ほって 本体に つなぐ（つぶさず のこす）。
-  // それでも つなげない 小さな 孤島だけ 砂利で きえいさせず…→ 実際は すべて つなぐので 孤立は 0。
+  // ---- れんけつせいを ほしょう（壁配置の あとで BFS、孤立は 砂利の こみちで つなぐ）----
   const isWalk = (x, y) => {
-    if (x < 0 || y < 0 || x >= W || y >= H) return false;
+    if (!inBounds(x, y)) return false;
     const t = tiles[at(x, y)];
     return t === 0 || t === 4 || t === 5;
   };
   const DD = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
-  // ラベルづけ（コンポーネントを みつける）
+  // コンポーネントを みつける
   const comp = new Int16Array(W * H).fill(-1);
-  const comps = []; // 各コンポーネントの セルはいれつ
+  const comps = [];
   for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
     if (!isWalk(x, y) || comp[at(x, y)] !== -1) continue;
     const id = comps.length;
     const cells = [];
-    const q = [[x, y]];
+    const q = [[x, y]]; let head = 0;
     comp[at(x, y)] = id;
-    while (q.length) {
-      const [cx, cy] = q.shift();
+    while (head < q.length) {
+      const [cx, cy] = q[head++];
       cells.push([cx, cy]);
       for (const [dx, dy] of DD) {
         const nx = cx + dx, ny = cy + dy;
@@ -123,18 +162,15 @@ function genMap() {
     comps.push(cells);
   }
 
-  // ほんたい = いちばん 大きい かたまり
+  // ほんたい＝いちばん 大きい かたまり
   let mainId = 0;
   for (let i = 1; i < comps.length; i++) if (comps[i].length > comps[mainId].length) mainId = i;
 
-  // ほかの かたまりを 本体へ つなぐ: かたまりから 本体への さいたん（マンハッタン）を ほる
+  // ほかの かたまりを 本体へ 砂利の こみちで つなぐ
   for (let i = 0; i < comps.length; i++) {
-    if (i === mainId) continue;
-    // この かたまりの どこか1点 と 本体の さいよりの1点 を むすぶ
+    if (i === mainId || comps.length === 0) continue;
     let bestA = null, bestB = null, bd = 1e9;
-    const sample = comps[i];
-    const mainCells = comps[mainId];
-    // サンプルを へらして けいさんりょうを おさえる
+    const sample = comps[i], mainCells = comps[mainId];
     const stepA = Math.max(1, (sample.length / 24) | 0);
     const stepB = Math.max(1, (mainCells.length / 40) | 0);
     for (let a = 0; a < sample.length; a += stepA) {
@@ -146,7 +182,6 @@ function genMap() {
       }
     }
     if (!bestA) continue;
-    // L字に ほる（とちゅうの 木/岩/川 を 砂利の つうろに）
     let [cx, cy] = bestA;
     const [tx2, ty2] = bestB;
     const carve = (x, y) => {
@@ -155,14 +190,12 @@ function genMap() {
     };
     while (cx !== tx2) { cx += cx < tx2 ? 1 : -1; carve(cx, cy); }
     while (cy !== ty2) { cy += cy < ty2 ? 1 : -1; carve(cx, cy); }
-    // ほった あとは ふたつが つながる。本体ラベルを ぬりなおさず、つぎの ループでも
-    // 本体は mainId のまま（あらたに つながったセルは あとの 連結チェックで OK）
   }
 
   // しゅっぱつち: 本体の 中から、なるべく 中央したよりの 歩けるマス
   let start = null;
-  {
-    const cy0 = H - 3, cx0 = (W >> 1);
+  if (comps.length) {
+    const cy0 = H - 4, cx0 = (W >> 1);
     let bd2 = 1e9;
     for (const [x, y] of comps[mainId]) {
       const d = Math.abs(x - cx0) + Math.abs(y - cy0);
@@ -171,20 +204,45 @@ function genMap() {
   }
   if (!start) { tiles[at(1, 1)] = 0; start = { x: 1, y: 1 }; }
 
-  // さいしゅう連結チェック: start から BFS して、到達できない 歩けるタイルが
-  // のこっていれば（まれ）岩でうめる。これで 孤立=0 を ほしょう。
+  // さいしゅう連結チェック: start から BFS、とどかない 歩けるタイルは 崖(2)で うめて 孤立=0 に
   const seen = new Uint8Array(W * H);
-  const q2 = [start];
-  seen[at(start.x, start.y)] = 1;
-  while (q2.length) {
-    const c = q2.shift();
-    for (const [dx, dy] of DD) {
-      const nx = c.x + dx, ny = c.y + dy;
-      if (isWalk(nx, ny) && !seen[at(nx, ny)]) { seen[at(nx, ny)] = 1; q2.push({ x: nx, y: ny }); }
+  {
+    const q = [start]; let head = 0;
+    seen[at(start.x, start.y)] = 1;
+    while (head < q.length) {
+      const c = q[head++];
+      for (const [dx, dy] of DD) {
+        const nx = c.x + dx, ny = c.y + dy;
+        if (isWalk(nx, ny) && !seen[at(nx, ny)]) { seen[at(nx, ny)] = 1; q.push({ x: nx, y: ny }); }
+      }
     }
   }
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     if (isWalk(x, y) && !seen[at(x, y)]) tiles[at(x, y)] = 2;
+  }
+
+  // ---- かざり deco を ちらす（歩けるタイルの 上だけ・start は あけておく）----
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+    if (!isWalk(x, y)) { deco[at(x, y)] = 0; continue; }
+    if (x === start.x && y === start.y) continue;
+    const t = tiles[at(x, y)];
+    if (t !== 0) continue; // 道/砂利の 上には あまり おかない（草の上に）
+    const r = U.rnd();
+    if (r < 0.10) deco[at(x, y)] = 1;       // 花
+    else if (r < 0.16) deco[at(x, y)] = 2;  // せいたか草
+    else if (r < 0.185) deco[at(x, y)] = 3; // 小石
+    else if (r < 0.20) deco[at(x, y)] = 4;  // 丸太
+    else if (r < 0.215) deco[at(x, y)] = 5; // きのこ
+  }
+  // 花畑: 花を かたまりで すこし こく
+  {
+    const fields = U.rint(2, 4);
+    for (let i = 0; i < fields; i++) {
+      const cx = U.rint(3, W - 4), cy = U.rint(3, H - 4), r = U.rint(1, 2);
+      for (let y = cy - r; y <= cy + r; y++) for (let x = cx - r; x <= cx + r; x++) {
+        if (isWalk(x, y) && tiles[at(x, y)] === 0 && deco[at(x, y)] === 0 && U.rnd() < 0.7) deco[at(x, y)] = 1;
+      }
+    }
   }
 
   // プレイヤーを しゅっぱつちへ
@@ -193,6 +251,9 @@ function genMap() {
   p.x = _tileCx(p.tx); p.y = _tileCy(p.ty);
   p.fx = p.x; p.fy = p.y;
   p.dir = 'down'; p.moving = false; p.mvT = 0; p.busy = false;
+
+  // カメラを プレイヤーに あわせて しょきか
+  _camInit();
 
   // けはいを SIGN_TARGET こ ばらまく
   G.signs = [];
@@ -210,7 +271,6 @@ function spawnSign() {
   for (let tries = 0; tries < 400; tries++) {
     const tx = U.rint(1, W - 2), ty = U.rint(1, H - 2);
     if (!U.walkable(tx, ty)) continue;
-    // プレイヤーの まうえは さける（いきなり捕獲にならないよう すこし はなす）
     if (G.player && Math.abs(tx - G.player.tx) + Math.abs(ty - G.player.ty) < 2) continue;
     if (occupied(tx, ty)) continue;
     G.signs.push({ tx, ty, key: pickSpecies(G.night), id: ++G.signSeq });
@@ -223,7 +283,6 @@ function spawnSign() {
    ============================================================ */
 function setupCpu() {
   const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
-  // プレイヤーから いちばん とおい 歩けるマスを さがす
   let best = null, bd = -1;
   for (let t = 0; t < 500; t++) {
     const x = U.rint(1, W - 2), y = U.rint(1, H - 2);
@@ -239,22 +298,22 @@ function setupCpu() {
   c.fx = c.x; c.fy = c.y;
   c.dir = 'down'; c.moving = false; c.mvT = 0;
   c.stopUntil = 0; c.path = null; c.targetId = null;
-  c._acc = 0;        // 歩きの ためこみ
-  c._wdir = 'down';  // さまよう ときの くせ
+  c._acc = 0;
+  c._wdir = 'down';
 }
 
 /* CPU→もくひょうへの BFS。さいしょの 1マスの [dx,dy] をかえす（なければ null） */
 function cpuPathStep(fromTx, fromTy, toTx, toTy) {
   if (fromTx === toTx && fromTy === toTy) return null;
-  const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
+  const W = CONFIG.MAP_W;
   const key = (x, y) => y * W + x;
   const prev = new Map();
-  const q = [[fromTx, fromTy]];
+  const q = [[fromTx, fromTy]]; let head = 0;
   prev.set(key(fromTx, fromTy), -1);
   let found = false;
   const DD = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  while (q.length && !found) {
-    const [x, y] = q.shift();
+  while (head < q.length && !found) {
+    const [x, y] = q[head++];
     for (const [dx, dy] of DD) {
       const nx = x + dx, ny = y + dy;
       if (!U.walkable(nx, ny) || prev.has(key(nx, ny))) continue;
@@ -264,7 +323,6 @@ function cpuPathStep(fromTx, fromTy, toTx, toTy) {
     }
   }
   if (!found) return null;
-  // ゴールから さかのぼって さいしょの一歩
   let cur = key(toTx, toTy);
   const startK = key(fromTx, fromTy);
   while (prev.get(cur) !== startK) cur = prev.get(cur);
@@ -287,7 +345,6 @@ function cpuTick(dtMs) {
   const c = G.cpu;
   const now = performance.now();
 
-  // ほかん中なら すすめる
   if (c.moving) {
     c.mvT += dtMs;
     const stepMs = CONFIG.CPU_STEP_MS[G.cpuLv] || 640;
@@ -297,22 +354,18 @@ function cpuTick(dtMs) {
     if (p >= 1) {
       c.moving = false;
       c.x = _tileCx(c.tx); c.y = _tileCy(c.ty);
-      // とうちゃくした タイルに けはいが あれば 捕獲はんてい
       _cpuTryCatch();
     }
     return;
   }
 
-  // りゅうちゅう（捕獲ちゅう・くやしくて とまる など）
   if (now < c.stopUntil) return;
 
-  // ステップ かんかく
   c._acc += dtMs;
   const stepMs = CONFIG.CPU_STEP_MS[G.cpuLv] || 640;
   if (c._acc < stepMs) return;
   c._acc = 0;
 
-  // CPU_CHASE_R いないの さいよりの けはいを ねらう
   let target = null, bd = 1e9;
   for (const s of G.signs) {
     const d = Math.abs(s.tx - c.tx) + Math.abs(s.ty - c.ty);
@@ -324,7 +377,6 @@ function cpuTick(dtMs) {
     if (step) moved = _cpuStartMove(step[0], step[1]);
   }
   if (!moved) {
-    // さまよう: いまの くせを ゆうせん、だめなら ほかへ
     const DMAP = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
     const ks = Object.keys(DMAP).sort(() => Math.random() - 0.5);
     const order = [c._wdir, ...ks];
@@ -346,19 +398,45 @@ function _cpuTryCatch() {
 
   const p = CONFIG.CPU_CATCH_P[G.cpuLv] || 0.5;
   if (U.chance(p)) {
-    // せいこう: てんすう ついか
     const b = BUGS[sign.key];
     const pts = (b && b.pts) || 0;
     G.cpuScore += pts;
     G.cpuCaught.push({ key: sign.key, name: b ? b.name : '？', pts });
-    c.stopUntil = performance.now() + 600; // ちょっと まんぞく
+    c.stopUntil = performance.now() + 600;
   } else {
-    // しっぱい: でも けはいは しょうひ。くやしくて すこし とまる
     c.stopUntil = performance.now() + Math.max(1200, (8 - G.cpuLv) * 700);
   }
   updateHud();
-  // ばの けはい かずを たもつ
   setTimeout(() => { if (G.running) spawnSign(); }, CONFIG.SIGN_RESPAWN_MS);
+}
+
+/* ============================================================
+   カメラ（プレイヤー追従・端でクランプ・やや遅れて滑らかに）
+   ============================================================ */
+const _cam = { x: 0, y: 0 };  // 画面左上が さす ワールド座標（px）
+
+function _camClampTarget(wx, wy) {
+  // プレイヤー中心が 画面まんなかに くるよう、左上ワールド座標を もとめてクランプ
+  const maxX = Math.max(0, _mapPixW() - VIEW_W);
+  const maxY = Math.max(0, _mapPixH() - VIEW_H);
+  let cx = wx - VIEW_W / 2;
+  let cy = wy - VIEW_H / 2;
+  cx = U.clamp(cx, 0, maxX);
+  cy = U.clamp(cy, 0, maxY);
+  return { x: cx, y: cy };
+}
+
+function _camInit() {
+  const t = _camClampTarget(G.player.x, G.player.y);
+  _cam.x = t.x; _cam.y = t.y;
+}
+
+function _camUpdate(dtMs) {
+  const t = _camClampTarget(G.player.x, G.player.y);
+  // フレームレート ふいの なめらかおいかけ（指数おいかけ）
+  const k = 1 - Math.pow(0.0025, dtMs / 1000); // やく 0..1（dt おおきいほど 1に ちかい）
+  _cam.x += (t.x - _cam.x) * k;
+  _cam.y += (t.y - _cam.y) * k;
 }
 
 /* ============================================================
@@ -367,17 +445,20 @@ function _cpuTryCatch() {
 let _rafId = 0;
 let _lastT = 0;
 let _stepSfxT = 0;
+let _animTime = 0; // 水/草アニメ用の じかん（ms）
 
 function startField() {
-  // 多重きどう ぼうし
   if (_rafId) return;
+  _ensureCanvasSize();
   _lastT = performance.now();
   const loop = (now) => {
     _rafId = requestAnimationFrame(loop);
-    const dt = Math.min(60, now - _lastT); // フレームスキップ ほご
+    const dt = Math.min(60, now - _lastT);
     _lastT = now;
     if (!G.player.busy) _update(dt, now);
+    _camUpdate(dt);
     _drawField(now);
+    _animTime += dt; // 水・草・けはいの アニメ じかんを すすめる
   };
   _rafId = requestAnimationFrame(loop);
 }
@@ -389,7 +470,6 @@ function stopField() {
 function _update(dtMs, now) {
   const p = G.player;
 
-  // 1) プレイヤーの いどう
   if (p.moving) {
     p.mvT += dtMs;
     const t = Math.min(1, p.mvT / CONFIG.STEP_MS);
@@ -409,13 +489,11 @@ function _update(dtMs, now) {
         p.fx = p.x; p.fy = p.y;
         p.tx = nx; p.ty = ny;
         p.moving = true; p.mvT = 0;
-        // あしおとは ひかえめに（200msに1回まで）
-        if (now - _stepSfxT > 200) { _stepSfxT = now; if (Sound && Sound.sfx) Sound.sfx.step(); }
+        if (now - _stepSfxT > 200) { _stepSfxT = now; if (typeof Sound !== 'undefined' && Sound && Sound.sfx) Sound.sfx.step(); }
       }
     }
   }
 
-  // 3) vs モード: CPU
   if (G.mode === 'vs') cpuTick(dtMs);
 }
 
@@ -426,213 +504,198 @@ function _checkReachSign() {
   if (idx < 0) return;
   const sign = G.signs[idx];
   G.signs.splice(idx, 1);
-  // ばの かずを たもつ
   setTimeout(() => { if (G.running) spawnSign(); }, CONFIG.SIGN_RESPAWN_MS);
   enterCatch(sign);
 }
 
 /* ============================================================
-   えがく
+   canvas サイズ（devicePixelRatio 対応・リサイズにも安全に）
+   ============================================================ */
+function _ensureCanvasSize() {
+  const cv = D.canvas; if (!cv) return null;
+  const ctx = cv.getContext('2d');
+  const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+  const needW = Math.round(VIEW_W * dpr), needH = Math.round(VIEW_H * dpr);
+  if (cv.width !== needW || cv.height !== needH) {
+    cv.width = needW; cv.height = needH;
+    // CSS の みためサイズは ろんりサイズに（スタイルが あれば そちら ゆうせん）
+    if (!cv.style.width) cv.style.width = VIEW_W + 'px';
+    if (!cv.style.height) cv.style.height = VIEW_H + 'px';
+  }
+  // まいフレーム リセット: ろんり座標で えがけるよう DPR スケール
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ctx;
+}
+
+/* ============================================================
+   えがく（カメラ変換ご・可視はんいだけ・足元ワールドYで奥行きソート）
    ============================================================ */
 function _drawField(now) {
-  const cv = D.canvas; if (!cv) return;
-  const ctx = cv.getContext('2d');
-  const TS = _tileSize();
-  const offY = _offY();
-  const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
+  const ctx = _ensureCanvasSize();
+  if (!ctx) return;
   const m = G.map; if (!m) return;
+  const TS = _ts();
+  const W = m.w, H = m.h;
+  const time = _animTime;
+  const night = !!G.night;
+  const at = (x, y) => y * W + x;
+
+  // ワールド→スクリーン
+  const sX = (wx) => wx - _cam.x;
+  const sY = (wy) => wy - _cam.y;
 
   // せなか（くろ）でクリア
-  ctx.clearRect(0, 0, 420, 600);
-  ctx.fillStyle = '#1c2b18';
-  ctx.fillRect(0, 0, 420, 600);
+  ctx.clearRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillStyle = night ? '#0b1226' : '#1c2b18';
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
-  // タイル
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const t = m.tiles[y * W + x];
-      const px = x * TS, py = offY + y * TS;
-      const even = (x + y) % 2 === 0;
-      let col;
-      if (t === 1) col = even ? FIELD_COLORS.water : FIELD_COLORS.water2;
-      else if (t === 2) col = even ? FIELD_COLORS.rock : FIELD_COLORS.rockHi;
-      else if (t === 3) col = even ? FIELD_COLORS.tree : FIELD_COLORS.treeHi;
-      else if (t === 4) col = even ? FIELD_COLORS.path : FIELD_COLORS.path2;
-      else if (t === 5) col = even ? FIELD_COLORS.gravel : FIELD_COLORS.gravel2;
-      else col = even ? FIELD_COLORS.grass : FIELD_COLORS.grass2;
-      ctx.fillStyle = col;
-      ctx.fillRect(px, py, TS + 1, TS + 1);
+  // ---- 可視タイルはんい（カリング）----
+  const x0 = Math.max(0, Math.floor(_cam.x / TS) - 1);
+  const y0 = Math.max(0, Math.floor(_cam.y / TS) - 1);
+  const x1 = Math.min(W - 1, Math.ceil((_cam.x + VIEW_W) / TS) + 1);
+  const y1 = Math.min(H - 1, Math.ceil((_cam.y + VIEW_H) / TS) + 1);
 
-      // 水は さざなみ
-      if (t === 1) {
-        ctx.strokeStyle = 'rgba(255,255,255,.35)';
-        ctx.lineWidth = 1.4;
-        const w = Math.sin(now / 480 + x * 1.6 + y) * 2.4;
-        ctx.beginPath();
-        ctx.moveTo(px + 5, py + TS * 0.55 + w);
-        ctx.quadraticCurveTo(px + TS / 2, py + TS * 0.5 - 3 + w, px + TS - 5, py + TS * 0.55 + w);
-        ctx.stroke();
-      }
-      // 木は こんもり
-      else if (t === 3) {
-        ctx.fillStyle = 'rgba(20,45,20,.5)';
-        ctx.beginPath(); ctx.arc(px + TS / 2, py + TS * 0.55, TS * 0.38, 0, 7); ctx.fill();
-        ctx.fillStyle = FIELD_COLORS.treeHi;
-        ctx.beginPath(); ctx.arc(px + TS * 0.4, py + TS * 0.42, TS * 0.18, 0, 7); ctx.fill();
-      }
-      // 岩は ごつごつ
-      else if (t === 2) {
-        ctx.fillStyle = 'rgba(0,0,0,.18)';
-        ctx.beginPath();
-        ctx.moveTo(px + 4, py + TS - 4);
-        ctx.lineTo(px + TS * 0.4, py + 5);
-        ctx.lineTo(px + TS - 4, py + TS - 6);
-        ctx.closePath(); ctx.fill();
+  const tileAt = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? 3 : m.tiles[at(x, y)];
+  const groundKind = (t) => t === 1 ? 'water' : t === 4 ? 'path' : t === 5 ? 'gravel' : 'grass';
+  // 崖(2)/森(3) の 足元は 草の地面に する（立ち上がる物として 上に かさねる）
+  const baseKind = (t) => (t === 2 || t === 3) ? 'grass' : groundKind(t);
+
+  const T = (typeof Tiles !== 'undefined') ? Tiles : null;
+
+  // ---- ① 地面レイヤ ----
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const t = m.tiles[at(x, y)];
+      const px = sX(x * TS), py = sY(y * TS);
+      const seed = (x * 73856093) ^ (y * 19349663);
+      const kind = baseKind(t);
+      if (T && T.ground) T.ground(ctx, px, py, TS, kind, seed, time, night);
+      else { ctx.fillStyle = kind === 'water' ? '#3a8fd0' : kind === 'path' ? '#c9b079' : kind === 'gravel' ? '#b8b2a0' : '#5ba84e'; ctx.fillRect(px, py, TS + 1, TS + 1); }
+    }
+  }
+
+  // ---- ② 地面の さかいめ なじみ（水辺・道）----
+  if (T && T.transition) {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const t = m.tiles[at(x, y)];
+        if (t !== 1 && t !== 4) continue; // 水・道 の ふちだけ
+        const px = sX(x * TS), py = sY(y * TS);
+        const diff = (nx, ny) => {
+          const nt = tileAt(nx, ny);
+          if (t === 1) return nt !== 1; // 水: りく/べつ地形 が となり
+          return nt !== 4;              // 道: みち いがい が となり
+        };
+        const mask = {
+          n: diff(x, y - 1), e: diff(x + 1, y), s: diff(x, y + 1), w: diff(x - 1, y),
+          ne: diff(x + 1, y - 1), nw: diff(x - 1, y - 1), se: diff(x + 1, y + 1), sw: diff(x - 1, y + 1),
+        };
+        const base = t === 1 ? 'water' : 'path';
+        T.transition(ctx, px, py, TS, base, mask, time);
       }
     }
   }
 
-  // けはい（ゆれる草 or「！」）
+  // ---- ③ 平らな deco（花・小石）は 地面の すぐあと ----
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const d = m.deco[at(x, y)];
+      if (d !== 1 && d !== 3) continue; // 花 / 小石
+      const cx = sX(_tileCx(x)), cy = sY(_tileCy(y));
+      const seed = (x * 73856093) ^ (y * 19349663);
+      if (T && T.deco) T.deco(ctx, cx, cy, TS, d === 1 ? 'flower' : 'rock', seed, time);
+    }
+  }
+
+  // ---- ④ 立ち上がる物を あつめて 足元ワールドYで ソート（後→前）----
+  const draws = [];
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const idx = at(x, y);
+      const t = m.tiles[idx];
+      const d = m.deco[idx];
+      const footY = (y + 1) * TS; // 足元（タイル下辺）ワールドY
+      const seed = (x * 73856093) ^ (y * 19349663);
+      if (t === 2) draws.push({ y: footY, kind: 'cliff', x, ty: y, seed });
+      else if (t === 3) draws.push({ y: footY, kind: 'tree', x, ty: y, seed });
+      if (d === 2 || d === 4 || d === 5) draws.push({ y: footY, kind: 'deco', x, ty: y, deco: d, seed });
+    }
+  }
+  // けはい
   for (const s of G.signs) {
-    const cx = _tileCx(s.tx), cy = _tileCy(s.ty);
-    const near = Math.abs(s.tx - G.player.tx) + Math.abs(s.ty - G.player.ty) <= 1;
-    // ときどき ガサガサ ゆれる（スポットごとに いそうずれ）
-    const gust = (((now / 1000) + s.tx * 0.71 + s.ty * 1.37) % 2.4) < 0.8;
-    const shake = near || gust;
-    const sw = shake ? Math.sin(now / 90 + s.tx) * 3 : Math.sin(now / 900 + s.tx) * 1;
-    // ゆれる草むら
-    ctx.save();
-    ctx.translate(cx + sw, cy + TS * 0.18);
-    ctx.fillStyle = '#3e7e36';
-    ctx.beginPath();
-    ctx.arc(-TS * 0.18, 0, TS * 0.2, 0, 7);
-    ctx.arc(TS * 0.18, 0, TS * 0.2, 0, 7);
-    ctx.arc(0, -TS * 0.12, TS * 0.22, 0, 7);
-    ctx.fill();
-    ctx.fillStyle = '#5aa84e';
-    ctx.beginPath(); ctx.arc(-TS * 0.05, -TS * 0.14, TS * 0.1, 0, 7); ctx.fill();
-    ctx.restore();
-    // となりなら「！」ふきだし
-    if (near) {
-      ctx.save();
-      ctx.translate(cx, cy - TS * 0.45 + Math.sin(now / 180) * 2);
-      ctx.font = 'bold ' + Math.round(TS * 0.7) + 'px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.lineWidth = 4; ctx.strokeStyle = '#27431f'; ctx.fillStyle = '#fff';
-      ctx.strokeText('！', 0, 0); ctx.fillText('！', 0, 0);
-      ctx.restore();
+    if (s.tx < x0 - 1 || s.tx > x1 + 1 || s.ty < y0 - 1 || s.ty > y1 + 1) continue;
+    draws.push({ y: (s.ty + 1) * TS, kind: 'sign', sign: s });
+  }
+  // CPU・プレイヤー（足元＝x,y はピクセル中心なので 下ばしまで すこし たす）
+  if (G.mode === 'vs' && G.cpu) draws.push({ y: G.cpu.y + TS * 0.5, kind: 'cpu' });
+  draws.push({ y: G.player.y + TS * 0.5, kind: 'player' });
+
+  draws.sort((a, b) => a.y - b.y);
+
+  for (const it of draws) {
+    if (it.kind === 'cliff') {
+      const px = sX(it.x * TS), py = sY(it.ty * TS);
+      // 下の となりが 崖でなければ 崖面を 下に だす
+      const below = tileAt(it.x, it.ty + 1);
+      const faceH = (below === 2) ? 0.15 : 0.9;
+      const capTop = (tileAt(it.x, it.ty - 1) !== 2); // 上が 崖でなければ 天端
+      if (T && T.cliff) T.cliff(ctx, px, py, TS, { faceH, capTop, shadow: faceH > 0.3, seed: it.seed, night });
+      else { ctx.fillStyle = '#8a8a82'; ctx.fillRect(px, py, TS, TS); }
+    } else if (it.kind === 'tree') {
+      const cx = sX(_tileCx(it.x)), cy = sY(_tileCy(it.ty));
+      const variant = ((it.seed >>> 3) & 3);
+      if (T && T.tree) T.tree(ctx, cx, cy, TS, variant, time, night);
+      else { ctx.fillStyle = '#2f6b3a'; ctx.beginPath(); ctx.arc(cx, cy, TS * 0.4, 0, 7); ctx.fill(); }
+    } else if (it.kind === 'deco') {
+      const cx = sX(_tileCx(it.x)), cy = sY(_tileCy(it.ty));
+      const kind = it.deco === 2 ? 'tallgrass' : it.deco === 4 ? 'log' : 'mushroom';
+      if (T && T.deco) T.deco(ctx, cx, cy, TS, kind, it.seed, time);
+    } else if (it.kind === 'sign') {
+      const s = it.sign;
+      const cx = sX(_tileCx(s.tx)), cy = sY(_tileCy(s.ty));
+      if (T && T.sign) T.sign(ctx, cx, cy, TS, time);
+      else { ctx.fillStyle = '#3e7e36'; ctx.beginPath(); ctx.arc(cx, cy, TS * 0.25, 0, 7); ctx.fill(); }
+    } else if (it.kind === 'cpu') {
+      const c = G.cpu;
+      const cx = sX(c.x), cy = sY(c.y);
+      const ph = _walkPhase(c, now);
+      if (T && T.chibi) T.chibi(ctx, cx, cy + TS * 0.4, TS, c.dir, ph, 'cpu', night);
+      else _fallbackChibi(ctx, cx, cy, true);
+    } else if (it.kind === 'player') {
+      const p = G.player;
+      const cx = sX(p.x), cy = sY(p.y);
+      const ph = _walkPhase(p, now);
+      if (T && T.chibi) T.chibi(ctx, cx, cy + TS * 0.4, TS, p.dir, ph, 'player', night);
+      else _fallbackChibi(ctx, cx, cy, false);
     }
   }
 
-  // CPU
-  if (G.mode === 'vs' && G.cpu) {
-    const c = G.cpu;
-    const walking = c.moving;
-    _drawChibi(ctx, c.x, c.y, c.dir, walking, now, true);
-  }
-
-  // プレイヤー
-  _drawChibi(ctx, G.player.x, G.player.y, G.player.dir, G.player.moving, now, false);
-
-  // よる: あんまく＋プレイヤーの まわりだけ あかるく
-  if (G.night) {
-    const ppx = G.player.x, ppy = G.player.y;
-    const r = TS * 3.5; // 径3〜4マス
-    const grad = ctx.createRadialGradient(ppx, ppy, TS * 1.0, ppx, ppy, r);
+  // ---- ⑤ 夜の あんまく（プレイヤー画面座標 中心のライト）----
+  if (night && T && T.nightOverlay) {
+    const lx = sX(G.player.x), ly = sY(G.player.y);
+    T.nightOverlay(ctx, VIEW_W, VIEW_H, lx, ly, TS * 4);
+  } else if (night) {
+    // フォールバックの あんまく
+    const lx = sX(G.player.x), ly = sY(G.player.y), r = TS * 4;
+    const grad = ctx.createRadialGradient(lx, ly, TS, lx, ly, r);
     grad.addColorStop(0, 'rgba(8,12,30,0)');
-    grad.addColorStop(0.7, 'rgba(8,12,30,.30)');
-    grad.addColorStop(1, 'rgba(8,12,30,.72)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 420, 600);
-    // すみは しっかり くらく
-    ctx.fillStyle = 'rgba(8,12,30,.45)';
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, 420, 600);
-    ctx.arc(ppx, ppy, r, 0, 7, true); // まんなかは くりぬき
-    ctx.fill('evenodd');
-    ctx.restore();
+    grad.addColorStop(1, 'rgba(8,12,30,.75)');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   }
 }
 
-/* チビキャラ（プレイヤー＝あか / CPU＝あお＋🤖かん） */
-function _drawChibi(ctx, x, y, dir, walking, now, rival) {
-  const TS = _tileSize();
-  const sc = TS / 30; // 30pxタイル を きじゅんに スケール
-  const bodyCol = rival ? '#4a7ac9' : '#e8543d';
-  const bodyHi = rival ? '#6a96e0' : '#f2785f';
-  const capCol = rival ? '#dce6ef' : '#ffd34d';
-  const t = now / 85;
-  const swing = walking ? Math.sin(t) : 0;
-  const bob = walking ? Math.abs(Math.sin(t)) * -2 : Math.sin(now / 680) * 0.8;
+/* 歩きフェーズ（0..1）。moving中は じかんで ぐるぐる、とまっていれば ゆっくり ゆれ */
+function _walkPhase(ent, now) {
+  if (ent.moving) return ((now / 140) % 1);
+  return 0;
+}
 
+/* Tiles が まだ ない ときの ほけん用 チビ（ふだんは つかわない） */
+function _fallbackChibi(ctx, x, y, rival) {
   ctx.save();
-  ctx.translate(x, y + bob * sc);
-  ctx.scale(sc, sc);
-  const flip = dir === 'left' ? -1 : 1;
-  ctx.scale(flip, 1);
-  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-
-  // かげ
   ctx.fillStyle = 'rgba(15,30,8,.25)';
-  ctx.beginPath(); ctx.ellipse(0, 13, 10, 3.5, 0, 0, 7); ctx.fill();
-
-  ctx.lineWidth = 2; ctx.strokeStyle = '#26321c';
-  // あし
-  const legSwing = swing * 4;
-  ctx.fillStyle = rival ? '#2e5aa8' : '#27437a';
-  _rr(ctx, -7, 3 + legSwing * 0.4, 6, 9, 2.5); ctx.fill(); ctx.stroke();
-  _rr(ctx, 1, 3 - legSwing * 0.4, 6, 9, 2.5); ctx.fill(); ctx.stroke();
-
-  // からだ
-  ctx.fillStyle = bodyCol;
-  _rr(ctx, -8, -6, 16, 11, 4); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = bodyHi;
-  _rr(ctx, -8, -6, 6, 11, 4); ctx.fill();
-
-  // あたま
-  ctx.fillStyle = '#ffd9b3';
-  ctx.beginPath(); ctx.arc(0, -13, 9, 0, 7); ctx.fill(); ctx.stroke();
-
-  // ぼうし
-  ctx.fillStyle = capCol;
-  ctx.beginPath(); ctx.arc(0, -15, 9, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
-  // つば
-  ctx.beginPath();
-  ctx.moveTo(5, -16);
-  ctx.quadraticCurveTo(14, -16, 15, -13);
-  ctx.quadraticCurveTo(9, -12, 4, -13);
-  ctx.closePath(); ctx.fill(); ctx.stroke();
-
-  // かお（うしろむき いがい）
-  if (dir !== 'up') {
-    if (dir === 'down') {
-      ctx.fillStyle = '#26241f';
-      ctx.beginPath(); ctx.arc(-3, -13, 1.4, 0, 7); ctx.arc(3, -13, 1.4, 0, 7); ctx.fill();
-    } else {
-      ctx.fillStyle = '#26241f';
-      ctx.beginPath(); ctx.arc(3, -13, 1.4, 0, 7); ctx.arc(7, -13, 1.3, 0, 7); ctx.fill();
-    }
-  }
-
-  // CPU は ロボっぽい アンテナ
-  if (rival) {
-    ctx.strokeStyle = '#9fc0e8'; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.moveTo(0, -23); ctx.lineTo(0, -27); ctx.stroke();
-    ctx.fillStyle = '#ff5a5a';
-    ctx.beginPath(); ctx.arc(0, -28, 1.8, 0, 7); ctx.fill();
-  }
-
+  ctx.beginPath(); ctx.ellipse(x, y + 12, 10, 3.5, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = rival ? '#4a7ac9' : '#e8543d';
+  ctx.beginPath(); ctx.arc(x, y, 10, 0, 7); ctx.fill();
   ctx.restore();
-}
-
-/* かどまる rect */
-function _rr(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }

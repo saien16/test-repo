@@ -14,6 +14,7 @@ const ORDER = [
   'src/audio/sound.js',
   'src/game/core.js',
   'src/game/catch.js',
+  'src/render/tiles.js',
   'src/field/field-cpu.js',
 ];
 
