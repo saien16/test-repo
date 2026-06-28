@@ -1,0 +1,2201 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1f6b3a">
+<title>むしとりバトル 🐛</title>
+<style>
+/* ============================================================
+   むしとりバトル — styles.css
+   スマホ縦画面（iPhone SE想定）/ 単一HTML。
+   画面は .screen を重ね、.active のみ表示。
+   ============================================================ */
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+  background: #0c1410; color: #fff; overflow: hidden;
+  user-select: none; -webkit-user-select: none;
+}
+#app {
+  position: relative; width: 100%; height: 100vh; height: 100dvh;
+  max-width: 480px; margin: 0 auto; overflow: hidden;
+}
+
+/* ---- 画面の重ね ---- */
+.screen { position: absolute; inset: 0; display: none; flex-direction: column;
+  align-items: center; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+.screen.active { display: flex; }
+
+.screen-title { font-size: 24px; margin: 18px 0 10px; letter-spacing: 2px;
+  text-shadow: 0 2px 0 rgba(0,0,0,.4); }
+
+/* ---- 共通ボタン ---- */
+.big-btn {
+  font: 700 22px/1 inherit; color: #fff; border: none; border-radius: 16px;
+  padding: 16px 34px; margin: 10px;
+  background: linear-gradient(#3fbf6f, #1f8f4d);
+  box-shadow: 0 5px 0 #145e34, 0 8px 16px rgba(0,0,0,.4); cursor: pointer;
+  transition: transform .06s, box-shadow .06s;
+}
+.big-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #145e34; }
+
+/* ============================================================
+   タイトル
+   ============================================================ */
+#title-screen {
+  justify-content: center;
+  background: radial-gradient(120% 80% at 50% 0%, #2e7d4f 0%, #143d27 55%, #0c1410 100%);
+}
+.title-wrap { display: flex; flex-direction: column; align-items: center; }
+.title-logo { font-size: 52px; font-weight: 900; text-align: center; line-height: 1.05;
+  text-shadow: 0 3px 0 #0a3a20, 0 6px 10px rgba(0,0,0,.5); letter-spacing: 3px; }
+.title-logo span { color: #ffe14d; font-size: 60px; }
+.title-bugs { font-size: 30px; margin: 22px 0 6px; letter-spacing: 8px; animation: bob 2.2s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(-7px); } }
+.title-foot { margin-top: 14px; opacity: .85; font-size: 14px; }
+.mute-btn { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,.35);
+  border: none; color: #fff; font-size: 22px; width: 46px; height: 46px; border-radius: 50%; cursor: pointer; }
+
+/* ============================================================
+   モード選択
+   ============================================================ */
+#mode-screen { background: linear-gradient(#143d27, #0c1410); justify-content: flex-start; }
+.best-label { font-size: 14px; color: #ffe14d; margin-bottom: 14px; }
+.mode-grid { width: 100%; padding: 0 16px; display: flex; flex-direction: column; gap: 14px; }
+.mode-card { border-radius: 18px; padding: 16px; text-align: center; border: none; color: #fff;
+  background: rgba(255,255,255,.06); box-shadow: 0 4px 12px rgba(0,0,0,.35); }
+.mode-card.solo { cursor: pointer; background: linear-gradient(135deg, #2f9e5c, #1c6b3e); }
+.mode-card.solo:active { transform: scale(.98); }
+.mode-card.vs { background: linear-gradient(135deg, #b5482e, #7d2e1c); }
+.mode-emoji { font-size: 40px; }
+.mode-name { font-size: 22px; font-weight: 800; margin: 4px 0; }
+.mode-desc { font-size: 13px; opacity: .9; }
+.cpu-levels { display: flex; gap: 8px; justify-content: center; margin: 12px 0 4px; flex-wrap: wrap; }
+.cpu-lv { font: 700 15px inherit; color: #fff; border: 2px solid rgba(255,255,255,.5);
+  background: rgba(0,0,0,.25); border-radius: 12px; padding: 8px 12px; cursor: pointer; }
+.cpu-lv:active { transform: translateY(2px); }
+.cpu-lv.locked { opacity: .35; border-style: dashed; }
+.cpu-lv.locked::after { content: " 🔒"; }
+.cpu-hint { font-size: 11px; opacity: .8; margin-top: 4px; }
+
+/* ============================================================
+   フィールド
+   ============================================================ */
+#field-screen { background: #0c1410; justify-content: flex-start; }
+.hud { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+.hud-pill { background: rgba(0,0,0,.45); border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 15px; }
+.hud-pill.cpu { background: rgba(180,72,46,.6); }
+.hud-give { margin-left: auto; background: rgba(255,255,255,.12); border: none; color: #fff;
+  border-radius: 10px; padding: 6px 12px; font: 700 13px inherit; cursor: pointer; }
+.field-wrap { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; min-height: 0; }
+#field-canvas { width: 100%; height: 100%; max-width: 480px; image-rendering: auto; touch-action: none; }
+
+/* dパッド */
+.dpad { position: relative; width: 190px; height: 190px; margin: 6px auto 16px; flex: none; }
+.dbtn { position: absolute; width: 62px; height: 62px; border-radius: 14px; border: none;
+  background: rgba(255,255,255,.16); color: #fff; font-size: 24px; cursor: pointer; }
+.dbtn:active { background: rgba(255,255,255,.4); }
+.dbtn.up { top: 0; left: 64px; }
+.dbtn.down { bottom: 0; left: 64px; }
+.dbtn.left { left: 0; top: 64px; }
+.dbtn.right { right: 0; top: 64px; }
+
+/* ============================================================
+   捕獲シーン（catch.js が #catch-root に描画）
+   スクロール禁止（UIで時計などが隠れない設計）
+   ============================================================ */
+#catch-screen { overflow: hidden; height: 100%; background: linear-gradient(#7ec9e8, #cde6b0 60%, #8bbf5a); }
+#catch-root { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.cs-top { display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: #14361f; font-weight: 800; }
+.cs-dist { background: rgba(255,255,255,.7); border-radius: 999px; padding: 4px 12px; }
+.cs-name { margin-left: auto; background: rgba(255,255,255,.7); border-radius: 999px; padding: 4px 12px; }
+/* 警戒ゲージ */
+.cs-alert-wrap { padding: 4px 12px; }
+.cs-alert-label { font-size: 12px; color: #14361f; font-weight: 700; display: flex; justify-content: space-between; }
+.cs-alert-bar { height: 14px; background: rgba(0,0,0,.25); border-radius: 999px; overflow: hidden; margin-top: 3px; }
+.cs-alert-fill { height: 100%; width: 0%; border-radius: 999px; transition: width .25s, background .25s; background: #41c46f; }
+.cs-alert-fill.warn { background: #f3b13b; }
+.cs-alert-fill.danger { background: #e2483a; }
+/* アリーナ（横視点） */
+.cs-arena { flex: 1; position: relative; min-height: 0; overflow: hidden; }
+.cs-arena.warn-glow { box-shadow: inset 0 0 60px 10px rgba(226,72,58,.5); }
+.cs-bug { position: absolute; top: 42%; transition: right .4s ease, transform .2s; }
+.cs-hunter { position: absolute; bottom: 8%; left: 6%; font-size: 40px; }
+.cs-warn-pop { position: absolute; top: 18%; right: 12%; font-size: 22px; font-weight: 900; color: #e2483a;
+  text-shadow: 0 2px 0 #fff; animation: pop .4s; }
+@keyframes pop { from { transform: scale(.4); opacity: 0; } }
+/* 行動ボタン */
+.cs-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; background: rgba(20,54,31,.92); }
+.cs-btn { font: 800 16px inherit; color: #fff; border: none; border-radius: 12px; padding: 14px 8px; cursor: pointer;
+  box-shadow: 0 3px 0 rgba(0,0,0,.3); }
+.cs-btn:active { transform: translateY(3px); box-shadow: none; }
+.cs-btn.approach { background: #c9742e; }
+.cs-btn.sneak { background: #4a8f5a; }
+.cs-btn.wait { background: #5566b5; }
+.cs-btn.net { background: #d24a6a; grid-column: 1 / -1; }
+.cs-btn small { display: block; font-size: 11px; font-weight: 600; opacity: .9; margin-top: 2px; }
+.cs-btn:disabled { opacity: .5; }
+.cs-log { padding: 6px 12px; height: 42px; font-size: 13px; color: #14361f; font-weight: 700; text-align: center; }
+
+/* ============================================================
+   リザルト
+   ============================================================ */
+#result-screen { background: linear-gradient(#1d2b6b, #0c1410); justify-content: flex-start; overflow-y: auto; }
+#result-body { width: 100%; padding: 0 16px; }
+.res-banner { text-align: center; font-size: 30px; font-weight: 900; margin: 6px 0 12px; }
+.res-banner.win { color: #ffe14d; text-shadow: 0 2px 0 #7a5a00; }
+.res-banner.lose { color: #c9d1e0; }
+.res-vs { display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 16px; text-align: center; margin-bottom: 10px; }
+.res-vs b { font-size: 28px; }
+.vsmid { opacity: .7; }
+.res-score { text-align: center; font-size: 18px; }
+.res-score b { font-size: 30px; color: #ffe14d; }
+.res-best { text-align: center; font-size: 13px; opacity: .85; margin-top: 4px; }
+.res-stat { text-align: center; font-size: 13px; opacity: .9; margin: 10px 0; }
+.res-list { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
+.res-bug { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.08);
+  border-radius: 10px; padding: 6px 10px; font-size: 12px; }
+.res-empty { text-align: center; opacity: .7; padding: 20px; }
+
+/* 紙吹雪（勝利） */
+.confetti { position: fixed; top: -10px; width: 9px; height: 14px; opacity: .9; z-index: 50; animation: fall linear forwards; }
+@keyframes fall { to { transform: translateY(105vh) rotate(540deg); } }
+
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- タイトル -->
+  <section id="title-screen" class="screen active">
+    <div class="title-wrap">
+      <div class="title-logo">むしとり<br><span>バトル</span></div>
+      <div class="title-bugs">🦋 🐝 🐞 🦗 🐛</div>
+      <button id="btn-start" class="big-btn">▶ はじめる</button>
+      <div class="title-foot">あみで むしを つかまえよう！</div>
+    </div>
+    <button id="btn-mute" class="mute-btn" aria-label="おと">🔊</button>
+  </section>
+
+  <!-- モード選択 -->
+  <section id="mode-screen" class="screen">
+    <h1 class="screen-title">モードを えらぶ</h1>
+    <div id="best-label" class="best-label">ソロ さいこう: 0 pt</div>
+    <div class="mode-grid">
+      <button id="btn-solo" class="mode-card solo">
+        <div class="mode-emoji">🌳</div>
+        <div class="mode-name">ソロ</div>
+        <div class="mode-desc">じかんない できるだけ おおく つかまえる</div>
+      </button>
+      <div class="mode-card vs">
+        <div class="mode-emoji">⚔️</div>
+        <div class="mode-name">たいせん（CPU）</div>
+        <div class="mode-desc">ライバルより たくさん つかまえろ！</div>
+        <div class="cpu-levels">
+          <button class="cpu-lv" data-cpulv="1">Lv1</button>
+          <button class="cpu-lv" data-cpulv="2">Lv2</button>
+          <button class="cpu-lv" data-cpulv="3">Lv3</button>
+          <button class="cpu-lv" data-cpulv="4">Lv4🌙</button>
+          <button class="cpu-lv" data-cpulv="5">Lv5🌙</button>
+        </div>
+        <div class="cpu-hint">かつと つぎの レベルが あく</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- フィールド -->
+  <section id="field-screen" class="screen">
+    <div class="hud">
+      <span id="hud-time" class="hud-pill">⏱ 90</span>
+      <span id="hud-score" class="hud-pill">🐛 0</span>
+      <span id="hud-cpu" class="hud-pill cpu">🤖 0</span>
+      <button id="btn-giveup" class="hud-give">やめる</button>
+    </div>
+    <div class="field-wrap">
+      <canvas id="field-canvas" width="420" height="600"></canvas>
+    </div>
+    <div class="dpad">
+      <button class="dbtn up" data-dir="up">▲</button>
+      <button class="dbtn left" data-dir="left">◀</button>
+      <button class="dbtn right" data-dir="right">▶</button>
+      <button class="dbtn down" data-dir="down">▼</button>
+    </div>
+  </section>
+
+  <!-- 捕獲シーン -->
+  <section id="catch-screen" class="screen">
+    <div id="catch-root"><!-- catch.js が描画 --></div>
+  </section>
+
+  <!-- リザルト -->
+  <section id="result-screen" class="screen">
+    <h1 class="screen-title">けっか</h1>
+    <div id="result-body"></div>
+    <button id="btn-again" class="big-btn">つぎへ</button>
+  </section>
+
+</div>
+<script>
+
+/* ===== src/data/bugs.js ===== */
+/* ============================================================
+   むしとりバトル — data/bugs.js（虫データ＆みため）
+   ・BUGS … 虫ずかんの正データ（20種いじょう）
+   ・DAY_KEYS / NIGHT_KEYS … time でふりわけたキーの配列
+   ・pickSpecies(night) … レア度 w で重みづけ抽選
+   ・bugSprite(key, sizePx) … インラインSVG文字列（shape ごとに描き分け）
+   ・drawBugMini(ctx, key, cx, cy, r) … Canvas にちいさく描く（任意）
+   ※ import/export しない。グローバル共有。トップレベルで document を触らない。
+   ============================================================ */
+
+/* ---- 虫ずかん（キー＝英数id） ----
+   w: 3=ふつう / 2=中堅 / 1=レア。レア度と pts/alertBase/sizeBase を相関させ、
+   出現は w でしぼる（夜は w3 を出さない、昼は w1 を出さない）。 */
+const BUGS = {
+  /* === ふつう（w:3）：出やすい・低得点・おとなしい === */
+  monshiro:  { name: 'もんしろちょう',   color: '#fdfdf6', accent: '#cfcfc2', w: 3, pts: 10, alertBase: 4,  sizeBase: 45,  time: 'day',   shape: 'butterfly' },
+  monki:     { name: 'もんきちょう',     color: '#f7e96b', accent: '#c2a72e', w: 3, pts: 12, alertBase: 5,  sizeBase: 48,  time: 'day',   shape: 'butterfly' },
+  onbubatta: { name: 'おんぶばった',     color: '#a4c489', accent: '#5a9a3a', w: 3, pts: 9,  alertBase: 4,  sizeBase: 42,  time: 'both',  shape: 'grasshopper' },
+  nanahoshi: { name: 'ななほしてんとう', color: '#d83a2a', accent: '#1a1712', w: 3, pts: 11, alertBase: 3,  sizeBase: 8,   time: 'both',  shape: 'ladybug' },
+  kokuwa:    { name: 'こくわがた',       color: '#4a3a2a', accent: '#241a0f', w: 3, pts: 16, alertBase: 6,  sizeBase: 38,  time: 'both',  shape: 'stag' },
+  kokabuto:  { name: 'こかぶとむし',     color: '#5a4632', accent: '#2e2214', w: 3, pts: 18, alertBase: 6,  sizeBase: 40,  time: 'both',  shape: 'beetle' },
+  niinii:    { name: 'にいにいぜみ',     color: '#6b6252', accent: '#332e24', w: 3, pts: 14, alertBase: 7,  sizeBase: 35,  time: 'day',   shape: 'cicada' },
+  shiokara:  { name: 'しおからとんぼ',   color: '#7ab2c9', accent: '#3a6a8a', w: 3, pts: 15, alertBase: 8,  sizeBase: 50,  time: 'day',   shape: 'dragonfly' },
+  enma:      { name: 'えんまこおろぎ',   color: '#4a4036', accent: '#241f16', w: 3, pts: 13, alertBase: 6,  sizeBase: 30,  time: 'night', shape: 'grasshopper' },
+  mitsubachi:{ name: 'みつばち',         color: '#d9b441', accent: '#7a5a10', w: 3, pts: 17, alertBase: 9,  sizeBase: 14,  time: 'day',   shape: 'bee' },
+
+  /* === 中堅（w:2）：そこそこ・中得点・やや警戒つよめ === */
+  ageha:     { name: 'あげはちょう',     color: '#ffd84d', accent: '#3d3a2e', w: 2, pts: 30, alertBase: 11, sizeBase: 90,  time: 'day',   shape: 'butterfly' },
+  nokogiri:  { name: 'のこぎりくわがた', color: '#6b3a1a', accent: '#33180a', w: 2, pts: 42, alertBase: 12, sizeBase: 60,  time: 'both',  shape: 'stag' },
+  kanabun:   { name: 'かなぶん',         color: '#8a6a3a', accent: '#42300f', w: 2, pts: 28, alertBase: 10, sizeBase: 28,  time: 'day',   shape: 'beetle' },
+  kumabachi: { name: 'くまばち',         color: '#e8b53d', accent: '#4a3a10', w: 2, pts: 32, alertBase: 13, sizeBase: 22,  time: 'night', shape: 'bee' },
+  kokama:    { name: 'こかまきり',       color: '#9a7a4a', accent: '#5a4226', w: 2, pts: 30, alertBase: 12, sizeBase: 55,  time: 'both',  shape: 'mantis' },
+  akiakane:  { name: 'あきあかね',       color: '#c14e34', accent: '#8a2a15', w: 2, pts: 30, alertBase: 11, sizeBase: 38,  time: 'day',   shape: 'dragonfly' },
+  minmin:    { name: 'みんみんぜみ',     color: '#4a6e4a', accent: '#1f3a1f', w: 2, pts: 45, alertBase: 13, sizeBase: 60,  time: 'day',   shape: 'cicada' },
+  tonosama:  { name: 'とのさまばった',   color: '#6aa84f', accent: '#2e5e1f', w: 2, pts: 34, alertBase: 12, sizeBase: 65,  time: 'night', shape: 'grasshopper' },
+
+  /* === レア（w:1）：出にくい・高得点・とても警戒つよい === */
+  kabuto:    { name: 'かぶとむし',       color: '#6b4226', accent: '#33200f', w: 1, pts: 60, alertBase: 15, sizeBase: 80,  time: 'both',  shape: 'rhino' },
+  miyama:    { name: 'みやまくわがた',   color: '#5a4a2e', accent: '#2a2010', w: 1, pts: 58, alertBase: 16, sizeBase: 70,  time: 'night', shape: 'stag' },
+  yanma:     { name: 'おにやんま',       color: '#2f9078', accent: '#1f6e5a', w: 1, pts: 70, alertBase: 18, sizeBase: 100, time: 'both',  shape: 'dragonfly' },
+  ohkama:    { name: 'おおかまきり',     color: '#6aa84f', accent: '#2e5e1f', w: 1, pts: 55, alertBase: 16, sizeBase: 95,  time: 'night', shape: 'mantis' },
+  suzumebachi:{ name:'おおすずめばち',   color: '#ff9b2e', accent: '#5a3a10', w: 1, pts: 80, alertBase: 19, sizeBase: 40,  time: 'day',   shape: 'bee' },
+  tamamushi: { name: 'たまむし',         color: '#2a9a6e', accent: '#c95a3d', w: 1, pts: 85, alertBase: 17, sizeBase: 38,  time: 'day',   shape: 'beetle' },
+  kumazemi:  { name: 'くまぜみ',         color: '#26241f', accent: '#5fd0c0', w: 1, pts: 75, alertBase: 16, sizeBase: 65,  time: 'night', shape: 'cicada' },
+};
+
+/* ---- 昼夜キー（time でふりわけ。both は両方へ） ---- */
+const DAY_KEYS = Object.keys(BUGS).filter(k => BUGS[k].time === 'day' || BUGS[k].time === 'both');
+const NIGHT_KEYS = Object.keys(BUGS).filter(k => BUGS[k].time === 'night' || BUGS[k].time === 'both');
+
+/* ---- レア度抽選 ----
+   夜は w3 を出さない（夜=レア寄り）、昼は w1 を出さない（昼=ふつう寄り）。
+   候補の w をそのまま重みに使う（w 大=出やすい）。 */
+function pickSpecies(night) {
+  const pool = night ? NIGHT_KEYS : DAY_KEYS;
+  // この時間帯で出してよい候補（昼=w1除外 / 夜=w3除外）
+  const cands = pool.filter(k => {
+    const w = BUGS[k].w;
+    if (night) return w !== 3;   // 夜は ふつう を出さない
+    return w !== 1;              // 昼は レア を出さない
+  });
+  if (!cands.length) return pool[0]; // 念のため
+  let total = 0;
+  for (let i = 0; i < cands.length; i++) total += BUGS[cands[i]].w;
+  let r = Math.random() * total;
+  for (let i = 0; i < cands.length; i++) {
+    r -= BUGS[cands[i]].w;
+    if (r < 0) return cands[i];
+  }
+  return cands[cands.length - 1];
+}
+
+/* ============================================================
+   SVG みため（shape ごとに描き分け）
+   viewBox="0 0 100 100" / 背景とうめい / 左右対称 / </svg> でとじる
+   ============================================================ */
+function bugSprite(key, sizePx) {
+  const b = BUGS[key] || { color: '#888', accent: '#333', shape: 'beetle', name: '?' };
+  const C = b.color, A = b.accent;
+  const px = sizePx || 64;
+  const head = `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 100 100" aria-label="${b.name}">`;
+  const tail = `</svg>`;
+  // ちょっとした白いツヤ
+  const sheen = (x, y, rx, ry, op) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="#fff" opacity="${op == null ? 0.25 : op}"/>`;
+  let body = '';
+
+  switch (b.shape) {
+    /* ===== ちょう：ひらいた4まいばね・触角・どうたい ===== */
+    case 'butterfly': {
+      const wing = `
+        <path d="M50 50 C 30 22, 8 24, 12 44 C 14 56, 36 56, 50 54 Z" fill="${C}" stroke="${A}" stroke-width="2"/>
+        <path d="M50 54 C 34 58, 14 64, 20 80 C 26 90, 44 78, 50 60 Z" fill="${C}" stroke="${A}" stroke-width="2"/>
+        <circle cx="28" cy="40" r="5" fill="${A}" opacity="0.85"/>
+        <circle cx="30" cy="70" r="3.5" fill="${A}" opacity="0.7"/>`;
+      body = `
+        ${wing}
+        <g transform="translate(100 0) scale(-1 1)">${wing}</g>
+        <ellipse cx="50" cy="55" rx="4" ry="18" fill="${A}"/>
+        <circle cx="50" cy="35" r="5" fill="${A}"/>
+        <circle cx="47.5" cy="34" r="1.4" fill="#fff"/><circle cx="52.5" cy="34" r="1.4" fill="#fff"/>
+        <path d="M48 31 Q 40 18, 34 14 M52 31 Q 60 18, 66 14" fill="none" stroke="${A}" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="34" cy="14" r="2.4" fill="${A}"/><circle cx="66" cy="14" r="2.4" fill="${A}"/>
+        ${sheen(22, 38, 6, 4, 0.3)}`;
+      break;
+    }
+
+    /* ===== かぶとむし系（rhino）：おおきな一本ヅノ ===== */
+    case 'rhino': {
+      const legs = `
+        <path d="M40 56 L 22 48 M40 66 L 20 66 M42 74 L 24 84" stroke="${A}" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+        <g transform="translate(100 0) scale(-1 1)">
+          <path d="M40 56 L 22 48 M40 66 L 20 66 M42 74 L 24 84" stroke="${A}" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+        </g>`;
+      body = `
+        ${legs}
+        <ellipse cx="50" cy="66" rx="24" ry="22" fill="${C}" stroke="${A}" stroke-width="2.4"/>
+        <line x1="50" y1="46" x2="50" y2="86" stroke="${A}" stroke-width="2"/>
+        <ellipse cx="50" cy="42" rx="14" ry="12" fill="${C}" stroke="${A}" stroke-width="2.2"/>
+        <ellipse cx="50" cy="30" rx="8" ry="7" fill="${C}" stroke="${A}" stroke-width="2"/>
+        <!-- 一本ヅノ：先がふたまた -->
+        <path d="M50 27 L 50 8 M50 8 L 44 2 M50 8 L 56 2" stroke="${A}" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <path d="M50 18 L 45 12 M50 18 L 55 12" stroke="${A}" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <circle cx="45" cy="30" r="2" fill="#fff"/><circle cx="55" cy="30" r="2" fill="#fff"/>
+        ${sheen(40, 56, 8, 6, 0.22)}`;
+      break;
+    }
+
+    /* ===== くわがた（stag）：大きなはさみ（おおあご） ===== */
+    case 'stag': {
+      const legs = `
+        <path d="M40 58 L 24 50 M40 68 L 22 70 M42 76 L 26 86" stroke="${A}" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        <g transform="translate(100 0) scale(-1 1)">
+          <path d="M40 58 L 24 50 M40 68 L 22 70 M42 76 L 26 86" stroke="${A}" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        </g>`;
+      const jaw = `<path d="M44 32 Q 30 20, 26 8 Q 34 16, 40 18 Q 34 12, 36 6 Q 44 14, 48 24 Z" fill="${C}" stroke="${A}" stroke-width="2"/>`;
+      body = `
+        ${legs}
+        <ellipse cx="50" cy="64" rx="22" ry="24" fill="${C}" stroke="${A}" stroke-width="2.4"/>
+        <line x1="50" y1="42" x2="50" y2="86" stroke="${A}" stroke-width="2"/>
+        <ellipse cx="50" cy="42" rx="13" ry="10" fill="${C}" stroke="${A}" stroke-width="2.2"/>
+        <ellipse cx="50" cy="32" rx="9" ry="7" fill="${C}" stroke="${A}" stroke-width="2"/>
+        ${jaw}
+        <g transform="translate(100 0) scale(-1 1)">${jaw}</g>
+        <circle cx="46" cy="32" r="2" fill="#fff"/><circle cx="54" cy="32" r="2" fill="#fff"/>
+        ${sheen(40, 56, 8, 7, 0.2)}`;
+      break;
+    }
+
+    /* ===== こうちゅう（beetle）：まるいせなか・会合線 ===== */
+    case 'beetle': {
+      const legs = `
+        <path d="M38 52 L 20 44 M38 64 L 18 64 M40 74 L 22 84" stroke="${A}" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        <g transform="translate(100 0) scale(-1 1)">
+          <path d="M38 52 L 20 44 M38 64 L 18 64 M40 74 L 22 84" stroke="${A}" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        </g>`;
+      body = `
+        ${legs}
+        <ellipse cx="50" cy="60" rx="26" ry="28" fill="${C}" stroke="${A}" stroke-width="2.4"/>
+        <line x1="50" y1="36" x2="50" y2="86" stroke="${A}" stroke-width="2"/>
+        <ellipse cx="50" cy="34" rx="14" ry="10" fill="${C}" stroke="${A}" stroke-width="2.2"/>
+        <ellipse cx="50" cy="24" rx="8" ry="6" fill="${A}"/>
+        <path d="M46 21 Q 40 12, 36 10 M54 21 Q 60 12, 64 10" fill="none" stroke="${A}" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="46" cy="24" r="1.6" fill="#fff"/><circle cx="54" cy="24" r="1.6" fill="#fff"/>
+        ${sheen(40, 50, 10, 8, 0.28)}`;
+      break;
+    }
+
+    /* ===== てんとうむし（ladybug）：まるくて 黒い水玉 ===== */
+    case 'ladybug': {
+      const legs = `
+        <path d="M40 52 L 26 44 M40 64 L 24 64 M42 74 L 28 84" stroke="${A}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+        <g transform="translate(100 0) scale(-1 1)">
+          <path d="M40 52 L 26 44 M40 64 L 24 64 M42 74 L 28 84" stroke="${A}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+        </g>`;
+      body = `
+        ${legs}
+        <circle cx="50" cy="58" r="28" fill="${C}" stroke="${A}" stroke-width="2.4"/>
+        <line x1="50" y1="32" x2="50" y2="86" stroke="${A}" stroke-width="2"/>
+        <path d="M30 40 A 28 28 0 0 1 70 40 Z" fill="${A}"/>
+        <circle cx="38" cy="54" r="4.5" fill="${A}"/><circle cx="62" cy="54" r="4.5" fill="${A}"/>
+        <circle cx="42" cy="70" r="4" fill="${A}"/><circle cx="58" cy="70" r="4" fill="${A}"/>
+        <circle cx="50" cy="62" r="3.5" fill="${A}"/>
+        <circle cx="43" cy="38" r="2" fill="#fff"/><circle cx="57" cy="38" r="2" fill="#fff"/>
+        ${sheen(40, 50, 7, 5, 0.3)}`;
+      break;
+    }
+
+    /* ===== かまきり（mantis）：かまの前あし・ほそながい体 ===== */
+    case 'mantis': {
+      const arm = `<path d="M48 44 L 32 36 L 26 26 L 34 30 L 30 22" fill="none" stroke="${A}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+      const legs = `
+        <path d="M46 60 L 30 70 M48 70 L 34 84" stroke="${A}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+        <g transform="translate(100 0) scale(-1 1)">
+          <path d="M46 60 L 30 70 M48 70 L 34 84" stroke="${A}" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+        </g>`;
+      body = `
+        ${legs}
+        <ellipse cx="50" cy="62" rx="11" ry="26" fill="${C}" stroke="${A}" stroke-width="2.2"/>
+        <rect x="46" y="40" width="8" height="20" rx="4" fill="${C}" stroke="${A}" stroke-width="2"/>
+        ${arm}
+        <g transform="translate(100 0) scale(-1 1)">${arm}</g>
+        <path d="M44 36 L 56 36 L 53 26 L 47 26 Z" fill="${C}" stroke="${A}" stroke-width="2"/>
+        <circle cx="47" cy="29" r="2.4" fill="${A}"/><circle cx="53" cy="29" r="2.4" fill="${A}"/>
+        <circle cx="47" cy="29" r="0.9" fill="#fff"/><circle cx="53" cy="29" r="0.9" fill="#fff"/>
+        <path d="M47 26 Q 44 16, 41 12 M53 26 Q 56 16, 59 12" fill="none" stroke="${A}" stroke-width="1.8" stroke-linecap="round"/>
+        ${sheen(46, 56, 4, 12, 0.2)}`;
+      break;
+    }
+
+    /* ===== とんぼ（dragonfly）：ながい胴・4まいの薄ばね・おおきな目 ===== */
+    case 'dragonfly': {
+      const wing = `<ellipse cx="30" cy="40" rx="24" ry="8" transform="rotate(-18 30 40)" fill="${C}" opacity="0.55" stroke="${A}" stroke-width="1.6"/>`;
+      const wing2 = `<ellipse cx="32" cy="58" rx="22" ry="7" transform="rotate(16 32 58)" fill="${C}" opacity="0.55" stroke="${A}" stroke-width="1.6"/>`;
+      body = `
+        ${wing}${wing2}
+        <g transform="translate(100 0) scale(-1 1)">${wing}${wing2}</g>
+        <rect x="47" y="46" width="6" height="46" rx="3" fill="${C}" stroke="${A}" stroke-width="2"/>
+        <path d="M48 56 H52 M48 64 H52 M48 72 H52 M48 80 H52" stroke="${A}" stroke-width="1.6"/>
+        <ellipse cx="50" cy="44" rx="8" ry="9" fill="${C}" stroke="${A}" stroke-width="2"/>
+        <circle cx="44" cy="34" r="6" fill="${A}"/><circle cx="56" cy="34" r="6" fill="${A}"/>
+        <circle cx="44" cy="33" r="2" fill="#fff"/><circle cx="56" cy="33" r="2" fill="#fff"/>
+        ${sheen(24, 36, 8, 3, 0.3)}`;
+      break;
+    }
+
+    /* ===== はち（bee）：しましま腹・はり・透明ばね ===== */
+    case 'bee': {
+      const wing = `<ellipse cx="34" cy="40" rx="16" ry="9" transform="rotate(-22 34 40)" fill="#eaf4ff" opacity="0.7" stroke="${A}" stroke-width="1.6"/>`;
+      body = `
+        ${wing}
+        <g transform="translate(100 0) scale(-1 1)">${wing}</g>
+        <ellipse cx="50" cy="60" rx="18" ry="24" fill="${C}" stroke="${A}" stroke-width="2.2"/>
+        <path d="M34 52 Q 50 48, 66 52 M33 62 Q 50 60, 67 62 M36 72 Q 50 72, 64 72" stroke="${A}" stroke-width="5" fill="none"/>
+        <path d="M50 84 L 46 94 L 54 94 Z" fill="${A}"/>
+        <circle cx="50" cy="34" r="11" fill="${A}"/>
+        <circle cx="45" cy="32" r="2" fill="#fff"/><circle cx="55" cy="32" r="2" fill="#fff"/>
+        <path d="M44 26 Q 40 16, 37 12 M56 26 Q 60 16, 63 12" fill="none" stroke="${A}" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="37" cy="12" r="2.2" fill="${A}"/><circle cx="63" cy="12" r="2.2" fill="${A}"/>
+        ${sheen(42, 50, 5, 8, 0.25)}`;
+      break;
+    }
+
+    /* ===== せみ（cicada）：三角がたの体・大きな透明ばね ===== */
+    case 'cicada': {
+      const wing = `<path d="M48 36 C 26 32, 10 50, 18 78 C 26 84, 44 70, 48 50 Z" fill="${C}" opacity="0.5" stroke="${A}" stroke-width="1.8"/>`;
+      body = `
+        ${wing}
+        <g transform="translate(100 0) scale(-1 1)">${wing}</g>
+        <path d="M50 30 C 40 30, 38 44, 42 64 C 44 84, 56 84, 58 64 C 62 44, 60 30, 50 30 Z" fill="${C}" stroke="${A}" stroke-width="2.2"/>
+        <path d="M44 50 Q 50 52, 56 50 M44 60 Q 50 62, 56 60 M45 70 Q 50 72, 55 70" stroke="${A}" stroke-width="1.6" fill="none"/>
+        <ellipse cx="50" cy="30" rx="12" ry="8" fill="${C}" stroke="${A}" stroke-width="2"/>
+        <circle cx="42" cy="28" r="4" fill="${A}"/><circle cx="58" cy="28" r="4" fill="${A}"/>
+        <circle cx="42" cy="27" r="1.4" fill="#fff"/><circle cx="58" cy="27" r="1.4" fill="#fff"/>
+        ${sheen(44, 44, 5, 8, 0.22)}`;
+      break;
+    }
+
+    /* ===== ばった/こおろぎ（grasshopper）：太い後あし・ながい触角 ===== */
+    case 'grasshopper': {
+      const backleg = `<path d="M54 56 L 84 40 L 90 50 L 60 64 Z" fill="${C}" stroke="${A}" stroke-width="2"/>
+        <path d="M86 44 L 96 74 L 90 84" stroke="${A}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+      body = `
+        ${backleg}
+        <path d="M40 58 L 34 76 M50 60 L 48 80" stroke="${A}" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        <path d="M24 54 Q 50 46, 78 54 Q 84 58, 76 64 Q 50 68, 28 62 Q 22 58, 24 54 Z" fill="${C}" stroke="${A}" stroke-width="2.2"/>
+        <path d="M30 54 Q 56 50, 76 56" stroke="${A}" stroke-width="1.4" fill="none" opacity="0.6"/>
+        <path d="M24 54 Q 20 46, 26 42 Q 34 44, 34 54 Z" fill="${C}" stroke="${A}" stroke-width="2"/>
+        <ellipse cx="20" cy="52" rx="8" ry="9" fill="${C}" stroke="${A}" stroke-width="2"/>
+        <circle cx="16" cy="49" r="3" fill="${A}"/>
+        <circle cx="15.4" cy="48.2" r="1" fill="#fff"/>
+        <path d="M16 47 Q 6 30, 0 22" fill="none" stroke="${A}" stroke-width="1.8" stroke-linecap="round"/>
+        ${sheen(46, 52, 14, 3, 0.18)}`;
+      break;
+    }
+
+    default: {
+      body = `<circle cx="50" cy="55" r="26" fill="${C}" stroke="${A}" stroke-width="2.4"/>
+        <circle cx="42" cy="48" r="3" fill="${A}"/><circle cx="58" cy="48" r="3" fill="${A}"/>`;
+    }
+  }
+  return head + body + tail;
+}
+
+/* ---- Canvas にミニ虫（任意・簡易）。けはい演出などに使える ---- */
+function drawBugMini(ctx, key, cx, cy, r) {
+  const b = BUGS[key] || { color: '#888', accent: '#333', shape: 'beetle' };
+  ctx.save();
+  // どうたい
+  ctx.fillStyle = b.color;
+  ctx.strokeStyle = b.accent;
+  ctx.lineWidth = Math.max(1, r * 0.16);
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, r, r * 1.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  // shape ごとのちょいアクセント
+  if (b.shape === 'butterfly') {
+    ctx.fillStyle = b.color;
+    ctx.beginPath(); ctx.ellipse(cx - r, cy - r * 0.4, r * 0.9, r * 0.7, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx + r, cy - r * 0.4, r * 0.9, r * 0.7, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  } else if (b.shape === 'rhino' || b.shape === 'stag') {
+    ctx.strokeStyle = b.accent;
+    ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy - r * 1.8); ctx.stroke();
+  } else if (b.shape === 'dragonfly' || b.shape === 'bee') {
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath(); ctx.ellipse(cx - r * 0.8, cy - r * 0.6, r, r * 0.4, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + r * 0.8, cy - r * 0.6, r, r * 0.4, 0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  } else if (b.shape === 'ladybug') {
+    ctx.fillStyle = b.accent;
+    ctx.beginPath(); ctx.arc(cx - r * 0.4, cy, r * 0.18, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + r * 0.4, cy, r * 0.18, 0, Math.PI * 2); ctx.fill();
+  }
+  // め
+  ctx.fillStyle = b.accent;
+  ctx.beginPath(); ctx.arc(cx - r * 0.3, cy - r * 0.6, r * 0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + r * 0.3, cy - r * 0.6, r * 0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+
+/* ===== src/audio/sound.js ===== */
+/* ============================================================
+   むしとりバトル — sound.js（おとエンジン / Web Audio 合成のみ）
+   公開API（CONTRACT厳守）:
+     Sound.unlock()            初回タッチで AudioContext 生成/再開
+     Sound.setMuted(bool) / Sound.isMuted()
+     Sound.bgm(name)           'title'|'field'|'vs'|'result'（多重再生しない）
+     Sound.stop()              BGM停止
+     Sound.sfx = { select,step,catch,miss,flee,big,win,lose,warn }
+   ・外部音源ファイル禁止。合成のみ。
+   ・muted時は鳴らさない。未対応/未生成でも例外を投げず no-op。
+   ・トップレベルで AudioContext を即生成しない（ヘッドレス安全）。
+   ============================================================ */
+const Sound = (() => {
+  let ac = null;            // AudioContext（unlock まで遅延生成）
+  let master = null;        // マスター gain（→ リミッター → 出力）
+  let musicGain = null;     // BGM 用 gain
+  let sfxGain = null;       // 効果音 用 gain
+  let muted = false;
+  let started = false;      // ctx 生成済みか
+  let unsupported = false;  // AudioContext 非対応
+  let musicTimer = null;    // BGM スケジューラの timeout ハンドル
+  let curBgm = null;        // いま鳴っている BGM 名（多重再生ふせぎ）
+
+  /* ---- AudioContext を必要になってから1度だけ作る ---- */
+  function ctx() {
+    if (ac) return ac;
+    if (unsupported) return null;
+    try {
+      const AC = (typeof window !== 'undefined') &&
+        (window.AudioContext || window.webkitAudioContext);
+      if (!AC) { unsupported = true; return null; }
+      ac = new AC();
+      // リミッター（音が重なっても割れないように強めに圧縮）
+      const comp = ac.createDynamicsCompressor();
+      comp.threshold.value = -12;
+      comp.knee.value = 16;
+      comp.ratio.value = 14;
+      comp.attack.value = 0.003;
+      comp.release.value = 0.25;
+      comp.connect(ac.destination);
+      master = ac.createGain(); master.gain.value = 0.62; master.connect(comp);
+      musicGain = ac.createGain(); musicGain.gain.value = 0.24; musicGain.connect(master);
+      sfxGain = ac.createGain(); sfxGain.gain.value = 0.5; sfxGain.connect(master);
+      started = true;
+    } catch (e) { unsupported = true; ac = null; return null; }
+    return ac;
+  }
+
+  function resumeIfNeeded(a) {
+    try { if (a && a.state === 'suspended' && a.resume) a.resume(); } catch (e) {}
+  }
+
+  /* ============================================================
+     unlock：初回ユーザー操作で呼ぶ。iOS の無音アンロックも行う。
+     ============================================================ */
+  function unlock() {
+    try {
+      const a = ctx();
+      if (!a) return;
+      resumeIfNeeded(a);
+      // iOS Safari/Chrome: 同期的に無音バッファを1回再生して解放
+      try {
+        const b = a.createBuffer(1, 1, 22050);
+        const src = a.createBufferSource();
+        src.buffer = b; src.connect(a.destination);
+        if (src.start) src.start(0); else if (src.noteOn) src.noteOn(0);
+      } catch (e) {}
+      resumeIfNeeded(a);
+    } catch (e) { /* no-op */ }
+  }
+
+  function setMuted(b) {
+    muted = !!b;
+    if (muted) stopBgmLoop();
+    else if (curBgm) { const m = curBgm; curBgm = null; startBgm(m); } // 再開
+  }
+  function isMuted() { return muted; }
+
+  /* ============================================================
+     かんたんなオシレータ音（効果音の部品）
+     ============================================================ */
+  function tone(freq, t0, dur, type, gain, glideTo) {
+    const a = ctx(); if (!a) return;
+    try {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, t0);
+      if (glideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1, glideTo), t0 + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(g); g.connect(sfxGain);
+      o.start(t0); o.stop(t0 + dur + 0.03);
+    } catch (e) {}
+  }
+  function noise(t0, dur, gain, hp) {
+    const a = ctx(); if (!a) return;
+    try {
+      const n = Math.max(1, Math.floor(a.sampleRate * dur));
+      const buf = a.createBuffer(1, n, a.sampleRate);
+      const d = buf.getChannelData ? buf.getChannelData(0) : null;
+      if (d) for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const src = a.createBufferSource(); src.buffer = buf;
+      const g = a.createGain(); g.gain.value = gain;
+      const f = a.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp || 800;
+      src.connect(f); f.connect(g); g.connect(sfxGain);
+      src.start(t0);
+    } catch (e) {}
+  }
+
+  /* 効果音は呼ばれるたび「今」から鳴らす */
+  function now() { const a = ctx(); return a ? a.currentTime : 0; }
+  function guard(fn) {
+    return function () {
+      if (muted) return;
+      const a = ctx(); if (!a) return;
+      resumeIfNeeded(a);
+      try { fn(); } catch (e) { /* no-op */ }
+    };
+  }
+
+  const sfx = {
+    // メニュー選択（ピッ）
+    select: guard(() => { const t = now(); tone(660, t, 0.08, 'triangle', 0.18); }),
+    // 1マス歩く（控えめ・短い）
+    step:   guard(() => { const t = now(); tone(150, t, 0.045, 'square', 0.05, 120); }),
+    // 捕獲成功（上昇アルペジオ）
+    catch:  guard(() => { const t = now(); [523, 659, 784, 1047].forEach((f, i) => tone(f, t + i * 0.09, 0.2, 'triangle', 0.22)); }),
+    // あみ はずれ（コツン下降）
+    miss:   guard(() => { const t = now(); tone(300, t, 0.14, 'square', 0.14, 130); noise(t, 0.1, 0.06, 600); }),
+    // 逃走（さーっと下降）
+    flee:   guard(() => { const t = now(); tone(520, t, 0.42, 'sawtooth', 0.16, 110); noise(t, 0.25, 0.06, 500); }),
+    // でかい！（きらきら）
+    big:    guard(() => { const t = now(); [392, 523, 659, 880, 1175].forEach((f, i) => tone(f, t + i * 0.07, 0.28, 'triangle', 0.24)); noise(t, 0.3, 0.07, 3000); }),
+    // 勝ち（ファンファーレ）
+    win:    guard(() => { const t = now(); [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, t + i * 0.11, 0.26, 'triangle', 0.24)); }),
+    // 負け（しょんぼり下降）
+    lose:   guard(() => { const t = now(); [392, 330, 262].forEach((f, i) => tone(f, t + i * 0.17, 0.3, 'sine', 0.2)); }),
+    // 警戒予告（ピピッ）
+    warn:   guard(() => { const t = now(); tone(740, t, 0.1, 'square', 0.16); tone(740, t + 0.16, 0.1, 'square', 0.16); }),
+  };
+
+  /* ============================================================
+     BGM：絶対時刻スケジューラ（音割れしない四つ打ち系）
+     曲ごとに テンポ・コード・リード を変える。
+     ============================================================ */
+  function semis(n) { return 440 * Math.pow(2, n / 12); }
+
+  // メロディ譜 [半音オフセット(整数) or 'r'休符, 長さ(拍)]
+  const MEL_TITLE = [ // わくわく長調・はずむフック
+    [7, .5], [7, .5], [12, .5], [7, .5], [9, .5], [7, .5], [4, 1],
+    [5, .5], [5, .5], [9, .5], [5, .5], [7, .5], [5, .5], [0, 1],
+    [7, .5], [12, .5], [14, .5], [16, .5], [14, .5], [12, .5], [9, 1],
+    [11, .5], [9, .5], [7, .5], [9, .5], [7, .5], [4, .5], [0, 1],
+  ];
+  const MEL_FIELD = [ // 明るい昼・のびやか
+    [12, .5], [14, .5], [12, .5], [9, .5], [7, .5], [9, .5], [12, 1],
+    [11, .5], [9, .5], [7, .5], [5, .5], [4, .5], [5, .5], [7, 1],
+    [9, .5], [12, .5], [9, .5], [7, .5], [5, .5], [7, .5], [9, 1],
+    [7, .5], [5, .5], [4, .5], [2, .5], [4, .5], [7, .5], [12, 1],
+  ];
+  const MEL_VS = [ // 緊張感・短調マイナーフック
+    [0, .5], [12, .5], [0, .5], [7, .5], [3, .5], [10, .5], [3, .5], [7, .5],
+    [5, .5], [12, .5], [5, .5], [10, .5], [3, .5], [7, .5], [0, 1],
+    [12, .5], [11, .5], [10, .5], [7, .5], [5, .5], [7, .5], [10, .5], [11, .5],
+    [12, .5], [7, .5], [3, .5], [0, .5], [0, 1], [12, 1],
+  ];
+  const MEL_RESULT = [ // ファンファーレ風
+    [0, 1], [4, .5], [7, .5], [12, 2],
+    [7, .5], [12, .5], [16, 1], [12, 1],
+    [9, 1], [11, .5], [12, .5], [16, 2],
+  ];
+
+  // トラック定義（root=基準周波数, chords=4拍ごと進行）
+  const TRACKS = {
+    title:  { bpm: 126, root: 294, mel: MEL_TITLE,  drums: true,  chords: [[0, 4, 7], [5, 9, 12], [-3, 0, 4], [2, 5, 9]] },
+    field:  { bpm: 132, root: 330, mel: MEL_FIELD,  drums: true,  chords: [[0, 4, 7], [7, 11, 14], [5, 9, 12], [2, 5, 9]] },
+    vs:     { bpm: 142, root: 277, mel: MEL_VS,     drums: true,  chords: [[0, 3, 7], [-2, 1, 5], [5, 8, 12], [-1, 3, 7]] },
+    result: { bpm: 120, root: 294, mel: MEL_RESULT, drums: false, chords: [[0, 4, 7], [0, 4, 7], [5, 9, 12], [7, 11, 14]] },
+  };
+
+  // シンセリード（矩形＋ノコギリ・フィルタで張りのある音）
+  function synthLead(a, freq, t, dur, vol) {
+    try {
+      const o1 = a.createOscillator(), o2 = a.createOscillator();
+      const g = a.createGain(), f = a.createBiquadFilter();
+      o1.type = 'square'; o2.type = 'sawtooth';
+      o1.frequency.setValueAtTime(freq, t);
+      o2.frequency.setValueAtTime(freq * 1.006, t);
+      f.type = 'lowpass'; f.Q.value = 6;
+      f.frequency.setValueAtTime(3000, t);
+      f.frequency.exponentialRampToValueAtTime(900, t + dur * 0.9);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+      g.gain.setValueAtTime(vol, t + dur * 0.6);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.96);
+      o1.connect(f); o2.connect(f); f.connect(g); g.connect(musicGain);
+      o1.start(t); o2.start(t); o1.stop(t + dur); o2.stop(t + dur);
+    } catch (e) {}
+  }
+  // サブベース（丸い低音）
+  function subBass(a, freq, t, dur, vol) {
+    try {
+      const o = a.createOscillator(), o2 = a.createOscillator(), g = a.createGain();
+      o.type = 'sine'; o2.type = 'triangle';
+      o.frequency.setValueAtTime(freq, t); o2.frequency.setValueAtTime(freq, t);
+      const g2 = a.createGain(); g2.gain.value = 0.25;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+      g.gain.setValueAtTime(vol, t + dur * 0.7);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.95);
+      o.connect(g); o2.connect(g2); g2.connect(g); g.connect(musicGain);
+      o.start(t); o2.start(t); o.stop(t + dur); o2.stop(t + dur);
+    } catch (e) {}
+  }
+  // キック（四つ打ち）
+  function kick(a, t) {
+    try {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(165, t);
+      o.frequency.exponentialRampToValueAtTime(48, t + 0.1);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.55, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      o.connect(g); g.connect(musicGain);
+      o.start(t); o.stop(t + 0.22);
+    } catch (e) {}
+  }
+  // ハイハット
+  function hat(a, t, open) {
+    try {
+      const dur = open ? 0.1 : 0.04;
+      const n = Math.max(1, Math.floor(a.sampleRate * dur));
+      const buf = a.createBuffer(1, n, a.sampleRate);
+      const d = buf.getChannelData ? buf.getChannelData(0) : null;
+      if (d) for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const src = a.createBufferSource(); src.buffer = buf;
+      const f = a.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = open ? 7000 : 5000;
+      const g = a.createGain(); g.gain.value = open ? 0.05 : 0.06;
+      src.connect(f); f.connect(g); g.connect(musicGain); src.start(t);
+    } catch (e) {}
+  }
+
+  function startBgm(name) {
+    const a = ctx(); if (!a) { curBgm = name; return; }
+    if (curBgm === name && musicTimer) return; // すでに同じ曲が鳴っている
+    curBgm = name;
+    stopBgmLoop();                              // 前を必ず止める（多重再生ふせぎ）
+    if (muted || !name) return;
+    const tr = TRACKS[name]; if (!tr) return;
+    resumeIfNeeded(a);
+
+    const beat = 60 / tr.bpm;
+    const rootSemi = 12 * Math.log2(tr.root / 440);
+    let mi = 0;        // メロディ index
+    let beatPos = 0;   // 何拍目か
+    let nextTime = a.currentTime + 0.12;
+
+    const tick = () => {
+      // 鳴らす条件が崩れていたら止める
+      if (muted || curBgm !== name) return;
+      resumeIfNeeded(a);
+      try {
+        const nowT = a.currentTime;
+        // タブ復帰などで大きく遅れていたら追いつかせる（音の重なり防止）
+        if (nextTime < nowT + 0.02) nextTime = nowT + 0.06;
+        const t = nextTime;
+        const note = tr.mel[mi % tr.mel.length];
+        const dur = note[1] * beat;
+        const chord = tr.chords[Math.floor(beatPos / 4) % tr.chords.length];
+
+        // 主旋律＋1オクターブ下を薄く
+        if (note[0] !== 'r') {
+          synthLead(a, semis(rootSemi + note[0]), t, dur * 0.95, 0.24);
+          synthLead(a, semis(rootSemi + note[0] - 12), t, dur * 0.9, 0.07);
+        }
+        // 8分アルペジオ（コードを刻む＝テクノの推進力）
+        const eighth = beat / 2;
+        const steps = Math.max(1, Math.round(note[1] / 0.5));
+        for (let k = 0; k < steps; k++) {
+          const an = chord[(beatPos * 2 + k) % chord.length];
+          synthLead(a, semis(rootSemi + an + 12), t + k * eighth, eighth * 0.7, 0.06);
+        }
+        // ベース＋ドラム（拍ごと）
+        const beats = Math.max(1, Math.round(note[1]));
+        for (let b = 0; b < beats; b++) {
+          const bt = t + b * beat;
+          const rootNote = chord[0];
+          subBass(a, semis(rootSemi + rootNote - 24), bt, beat * 0.48, 0.24);
+          if (tr.drums) {
+            kick(a, bt);                 // 四つ打ち
+            hat(a, bt, false);
+            hat(a, bt + beat * 0.5, true); // ウラはオープン
+          }
+          beatPos++;
+        }
+        mi++;
+        nextTime += dur;
+      } catch (e) { /* このティックは捨てる */ }
+      // 実時刻に合わせて次を予約
+      let waitMs = 60;
+      try { waitMs = Math.max(10, (nextTime - a.currentTime - 0.05) * 1000); } catch (e) {}
+      if (!isFinite(waitMs)) waitMs = 60;
+      musicTimer = setTimeout(tick, waitMs);
+    };
+    tick();
+  }
+
+  function stopBgmLoop() {
+    if (musicTimer) { try { clearTimeout(musicTimer); } catch (e) {} musicTimer = null; }
+  }
+  function bgm(name) {
+    try { startBgm(name); } catch (e) { /* no-op */ }
+  }
+  function stop() {
+    curBgm = null;
+    stopBgmLoop();
+  }
+
+  return {
+    unlock,
+    setMuted, isMuted,
+    bgm, stop,
+    sfx,
+  };
+})();
+
+
+/* ===== src/game/core.js ===== */
+/* ============================================================
+   むしとりバトル — core.js（ゲームのせなか骨）
+   状態・設定・共通関数・画面フロー・統合点をここに集約する。
+   ほかのモジュールはここで定義した G / CONFIG / U と
+   関数（genMap など）を「グローバル共有」で呼び合う。
+   ※ ESモジュール化しない（import/export禁止）。
+   ============================================================ */
+
+/* ---- チューニング値（数値の正） ---- */
+const CONFIG = {
+  // フィールド
+  MAP_W: 14,            // タイル横
+  MAP_H: 20,            // タイル縦
+  STEP_MS: 150,         // プレイヤーが1マス進む時間
+  SIGN_TARGET: 6,       // 場に出す「けはい」の目安数
+  SIGN_RESPAWN_MS: 1400,// けはい再出現の待ち
+  // ラウンド
+  ROUND_SEC: 90,        // 1ラウンドの秒数
+  // 捕獲シーン
+  START_DIST: 8,        // 開始きょり(m)
+  NET_HIT: { 2: 0.60, 1: 0.80, 0: 0.30 }, // きょり別あみ命中
+  ALERT_FLEE: 100,      // これ以上でにげる
+  ALERT_WARN: 70,       // これ以上で「けいかい！」予告
+  WARN_FLEE_P: 0.45,    // 予告後の毎手にげ確率（まつ除く）
+  // CPU（対戦）
+  CPU_STEP_MS: { 1: 760, 2: 700, 3: 640, 4: 580, 5: 520 },
+  CPU_CATCH_P: { 1: 0.35, 2: 0.45, 3: 0.55, 4: 0.65, 5: 0.75 },
+  CPU_CHASE_R: 9,       // この範囲内のけはいへ追跡
+  WIN_BONUS: 50,        // 対戦勝利ボーナス
+};
+
+/* ---- ゲーム全体の状態 ---- */
+const G = {
+  screen: 'title',
+  mode: 'solo',     // 'solo' | 'vs'
+  cpuLv: 1,         // 1..5（vs時）
+  night: false,     // 夜フィールドか
+  // ラウンド進行
+  running: false,
+  timeLeft: 0,
+  score: 0,
+  cpuScore: 0,
+  caught: [],       // [{key,name,pts,mm,big}]
+  cpuCaught: [],
+  // フィールド
+  map: null,        // {w,h,tiles:Int8Array} tiles:0草 1水 2岩 3木 4道 5砂利
+  signs: [],        // [{tx,ty,key,id}]
+  signSeq: 0,
+  player: { tx: 0, ty: 0, x: 0, y: 0, dir: 'down', moving: false, mvT: 0, fx: 0, fy: 0, busy: false },
+  cpu: { tx: 0, ty: 0, x: 0, y: 0, dir: 'down', moving: false, mvT: 0, fx: 0, fy: 0, stopUntil: 0, path: null, targetId: null },
+  input: { dx: 0, dy: 0 }, // 押されている方向
+  // 捕獲シーン
+  cs: null,
+  // 保存
+  best: { solo: 0 },
+  vsUnlocked: 1,    // 解放済みCPUレベル
+  sfxOn: true,
+};
+
+/* ---- 共通ユーティリティ U ---- */
+const U = {
+  rnd: () => Math.random(),
+  rint: (a, b) => Math.floor(a + Math.random() * (b - a + 1)),
+  pick: (arr) => arr[Math.floor(Math.random() * arr.length)],
+  chance: (p) => Math.random() < p,
+  clamp: (v, a, b) => v < a ? a : (v > b ? b : v),
+  // タイルが歩けるか
+  walkable: (tx, ty) => {
+    const m = G.map; if (!m) return false;
+    if (tx < 0 || ty < 0 || tx >= m.w || ty >= m.h) return false;
+    const t = m.tiles[ty * m.w + tx];
+    return t === 0 || t === 4 || t === 5; // 草・道・砂利
+  },
+  tile: (tx, ty) => {
+    const m = G.map; if (!m) return 2;
+    if (tx < 0 || ty < 0 || tx >= m.w || ty >= m.h) return 2;
+    return m.tiles[ty * m.w + tx];
+  },
+};
+
+/* ---- DOM参照（init で埋める） ---- */
+const D = {};
+
+/* ---- 画面きりかえ ---- */
+function showScreen(id) {
+  G.screen = id;
+  document.querySelectorAll('.screen').forEach(el => {
+    el.classList.toggle('active', el.id === id);
+  });
+}
+
+/* ---- 永続化（window.storage 優先・localStorage フォールバック） ---- */
+function loadSave() {
+  try {
+    const raw = (window.storage && window.storage.getItem)
+      ? window.storage.getItem('mushiBattle')
+      : localStorage.getItem('mushiBattle');
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s.best) G.best = Object.assign(G.best, s.best);
+      if (s.vsUnlocked) G.vsUnlocked = s.vsUnlocked;
+      if (typeof s.sfxOn === 'boolean') G.sfxOn = s.sfxOn;
+    }
+  } catch (e) { /* むし */ }
+}
+function persistSave() {
+  const s = { best: G.best, vsUnlocked: G.vsUnlocked, sfxOn: G.sfxOn };
+  try {
+    const raw = JSON.stringify(s);
+    if (window.storage && window.storage.setItem) window.storage.setItem('mushiBattle', raw);
+    else localStorage.setItem('mushiBattle', raw);
+  } catch (e) { /* むし */ }
+}
+
+/* ============================================================
+   画面フロー
+   ============================================================ */
+
+/* タイトル → モード選択 */
+function gotoModeSelect() {
+  Sound.unlock();
+  Sound.bgm('title');
+  refreshModeSelect();
+  showScreen('mode-screen');
+}
+
+function refreshModeSelect() {
+  // 対戦レベルボタンの解放状態
+  document.querySelectorAll('[data-cpulv]').forEach(btn => {
+    const lv = +btn.dataset.cpulv;
+    const locked = lv > G.vsUnlocked;
+    btn.disabled = locked;
+    btn.classList.toggle('locked', locked);
+  });
+  if (D.bestLabel) D.bestLabel.textContent = 'ソロ さいこう: ' + (G.best.solo || 0) + ' pt';
+}
+
+/* ラウンド開始（mode/cpuLv/night は呼び出し側で設定済み） */
+function startRun() {
+  G.running = true;
+  G.score = 0; G.cpuScore = 0;
+  G.caught = []; G.cpuCaught = [];
+  G.timeLeft = CONFIG.ROUND_SEC;
+  G.signs = []; G.signSeq = 0;
+  G.input.dx = 0; G.input.dy = 0;
+  G.player.busy = false;
+
+  genMap();                 // field-cpu.js: G.map / G.signs / プレイヤー初期位置
+  if (G.mode === 'vs') setupCpu(); // field-cpu.js
+
+  updateHud();
+  showScreen('field-screen');
+  Sound.bgm(G.mode === 'vs' ? 'vs' : 'field');
+  startField();             // field-cpu.js: rAF ループ開始
+
+  startTimer();
+}
+
+/* 1秒タイマー */
+let _timerH = null;
+function startTimer() {
+  stopTimer();
+  _timerH = setInterval(() => {
+    if (!G.running || G.player.busy) return; // 捕獲中はとめる
+    G.timeLeft--;
+    updateHud();
+    if (G.timeLeft <= 0) endRun();
+  }, 1000);
+}
+function stopTimer() { if (_timerH) { clearInterval(_timerH); _timerH = null; } }
+
+/* HUD更新 */
+function updateHud() {
+  if (D.hudTime) D.hudTime.textContent = '⏱ ' + Math.max(0, G.timeLeft);
+  if (D.hudScore) D.hudScore.textContent = '🐛 ' + G.score;
+  if (D.hudCpu) {
+    D.hudCpu.style.display = G.mode === 'vs' ? '' : 'none';
+    D.hudCpu.textContent = '🤖 ' + G.cpuScore;
+  }
+}
+
+/* 捕獲シーンから もどる。result = {caught:bool, key, name, pts, mm, big} | null */
+function returnToField(result) {
+  if (result && result.caught) {
+    G.caught.push(result);
+    G.score += result.pts;
+  }
+  G.player.busy = false;
+  G.cs = null;
+  updateHud();
+  if (!G.running) return;
+  showScreen('field-screen');
+  Sound.bgm(G.mode === 'vs' ? 'vs' : 'field');
+  startField(); // ループ再開
+}
+
+/* ラウンド終了 → リザルト */
+function endRun() {
+  if (!G.running) return;
+  G.running = false;
+  stopTimer();
+  stopField();
+  G.player.busy = false;
+
+  // ソロ ベスト更新
+  let win = null;
+  if (G.mode === 'solo') {
+    if (G.score > (G.best.solo || 0)) { G.best.solo = G.score; }
+  } else {
+    win = G.score >= G.cpuScore;
+    if (win) {
+      G.score += CONFIG.WIN_BONUS;
+      // つぎのレベルを解放
+      if (G.cpuLv >= G.vsUnlocked && G.vsUnlocked < 5) G.vsUnlocked++;
+    }
+  }
+  persistSave();
+  showResult(win);
+  Sound.bgm('result');
+}
+
+function showResult(win) {
+  const big = G.caught.filter(c => c.big).length;
+  const maxMm = G.caught.reduce((m, c) => Math.max(m, c.mm || 0), 0);
+  let html = '';
+  if (G.mode === 'vs') {
+    html += `<div class="res-banner ${win ? 'win' : 'lose'}">${win ? '🏆 かち！' : '🥲 まけ…'}</div>`;
+    html += `<div class="res-vs"><span>あなた<br><b>${G.score}</b></span><span class="vsmid">VS</span><span>CPU Lv${G.cpuLv}<br><b>${G.cpuScore}</b></span></div>`;
+    if (win) Sound.sfx.win(); else Sound.sfx.lose();
+  } else {
+    html += `<div class="res-banner win">⏱ タイムアップ！</div>`;
+    html += `<div class="res-score">スコア <b>${G.score}</b> pt</div>`;
+    html += `<div class="res-best">ソロ さいこう: ${G.best.solo} pt</div>`;
+    Sound.sfx.win();
+  }
+  html += `<div class="res-stat">つかまえた: ${G.caught.length}ひき ／ でかい!! ×${big} ／ さいだい ${maxMm}mm</div>`;
+  // つかまえた虫の一覧
+  html += '<div class="res-list">';
+  G.caught.forEach(c => {
+    html += `<div class="res-bug">${bugSprite(c.key, 42)}<span>${c.name}<br>${c.mm}mm ${c.big ? '★' : ''}</span></div>`;
+  });
+  if (!G.caught.length) html += '<div class="res-empty">1ぴきも つかまえられなかった…</div>';
+  html += '</div>';
+  if (D.resultBody) D.resultBody.innerHTML = html;
+  showScreen('result-screen');
+}
+
+/* ============================================================
+   入力（dパッド＋キーボード）→ G.input にためる
+   フィールド側がこれを読んで移動する
+   ============================================================ */
+function bindInput() {
+  const set = (dx, dy) => { G.input.dx = dx; G.input.dy = dy; };
+  const dirs = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  document.querySelectorAll('[data-dir]').forEach(btn => {
+    const [dx, dy] = dirs[btn.dataset.dir];
+    const on = (e) => { e.preventDefault(); set(dx, dy); };
+    const off = (e) => { e.preventDefault(); if (G.input.dx === dx && G.input.dy === dy) set(0, 0); };
+    btn.addEventListener('touchstart', on, { passive: false });
+    btn.addEventListener('touchend', off, { passive: false });
+    btn.addEventListener('mousedown', on);
+    btn.addEventListener('mouseup', off);
+    btn.addEventListener('mouseleave', off);
+  });
+  // キーボード
+  const keymap = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right' };
+  const held = new Set();
+  window.addEventListener('keydown', (e) => {
+    const dir = keymap[e.key]; if (!dir) return;
+    held.add(dir); const [dx, dy] = dirs[dir]; set(dx, dy);
+  });
+  window.addEventListener('keyup', (e) => {
+    const dir = keymap[e.key]; if (!dir) return;
+    held.delete(dir);
+    if (held.size === 0) set(0, 0);
+    else { const last = [...held].pop(); const [dx, dy] = dirs[last]; set(dx, dy); }
+  });
+}
+
+/* ============================================================
+   初期化
+   ============================================================ */
+function initGame() {
+  // DOM参照
+  D.canvas = document.getElementById('field-canvas');
+  D.hudTime = document.getElementById('hud-time');
+  D.hudScore = document.getElementById('hud-score');
+  D.hudCpu = document.getElementById('hud-cpu');
+  D.bestLabel = document.getElementById('best-label');
+  D.resultBody = document.getElementById('result-body');
+
+  loadSave();
+
+  // タイトル
+  const startBtn = document.getElementById('btn-start');
+  if (startBtn) startBtn.addEventListener('click', gotoModeSelect);
+
+  // モード選択
+  const soloBtn = document.getElementById('btn-solo');
+  if (soloBtn) soloBtn.addEventListener('click', () => {
+    G.mode = 'solo'; G.night = false; startRun();
+  });
+  document.querySelectorAll('[data-cpulv]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      G.mode = 'vs'; G.cpuLv = +btn.dataset.cpulv; G.night = (G.cpuLv >= 4);
+      startRun();
+    });
+  });
+
+  // リザルト → もどる
+  const againBtn = document.getElementById('btn-again');
+  if (againBtn) againBtn.addEventListener('click', () => { gotoModeSelect(); });
+
+  // フィールドの「あきらめる」
+  const giveBtn = document.getElementById('btn-giveup');
+  if (giveBtn) giveBtn.addEventListener('click', () => { if (G.running) endRun(); });
+
+  // サウンドトグル
+  const muteBtn = document.getElementById('btn-mute');
+  if (muteBtn) {
+    const sync = () => { muteBtn.textContent = G.sfxOn ? '🔊' : '🔇'; };
+    sync();
+    muteBtn.addEventListener('click', () => {
+      G.sfxOn = !G.sfxOn; Sound.setMuted(!G.sfxOn); persistSave(); sync();
+    });
+  }
+
+  bindInput();
+  Sound.setMuted(!G.sfxOn);
+  showScreen('title-screen');
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initGame);
+  else initGame();
+}
+
+
+/* ===== src/game/catch.js ===== */
+/* ============================================================
+   むしとりバトル — catch.js（ほかく＝むしとの かけひき）
+   フィールドで「けはい」に たどりついたら enterCatch(sign) が よばれる。
+   ちかよる／そっと／まつ／あみ の 4つの 行動で むしを つかまえる。
+   おわったら returnToField({caught,key,name,pts,mm,big}) で フィールドへ もどる。
+   ※ import/export しない。G/CONFIG/U/BUGS/bugSprite/Sound/showScreen/returnToField は
+     ほかの ファイルで さだめずみ（グローバル共有）。
+   ============================================================ */
+
+/* むしの ビジュアル さいだいサイズ(px)。アリーナに おさまるよう ひかえめ */
+var CS_BUG_PX_MIN = 64;
+var CS_BUG_PX_MAX = 118;
+
+/* ほかくシーンに はいる。sign = {tx,ty,key,...} */
+function enterCatch(sign) {
+  var key = sign.key;
+  var bug = BUGS[key];
+  if (!bug) { returnToField(null); return; } // ねんのため
+
+  // 個体差(0.85〜1.35) と 夜ボーナス で サイズと でかむし判定
+  var sizeF = 0.85 + U.rnd() * 0.5;
+  var big = sizeF >= 1.25;
+  var mm = Math.round(bug.sizeBase * sizeF * (G.night ? 1.06 : 1));
+
+  // ほかく中の じょうたい
+  G.cs = {
+    key: key,
+    name: bug.name,
+    dist: CONFIG.START_DIST, // きょり(m)
+    alert: bug.alertBase || 0, // けいかい度 0〜100
+    sizeF: sizeF,
+    big: big,
+    mm: mm,
+    pts: bug.pts * (big ? 2 : 1),
+    over: false, // けっちゃくが ついたか
+    busy: false, // えんしゅつ中（ボタン れんだ ふせぎ）
+    warned: false, // 「にげそう!」予告ずみか
+    graced: false, // 予告の 1かい ゆうよを つかったか
+  };
+
+  G.player.busy = true;
+  buildCatchUI();
+  csLog('🌿 ガサッ…! <b>' + bug.name + '</b>を みつけた！（' + CONFIG.START_DIST + 'm さき・およそ ' + mm + 'mm）');
+  Sound.sfx.select();
+  showScreen('catch-screen');
+
+  // でかむしは とうじょうで ひとこえ
+  if (big) {
+    Sound.sfx.warn();
+    csLog('✨ うわっ、<b>でかい!!</b> ' + mm + 'mm の おおもの だ！');
+  }
+  csRender();
+}
+
+/* #catch-root に UIを くみたてる */
+function buildCatchUI() {
+  var root = document.getElementById('catch-root');
+  if (!root) return;
+  var cs = G.cs;
+  var bugPx = csBugPx();
+  root.innerHTML =
+    '<div class="cs-top">' +
+      '<span class="cs-dist" id="cs-dist">あと ' + cs.dist + 'm</span>' +
+      '<span class="cs-name" id="cs-name">' + cs.name + (cs.big ? ' ★' : '') + '</span>' +
+    '</div>' +
+    '<div class="cs-alert-wrap">' +
+      '<div class="cs-alert-label"><span>けいかい</span><span id="cs-alert-num">0%</span></div>' +
+      '<div class="cs-alert-bar"><div class="cs-alert-fill" id="cs-alert-fill"></div></div>' +
+    '</div>' +
+    '<div class="cs-arena" id="cs-arena">' +
+      '<div class="cs-bug" id="cs-bug">' + bugSprite(cs.key, bugPx) + '</div>' +
+      '<div class="cs-hunter">🥅</div>' +
+    '</div>' +
+    '<div class="cs-log" id="cs-log"></div>' +
+    '<div class="cs-actions">' +
+      '<button class="cs-btn approach" id="cs-approach">ちかよる<small>2m すすむ・ばれやすい</small></button>' +
+      '<button class="cs-btn sneak" id="cs-sneak">そっと<small>1m すすむ・しずか</small></button>' +
+      '<button class="cs-btn wait" id="cs-wait">まつ<small>けいかいを さげる</small></button>' +
+      '<button class="cs-btn net" id="cs-net">あみを ふる！<small id="cs-net-acc"></small></button>' +
+    '</div>';
+
+  document.getElementById('cs-approach').onclick = function () { csAct('approach'); };
+  document.getElementById('cs-sneak').onclick = function () { csAct('sneak'); };
+  document.getElementById('cs-wait').onclick = function () { csAct('wait'); };
+  document.getElementById('cs-net').onclick = function () { csSwing(); };
+}
+
+/* むしの 見た目サイズ(px)。個体差で すこし おおきく */
+function csBugPx() {
+  var f = U.clamp(G.cs.sizeF, 0.85, 1.35);
+  return Math.round(CS_BUG_PX_MIN + (CS_BUG_PX_MAX - CS_BUG_PX_MIN) * ((f - 0.85) / 0.5));
+}
+
+/* ログ欄に じっきょうを だす */
+function csLog(html) {
+  var el = document.getElementById('cs-log');
+  if (el) el.innerHTML = html;
+}
+
+/* きょり(m) → あみの 実効 命中りつ(0〜1) */
+function csHitRate() {
+  var d = U.clamp(Math.round(G.cs.dist), 0, 2);
+  var base = CONFIG.NET_HIT[d] != null ? CONFIG.NET_HIT[d] : 0.3;
+  // 近接ボーナス: 0mで +0.12 / 1mで +0.06 / 2mで +0
+  var bonus = (2 - d) * 0.06;
+  return U.clamp(base + bonus, 0.05, 0.97);
+}
+
+/* 画面（きょり・ゲージ・ボタン・むし位置）を かきなおす */
+function csRender() {
+  var cs = G.cs;
+  if (!cs) return;
+  var a = Math.round(cs.alert);
+  var aClamp = Math.min(100, Math.max(0, a));
+
+  var dist = document.getElementById('cs-dist');
+  if (dist) dist.textContent = cs.dist <= 1 ? '🎯 とどく！' : 'あと ' + cs.dist + 'm';
+
+  var fill = document.getElementById('cs-alert-fill');
+  if (fill) {
+    fill.style.width = aClamp + '%';
+    fill.classList.toggle('warn', aClamp >= 70 && aClamp < 90);
+    fill.classList.toggle('danger', aClamp >= 90);
+  }
+  var num = document.getElementById('cs-alert-num');
+  if (num) num.textContent = aClamp + '%';
+
+  var arena = document.getElementById('cs-arena');
+  if (arena) arena.classList.toggle('warn-glow', aClamp >= 70);
+
+  // むしの 横位置: きょりが ちかいほど 左(プレイヤー)へ よる
+  var bugEl = document.getElementById('cs-bug');
+  if (bugEl) {
+    var t = U.clamp(cs.dist / CONFIG.START_DIST, 0, 1); // 0=ちかい 1=とおい
+    bugEl.style.right = (6 + t * 30) + '%';
+  }
+
+  // あみ命中りつ ひょうじ
+  var accEl = document.getElementById('cs-net-acc');
+  if (accEl) accEl.textContent = 'めいちゅう やく ' + Math.round(csHitRate() * 100) + '%';
+
+  // ボタン ゆうこう／むこう
+  csSetButtons(!cs.busy && !cs.over);
+}
+
+/* ぜんボタンの ゆうこう／むこうを いっかつ きりかえ */
+function csSetButtons(enabled) {
+  var cs = G.cs;
+  var ids = ['cs-approach', 'cs-sneak', 'cs-wait', 'cs-net'];
+  ids.forEach(function (id) {
+    var b = document.getElementById(id);
+    if (!b) return;
+    b.disabled = !enabled;
+  });
+  if (enabled) {
+    // きょり0mでは これ以上 すすめない
+    var ap = document.getElementById('cs-approach');
+    var sn = document.getElementById('cs-sneak');
+    if (cs.dist <= 0) { if (ap) ap.disabled = true; if (sn) sn.disabled = true; }
+  }
+}
+
+/* 行動: approach / sneak / wait */
+function csAct(mode) {
+  var cs = G.cs;
+  if (!cs || cs.over || cs.busy) return;
+  cs.busy = true;
+  csSetButtons(false);
+  Sound.sfx.select();
+
+  if (mode === 'wait') {
+    // まつ: 30%-0.5 / 30%-1 / 20%±0 / 20%+1.5（×10して けいかい度に）
+    var r = U.rnd();
+    var dA = r < 0.3 ? -5 : r < 0.6 ? -10 : r < 0.8 ? 0 : 15;
+    cs.alert = U.clamp(cs.alert + dA, 0, 200);
+    csLog(dA < 0 ? '🤫 いきを ひそめて まった…（けいかい ' + dA + '）'
+        : dA === 0 ? '🤫 いきを ひそめて まった…（へんか なし）'
+        : '😨 もぞもぞ して かえって あやしまれた！（けいかい +' + dA + '）');
+  } else {
+    var stepM = mode === 'approach' ? 2 : 1;
+    var dBefore = cs.dist;
+    cs.dist = Math.max(0, cs.dist - stepM);
+    // けいかい上昇: ちかよる大 / そっと小
+    var gain = mode === 'approach' ? (16 + U.rnd() * 14) : (6 + U.rnd() * 8);
+    // 距離係数: とおい8m×0.6 → ちかい0m×1.0（ちかいほど ばれやすい）
+    var distF = 0.6 + 0.4 * (CONFIG.START_DIST - dBefore) / CONFIG.START_DIST;
+    gain *= distF;
+    if (G.night) gain *= 0.9; // よるの むしは ねぼけぎみ
+    cs.alert = U.clamp(cs.alert + gain, 0, 200);
+    csLog((mode === 'approach' ? '🚶 ' : '🐢 そっと ')
+      + cs.dist + 'm まで ちかづいた！');
+  }
+
+  csRender();
+  // すこし えんしゅつ → けっか判定
+  setTimeout(function () { csResolveMove(mode); }, mode === 'approach' ? 520 : 600);
+}
+
+/* 行動の あとの にげる／予告 判定（まつ・接近 きょうつう） */
+function csResolveMove(mode) {
+  var cs = G.cs;
+  if (!cs || cs.over) return;
+
+  // けいかい100いじょう → そくにげ
+  if (cs.alert >= CONFIG.ALERT_FLEE) {
+    csFlee('💨 きづかれた！ ' + cs.name + 'は にげてしまった…');
+    return;
+  }
+
+  // けいかい70いじょう → 予告（1かいの ゆうよ） → 以後 まつ いがいで 逃走チェック
+  if (cs.alert >= CONFIG.ALERT_WARN) {
+    if (!cs.warned) {
+      cs.warned = true;
+      cs.graced = true; // この1てで にげない（ゆうよ）
+      Sound.sfx.warn();
+      var pop = document.getElementById('cs-arena');
+      if (pop) csShowWarnPop();
+      csLog('⚠️ ' + cs.name + 'が こちらを みている… <b>にげそう だ！</b>');
+      cs.busy = false;
+      csRender();
+      return;
+    }
+    if (mode !== 'wait') {
+      if (U.chance(CONFIG.WARN_FLEE_P)) {
+        csFlee('💨 ' + cs.name + 'は きけんを かんじて にげてしまった！');
+        return;
+      }
+    }
+  }
+
+  // けいかいが さがれば 予告かいじょ
+  if (cs.warned && cs.alert < CONFIG.ALERT_WARN - 15) {
+    cs.warned = false;
+    csLog('😮‍💨 ' + cs.name + 'は すこし おちついたようだ…');
+  }
+
+  cs.busy = false;
+  csRender();
+}
+
+/* 「にげそう!」ポップを アリーナに 1かい だす */
+function csShowWarnPop() {
+  var arena = document.getElementById('cs-arena');
+  if (!arena) return;
+  var old = arena.querySelector('.cs-warn-pop');
+  if (old) old.remove();
+  var pop = document.createElement('div');
+  pop.className = 'cs-warn-pop';
+  pop.textContent = 'にげそう！';
+  arena.appendChild(pop);
+  setTimeout(function () { if (pop.parentNode) pop.remove(); }, 900);
+}
+
+/* あみを ふる */
+function csSwing() {
+  var cs = G.cs;
+  if (!cs || cs.over || cs.busy) return;
+  cs.busy = true;
+  csSetButtons(false);
+  Sound.sfx.select();
+
+  var rate = csHitRate();
+  csLog('🥅 えいっ！ あみを ふった！');
+
+  setTimeout(function () {
+    if (!cs || cs.over) return;
+    if (U.chance(rate)) {
+      // めいちゅう → ほかく せいこう
+      cs.over = true;
+      Sound.sfx.catch();
+      if (cs.big) Sound.sfx.big();
+      var bugEl = document.getElementById('cs-bug');
+      if (bugEl) bugEl.style.transform = 'scale(.2)';
+      csLog('🎉 やったー！ <b>' + cs.name + '</b>（' + cs.mm + 'mm）を つかまえた！ +' + cs.pts + 'てん'
+        + (cs.big ? '（でかボーナス ×2！）' : ''));
+      csFinish(true);
+    } else {
+      // はずれ → けいかい大up
+      Sound.sfx.miss();
+      cs.alert = U.clamp(cs.alert + 35, 0, 200);
+      var bugEl2 = document.getElementById('cs-bug');
+      if (bugEl2) { bugEl2.style.transform = 'translateX(-6px)'; setTimeout(function(){ if(bugEl2) bugEl2.style.transform=''; }, 200); }
+      csRender();
+      if (cs.alert >= CONFIG.ALERT_FLEE) {
+        csLog('😖 はずした…！ ' + cs.name + 'が おどろいた！');
+        setTimeout(function () { csFlee('💨 ' + cs.name + 'は にげてしまった！'); }, 600);
+        return;
+      }
+      if (cs.alert >= CONFIG.ALERT_WARN && !cs.warned) {
+        cs.warned = true; cs.graced = true;
+        Sound.sfx.warn();
+        csShowWarnPop();
+      }
+      csLog('😖 はずした！ ' + cs.name + 'が けいかい している…');
+      cs.busy = false;
+      csRender();
+    }
+  }, 460);
+}
+
+/* にげられた */
+function csFlee(msg) {
+  var cs = G.cs;
+  if (!cs || cs.over) { /* over=trueでも 演出ずみなら そのまま */ }
+  if (cs) cs.over = true;
+  Sound.sfx.flee();
+  var bugEl = document.getElementById('cs-bug');
+  if (bugEl) { bugEl.style.transition = 'right .5s ease, opacity .5s'; bugEl.style.right = '-30%'; bugEl.style.opacity = '0'; }
+  csLog(msg);
+  csSetButtons(false);
+  csFinish(false);
+}
+
+/* けっちゃく → フィールドへ もどる */
+function csFinish(caught) {
+  var cs = G.cs;
+  var result = caught
+    ? { caught: true, key: cs.key, name: cs.name, pts: cs.pts, mm: cs.mm, big: cs.big }
+    : { caught: false, key: cs.key, name: cs.name, pts: 0, mm: cs.mm, big: cs.big };
+  // みじかい えんしゅつの あと もどる
+  setTimeout(function () { returnToField(result); }, caught ? 1100 : 1000);
+}
+
+
+/* ===== src/field/field-cpu.js ===== */
+/* ============================================================
+   むしとりバトル — field-cpu.js（フィールド＆CPU対戦）
+   マップせいせい・たんさく・えがく・CPUライバルを ぜんぶ ここで。
+   core.js の G / CONFIG / U と、bugs.js の BUGS / pickSpecies / drawBugMini を つかう。
+   ※ import/export しない。関数宣言で genMap/startField/stopField/setupCpu/cpuTick をだす。
+   ============================================================ */
+
+/* タイルのいろ（0草 1水 2岩 3木 4道 5砂利） */
+const FIELD_COLORS = {
+  grass:  '#5ba84e', grass2: '#52a045',  // 草（チェッカーで2しょく）
+  water:  '#3a8fd0', water2: '#338ac9',  // 水
+  rock:   '#8a8a82', rockHi: '#a2a29a',  // 岩
+  tree:   '#2f6b3a', treeHi: '#3c7d46',  // 木（こい みどり）
+  path:   '#c9b079', path2:  '#c1a86f',  // 道
+  gravel: '#b8b2a0', gravel2:'#aea899',  // 砂利
+};
+
+/* タイルのサイズ（Canvas 420 / MAP_W）と たて中央よせのオフセット */
+function _tileSize() { return 420 / CONFIG.MAP_W; }      // = 30px (14マス)
+function _mapPixH()  { return _tileSize() * CONFIG.MAP_H; }
+function _offY()     { return (600 - _mapPixH()) / 2; }   // たて中央よせ
+
+/* タイル中心の ピクセル座標 */
+function _tileCx(tx) { return tx * _tileSize() + _tileSize() / 2; }
+function _tileCy(ty) { return _offY() + ty * _tileSize() + _tileSize() / 2; }
+
+/* ============================================================
+   マップせいせい
+   ============================================================ */
+function genMap() {
+  const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
+  const tiles = new Int8Array(W * H);
+  const at = (x, y) => y * W + x;
+
+  // ぜんめん 草 でうめる
+  tiles.fill(0);
+
+  // そとわくは 木（3）
+  for (let x = 0; x < W; x++) { tiles[at(x, 0)] = 3; tiles[at(x, H - 1)] = 3; }
+  for (let y = 0; y < H; y++) { tiles[at(0, y)] = 3; tiles[at(W - 1, y)] = 3; }
+
+  // よこに よこぎる 川（1）を 2〜3ほん。1マスぶん「はし＝道(4)」をあけて つうろをしぼる
+  const riverRows = [];
+  {
+    const cands = [];
+    for (let y = 4; y < H - 4; y++) cands.push(y);
+    // ばらけて 2〜3ほん えらぶ
+    const want = U.rint(2, 3);
+    for (let i = 0; i < want && cands.length; i++) {
+      const idx = U.rint(0, cands.length - 1);
+      const ry = cands[idx];
+      // ちかすぎる行は のぞく
+      for (let k = cands.length - 1; k >= 0; k--) if (Math.abs(cands[k] - ry) < 3) cands.splice(k, 1);
+      riverRows.push(ry);
+    }
+  }
+  for (const ry of riverRows) {
+    for (let x = 1; x < W - 1; x++) tiles[at(x, ry)] = 1;
+    // はし（道）を 1〜2か所あけて わたれるように
+    const gaps = U.rint(1, 2);
+    for (let g = 0; g < gaps; g++) {
+      const gx = U.rint(2, W - 3);
+      tiles[at(gx, ry)] = 4; // はし
+    }
+  }
+
+  // たてに 岩山（2）の つい立てを 1〜2ほん。すきまに 砂利(5)の つうろ
+  {
+    const want = U.rint(1, 2);
+    for (let i = 0; i < want; i++) {
+      const rx = U.rint(3, W - 4);
+      for (let y = 1; y < H - 1; y++) {
+        if (tiles[at(rx, y)] === 1 || tiles[at(rx, y)] === 4) continue; // 川/はし は のこす
+        tiles[at(rx, y)] = 2;
+      }
+      // すきまを 1〜2か所 砂利で あける
+      const gaps = U.rint(1, 2);
+      for (let g = 0; g < gaps; g++) {
+        const gy = U.rint(2, H - 3);
+        if (tiles[at(rx, gy)] === 2) tiles[at(rx, gy)] = 5;
+      }
+    }
+  }
+
+  // ちょっとした かざり: ところどころ 岩・道・砂利を ちらす（歩けるところを へらしすぎない）
+  for (let n = 0; n < Math.floor(W * H * 0.04); n++) {
+    const x = U.rint(1, W - 2), y = U.rint(1, H - 2);
+    if (tiles[at(x, y)] !== 0) continue;
+    tiles[at(x, y)] = U.pick([4, 5]); // 道 or 砂利（どちらも歩ける）
+  }
+
+  G.map = { w: W, h: H, tiles };
+
+  // ---- れんけつせいを ほしょう ----
+  // 歩けるタイルを れんけつせいぶん（コンポーネント）に わける。
+  // いちばん 大きいかたまりを「本体」とし、ほかの かたまりは
+  // つうろを ほって 本体に つなぐ（つぶさず のこす）。
+  // それでも つなげない 小さな 孤島だけ 砂利で きえいさせず…→ 実際は すべて つなぐので 孤立は 0。
+  const isWalk = (x, y) => {
+    if (x < 0 || y < 0 || x >= W || y >= H) return false;
+    const t = tiles[at(x, y)];
+    return t === 0 || t === 4 || t === 5;
+  };
+  const DD = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+  // ラベルづけ（コンポーネントを みつける）
+  const comp = new Int16Array(W * H).fill(-1);
+  const comps = []; // 各コンポーネントの セルはいれつ
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+    if (!isWalk(x, y) || comp[at(x, y)] !== -1) continue;
+    const id = comps.length;
+    const cells = [];
+    const q = [[x, y]];
+    comp[at(x, y)] = id;
+    while (q.length) {
+      const [cx, cy] = q.shift();
+      cells.push([cx, cy]);
+      for (const [dx, dy] of DD) {
+        const nx = cx + dx, ny = cy + dy;
+        if (isWalk(nx, ny) && comp[at(nx, ny)] === -1) { comp[at(nx, ny)] = id; q.push([nx, ny]); }
+      }
+    }
+    comps.push(cells);
+  }
+
+  // ほんたい = いちばん 大きい かたまり
+  let mainId = 0;
+  for (let i = 1; i < comps.length; i++) if (comps[i].length > comps[mainId].length) mainId = i;
+
+  // ほかの かたまりを 本体へ つなぐ: かたまりから 本体への さいたん（マンハッタン）を ほる
+  for (let i = 0; i < comps.length; i++) {
+    if (i === mainId) continue;
+    // この かたまりの どこか1点 と 本体の さいよりの1点 を むすぶ
+    let bestA = null, bestB = null, bd = 1e9;
+    const sample = comps[i];
+    const mainCells = comps[mainId];
+    // サンプルを へらして けいさんりょうを おさえる
+    const stepA = Math.max(1, (sample.length / 24) | 0);
+    const stepB = Math.max(1, (mainCells.length / 40) | 0);
+    for (let a = 0; a < sample.length; a += stepA) {
+      const [ax, ay] = sample[a];
+      for (let b = 0; b < mainCells.length; b += stepB) {
+        const [bx, by] = mainCells[b];
+        const d = Math.abs(ax - bx) + Math.abs(ay - by);
+        if (d < bd) { bd = d; bestA = [ax, ay]; bestB = [bx, by]; }
+      }
+    }
+    if (!bestA) continue;
+    // L字に ほる（とちゅうの 木/岩/川 を 砂利の つうろに）
+    let [cx, cy] = bestA;
+    const [tx2, ty2] = bestB;
+    const carve = (x, y) => {
+      if (x <= 0 || y <= 0 || x >= W - 1 || y >= H - 1) return; // そとわくは のこす
+      if (!isWalk(x, y)) tiles[at(x, y)] = 5; // 砂利の こみち
+    };
+    while (cx !== tx2) { cx += cx < tx2 ? 1 : -1; carve(cx, cy); }
+    while (cy !== ty2) { cy += cy < ty2 ? 1 : -1; carve(cx, cy); }
+    // ほった あとは ふたつが つながる。本体ラベルを ぬりなおさず、つぎの ループでも
+    // 本体は mainId のまま（あらたに つながったセルは あとの 連結チェックで OK）
+  }
+
+  // しゅっぱつち: 本体の 中から、なるべく 中央したよりの 歩けるマス
+  let start = null;
+  {
+    const cy0 = H - 3, cx0 = (W >> 1);
+    let bd2 = 1e9;
+    for (const [x, y] of comps[mainId]) {
+      const d = Math.abs(x - cx0) + Math.abs(y - cy0);
+      if (d < bd2) { bd2 = d; start = { x, y }; }
+    }
+  }
+  if (!start) { tiles[at(1, 1)] = 0; start = { x: 1, y: 1 }; }
+
+  // さいしゅう連結チェック: start から BFS して、到達できない 歩けるタイルが
+  // のこっていれば（まれ）岩でうめる。これで 孤立=0 を ほしょう。
+  const seen = new Uint8Array(W * H);
+  const q2 = [start];
+  seen[at(start.x, start.y)] = 1;
+  while (q2.length) {
+    const c = q2.shift();
+    for (const [dx, dy] of DD) {
+      const nx = c.x + dx, ny = c.y + dy;
+      if (isWalk(nx, ny) && !seen[at(nx, ny)]) { seen[at(nx, ny)] = 1; q2.push({ x: nx, y: ny }); }
+    }
+  }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (isWalk(x, y) && !seen[at(x, y)]) tiles[at(x, y)] = 2;
+  }
+
+  // プレイヤーを しゅっぱつちへ
+  const p = G.player;
+  p.tx = start.x; p.ty = start.y;
+  p.x = _tileCx(p.tx); p.y = _tileCy(p.ty);
+  p.fx = p.x; p.fy = p.y;
+  p.dir = 'down'; p.moving = false; p.mvT = 0; p.busy = false;
+
+  // けはいを SIGN_TARGET こ ばらまく
+  G.signs = [];
+  for (let i = 0; i < CONFIG.SIGN_TARGET; i++) spawnSign();
+}
+
+/* 歩けて だれとも かぶらない タイルへ けはいを ついか */
+function spawnSign() {
+  const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
+  const occupied = (tx, ty) => {
+    if (G.player && G.player.tx === tx && G.player.ty === ty) return true;
+    if (G.mode === 'vs' && G.cpu && G.cpu.tx === tx && G.cpu.ty === ty) return true;
+    return G.signs.some(s => s.tx === tx && s.ty === ty);
+  };
+  for (let tries = 0; tries < 400; tries++) {
+    const tx = U.rint(1, W - 2), ty = U.rint(1, H - 2);
+    if (!U.walkable(tx, ty)) continue;
+    // プレイヤーの まうえは さける（いきなり捕獲にならないよう すこし はなす）
+    if (G.player && Math.abs(tx - G.player.tx) + Math.abs(ty - G.player.ty) < 2) continue;
+    if (occupied(tx, ty)) continue;
+    G.signs.push({ tx, ty, key: pickSpecies(G.night), id: ++G.signSeq });
+    return;
+  }
+}
+
+/* ============================================================
+   CPU（たいせん）
+   ============================================================ */
+function setupCpu() {
+  const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
+  // プレイヤーから いちばん とおい 歩けるマスを さがす
+  let best = null, bd = -1;
+  for (let t = 0; t < 500; t++) {
+    const x = U.rint(1, W - 2), y = U.rint(1, H - 2);
+    if (!U.walkable(x, y)) continue;
+    const d = Math.abs(x - G.player.tx) + Math.abs(y - G.player.ty);
+    if (d > bd) { bd = d; best = { x, y }; }
+    if (bd >= W + H - 6) break;
+  }
+  if (!best) best = { x: G.player.tx, y: G.player.ty };
+  const c = G.cpu;
+  c.tx = best.x; c.ty = best.y;
+  c.x = _tileCx(c.tx); c.y = _tileCy(c.ty);
+  c.fx = c.x; c.fy = c.y;
+  c.dir = 'down'; c.moving = false; c.mvT = 0;
+  c.stopUntil = 0; c.path = null; c.targetId = null;
+  c._acc = 0;        // 歩きの ためこみ
+  c._wdir = 'down';  // さまよう ときの くせ
+}
+
+/* CPU→もくひょうへの BFS。さいしょの 1マスの [dx,dy] をかえす（なければ null） */
+function cpuPathStep(fromTx, fromTy, toTx, toTy) {
+  if (fromTx === toTx && fromTy === toTy) return null;
+  const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
+  const key = (x, y) => y * W + x;
+  const prev = new Map();
+  const q = [[fromTx, fromTy]];
+  prev.set(key(fromTx, fromTy), -1);
+  let found = false;
+  const DD = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  while (q.length && !found) {
+    const [x, y] = q.shift();
+    for (const [dx, dy] of DD) {
+      const nx = x + dx, ny = y + dy;
+      if (!U.walkable(nx, ny) || prev.has(key(nx, ny))) continue;
+      prev.set(key(nx, ny), key(x, y));
+      if (nx === toTx && ny === toTy) { found = true; break; }
+      q.push([nx, ny]);
+    }
+  }
+  if (!found) return null;
+  // ゴールから さかのぼって さいしょの一歩
+  let cur = key(toTx, toTy);
+  const startK = key(fromTx, fromTy);
+  while (prev.get(cur) !== startK) cur = prev.get(cur);
+  return [cur % W - fromTx, Math.floor(cur / W) - fromTy];
+}
+
+/* CPU を 1マス うごかす（歩ける場合のみ）。ほかんを はじめる */
+function _cpuStartMove(dx, dy) {
+  const c = G.cpu;
+  const nx = c.tx + dx, ny = c.ty + dy;
+  if (!U.walkable(nx, ny)) return false;
+  c.fx = c.x; c.fy = c.y;
+  c.tx = nx; c.ty = ny;
+  c.moving = true; c.mvT = 0;
+  c.dir = dx > 0 ? 'right' : dx < 0 ? 'left' : dy > 0 ? 'down' : 'up';
+  return true;
+}
+
+function cpuTick(dtMs) {
+  const c = G.cpu;
+  const now = performance.now();
+
+  // ほかん中なら すすめる
+  if (c.moving) {
+    c.mvT += dtMs;
+    const stepMs = CONFIG.CPU_STEP_MS[G.cpuLv] || 640;
+    const p = Math.min(1, c.mvT / stepMs);
+    c.x = c.fx + (_tileCx(c.tx) - c.fx) * p;
+    c.y = c.fy + (_tileCy(c.ty) - c.fy) * p;
+    if (p >= 1) {
+      c.moving = false;
+      c.x = _tileCx(c.tx); c.y = _tileCy(c.ty);
+      // とうちゃくした タイルに けはいが あれば 捕獲はんてい
+      _cpuTryCatch();
+    }
+    return;
+  }
+
+  // りゅうちゅう（捕獲ちゅう・くやしくて とまる など）
+  if (now < c.stopUntil) return;
+
+  // ステップ かんかく
+  c._acc += dtMs;
+  const stepMs = CONFIG.CPU_STEP_MS[G.cpuLv] || 640;
+  if (c._acc < stepMs) return;
+  c._acc = 0;
+
+  // CPU_CHASE_R いないの さいよりの けはいを ねらう
+  let target = null, bd = 1e9;
+  for (const s of G.signs) {
+    const d = Math.abs(s.tx - c.tx) + Math.abs(s.ty - c.ty);
+    if (d < bd) { bd = d; target = s; }
+  }
+  let moved = false;
+  if (target && bd <= CONFIG.CPU_CHASE_R) {
+    const step = cpuPathStep(c.tx, c.ty, target.tx, target.ty);
+    if (step) moved = _cpuStartMove(step[0], step[1]);
+  }
+  if (!moved) {
+    // さまよう: いまの くせを ゆうせん、だめなら ほかへ
+    const DMAP = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+    const ks = Object.keys(DMAP).sort(() => Math.random() - 0.5);
+    const order = [c._wdir, ...ks];
+    for (const k of order) {
+      const [dx, dy] = DMAP[k];
+      if (_cpuStartMove(dx, dy)) { c._wdir = k; break; }
+    }
+  }
+}
+
+/* CPU が けはいタイルへ とうちゃく → 捕獲はんてい */
+function _cpuTryCatch() {
+  const c = G.cpu;
+  const idx = G.signs.findIndex(s => s.tx === c.tx && s.ty === c.ty);
+  if (idx < 0) return;
+  const sign = G.signs[idx];
+  G.signs.splice(idx, 1);
+  c.targetId = null;
+
+  const p = CONFIG.CPU_CATCH_P[G.cpuLv] || 0.5;
+  if (U.chance(p)) {
+    // せいこう: てんすう ついか
+    const b = BUGS[sign.key];
+    const pts = (b && b.pts) || 0;
+    G.cpuScore += pts;
+    G.cpuCaught.push({ key: sign.key, name: b ? b.name : '？', pts });
+    c.stopUntil = performance.now() + 600; // ちょっと まんぞく
+  } else {
+    // しっぱい: でも けはいは しょうひ。くやしくて すこし とまる
+    c.stopUntil = performance.now() + Math.max(1200, (8 - G.cpuLv) * 700);
+  }
+  updateHud();
+  // ばの けはい かずを たもつ
+  setTimeout(() => { if (G.running) spawnSign(); }, CONFIG.SIGN_RESPAWN_MS);
+}
+
+/* ============================================================
+   rAF ループ
+   ============================================================ */
+let _rafId = 0;
+let _lastT = 0;
+let _stepSfxT = 0;
+
+function startField() {
+  // 多重きどう ぼうし
+  if (_rafId) return;
+  _lastT = performance.now();
+  const loop = (now) => {
+    _rafId = requestAnimationFrame(loop);
+    const dt = Math.min(60, now - _lastT); // フレームスキップ ほご
+    _lastT = now;
+    if (!G.player.busy) _update(dt, now);
+    _drawField(now);
+  };
+  _rafId = requestAnimationFrame(loop);
+}
+
+function stopField() {
+  if (_rafId) { cancelAnimationFrame(_rafId); _rafId = 0; }
+}
+
+function _update(dtMs, now) {
+  const p = G.player;
+
+  // 1) プレイヤーの いどう
+  if (p.moving) {
+    p.mvT += dtMs;
+    const t = Math.min(1, p.mvT / CONFIG.STEP_MS);
+    p.x = p.fx + (_tileCx(p.tx) - p.fx) * t;
+    p.y = p.fy + (_tileCy(p.ty) - p.fy) * t;
+    if (t >= 1) {
+      p.moving = false;
+      p.x = _tileCx(p.tx); p.y = _tileCy(p.ty);
+      _checkReachSign();
+    }
+  } else {
+    const { dx, dy } = G.input;
+    if (dx !== 0 || dy !== 0) {
+      p.dir = dx > 0 ? 'right' : dx < 0 ? 'left' : dy > 0 ? 'down' : 'up';
+      const nx = p.tx + dx, ny = p.ty + dy;
+      if (U.walkable(nx, ny)) {
+        p.fx = p.x; p.fy = p.y;
+        p.tx = nx; p.ty = ny;
+        p.moving = true; p.mvT = 0;
+        // あしおとは ひかえめに（200msに1回まで）
+        if (now - _stepSfxT > 200) { _stepSfxT = now; if (Sound && Sound.sfx) Sound.sfx.step(); }
+      }
+    }
+  }
+
+  // 3) vs モード: CPU
+  if (G.mode === 'vs') cpuTick(dtMs);
+}
+
+/* プレイヤーが けはいタイルへ → 捕獲シーンへ */
+function _checkReachSign() {
+  const p = G.player;
+  const idx = G.signs.findIndex(s => s.tx === p.tx && s.ty === p.ty);
+  if (idx < 0) return;
+  const sign = G.signs[idx];
+  G.signs.splice(idx, 1);
+  // ばの かずを たもつ
+  setTimeout(() => { if (G.running) spawnSign(); }, CONFIG.SIGN_RESPAWN_MS);
+  enterCatch(sign);
+}
+
+/* ============================================================
+   えがく
+   ============================================================ */
+function _drawField(now) {
+  const cv = D.canvas; if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const TS = _tileSize();
+  const offY = _offY();
+  const W = CONFIG.MAP_W, H = CONFIG.MAP_H;
+  const m = G.map; if (!m) return;
+
+  // せなか（くろ）でクリア
+  ctx.clearRect(0, 0, 420, 600);
+  ctx.fillStyle = '#1c2b18';
+  ctx.fillRect(0, 0, 420, 600);
+
+  // タイル
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const t = m.tiles[y * W + x];
+      const px = x * TS, py = offY + y * TS;
+      const even = (x + y) % 2 === 0;
+      let col;
+      if (t === 1) col = even ? FIELD_COLORS.water : FIELD_COLORS.water2;
+      else if (t === 2) col = even ? FIELD_COLORS.rock : FIELD_COLORS.rockHi;
+      else if (t === 3) col = even ? FIELD_COLORS.tree : FIELD_COLORS.treeHi;
+      else if (t === 4) col = even ? FIELD_COLORS.path : FIELD_COLORS.path2;
+      else if (t === 5) col = even ? FIELD_COLORS.gravel : FIELD_COLORS.gravel2;
+      else col = even ? FIELD_COLORS.grass : FIELD_COLORS.grass2;
+      ctx.fillStyle = col;
+      ctx.fillRect(px, py, TS + 1, TS + 1);
+
+      // 水は さざなみ
+      if (t === 1) {
+        ctx.strokeStyle = 'rgba(255,255,255,.35)';
+        ctx.lineWidth = 1.4;
+        const w = Math.sin(now / 480 + x * 1.6 + y) * 2.4;
+        ctx.beginPath();
+        ctx.moveTo(px + 5, py + TS * 0.55 + w);
+        ctx.quadraticCurveTo(px + TS / 2, py + TS * 0.5 - 3 + w, px + TS - 5, py + TS * 0.55 + w);
+        ctx.stroke();
+      }
+      // 木は こんもり
+      else if (t === 3) {
+        ctx.fillStyle = 'rgba(20,45,20,.5)';
+        ctx.beginPath(); ctx.arc(px + TS / 2, py + TS * 0.55, TS * 0.38, 0, 7); ctx.fill();
+        ctx.fillStyle = FIELD_COLORS.treeHi;
+        ctx.beginPath(); ctx.arc(px + TS * 0.4, py + TS * 0.42, TS * 0.18, 0, 7); ctx.fill();
+      }
+      // 岩は ごつごつ
+      else if (t === 2) {
+        ctx.fillStyle = 'rgba(0,0,0,.18)';
+        ctx.beginPath();
+        ctx.moveTo(px + 4, py + TS - 4);
+        ctx.lineTo(px + TS * 0.4, py + 5);
+        ctx.lineTo(px + TS - 4, py + TS - 6);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+  }
+
+  // けはい（ゆれる草 or「！」）
+  for (const s of G.signs) {
+    const cx = _tileCx(s.tx), cy = _tileCy(s.ty);
+    const near = Math.abs(s.tx - G.player.tx) + Math.abs(s.ty - G.player.ty) <= 1;
+    // ときどき ガサガサ ゆれる（スポットごとに いそうずれ）
+    const gust = (((now / 1000) + s.tx * 0.71 + s.ty * 1.37) % 2.4) < 0.8;
+    const shake = near || gust;
+    const sw = shake ? Math.sin(now / 90 + s.tx) * 3 : Math.sin(now / 900 + s.tx) * 1;
+    // ゆれる草むら
+    ctx.save();
+    ctx.translate(cx + sw, cy + TS * 0.18);
+    ctx.fillStyle = '#3e7e36';
+    ctx.beginPath();
+    ctx.arc(-TS * 0.18, 0, TS * 0.2, 0, 7);
+    ctx.arc(TS * 0.18, 0, TS * 0.2, 0, 7);
+    ctx.arc(0, -TS * 0.12, TS * 0.22, 0, 7);
+    ctx.fill();
+    ctx.fillStyle = '#5aa84e';
+    ctx.beginPath(); ctx.arc(-TS * 0.05, -TS * 0.14, TS * 0.1, 0, 7); ctx.fill();
+    ctx.restore();
+    // となりなら「！」ふきだし
+    if (near) {
+      ctx.save();
+      ctx.translate(cx, cy - TS * 0.45 + Math.sin(now / 180) * 2);
+      ctx.font = 'bold ' + Math.round(TS * 0.7) + 'px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineWidth = 4; ctx.strokeStyle = '#27431f'; ctx.fillStyle = '#fff';
+      ctx.strokeText('！', 0, 0); ctx.fillText('！', 0, 0);
+      ctx.restore();
+    }
+  }
+
+  // CPU
+  if (G.mode === 'vs' && G.cpu) {
+    const c = G.cpu;
+    const walking = c.moving;
+    _drawChibi(ctx, c.x, c.y, c.dir, walking, now, true);
+  }
+
+  // プレイヤー
+  _drawChibi(ctx, G.player.x, G.player.y, G.player.dir, G.player.moving, now, false);
+
+  // よる: あんまく＋プレイヤーの まわりだけ あかるく
+  if (G.night) {
+    const ppx = G.player.x, ppy = G.player.y;
+    const r = TS * 3.5; // 径3〜4マス
+    const grad = ctx.createRadialGradient(ppx, ppy, TS * 1.0, ppx, ppy, r);
+    grad.addColorStop(0, 'rgba(8,12,30,0)');
+    grad.addColorStop(0.7, 'rgba(8,12,30,.30)');
+    grad.addColorStop(1, 'rgba(8,12,30,.72)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 420, 600);
+    // すみは しっかり くらく
+    ctx.fillStyle = 'rgba(8,12,30,.45)';
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, 420, 600);
+    ctx.arc(ppx, ppy, r, 0, 7, true); // まんなかは くりぬき
+    ctx.fill('evenodd');
+    ctx.restore();
+  }
+}
+
+/* チビキャラ（プレイヤー＝あか / CPU＝あお＋🤖かん） */
+function _drawChibi(ctx, x, y, dir, walking, now, rival) {
+  const TS = _tileSize();
+  const sc = TS / 30; // 30pxタイル を きじゅんに スケール
+  const bodyCol = rival ? '#4a7ac9' : '#e8543d';
+  const bodyHi = rival ? '#6a96e0' : '#f2785f';
+  const capCol = rival ? '#dce6ef' : '#ffd34d';
+  const t = now / 85;
+  const swing = walking ? Math.sin(t) : 0;
+  const bob = walking ? Math.abs(Math.sin(t)) * -2 : Math.sin(now / 680) * 0.8;
+
+  ctx.save();
+  ctx.translate(x, y + bob * sc);
+  ctx.scale(sc, sc);
+  const flip = dir === 'left' ? -1 : 1;
+  ctx.scale(flip, 1);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+  // かげ
+  ctx.fillStyle = 'rgba(15,30,8,.25)';
+  ctx.beginPath(); ctx.ellipse(0, 13, 10, 3.5, 0, 0, 7); ctx.fill();
+
+  ctx.lineWidth = 2; ctx.strokeStyle = '#26321c';
+  // あし
+  const legSwing = swing * 4;
+  ctx.fillStyle = rival ? '#2e5aa8' : '#27437a';
+  _rr(ctx, -7, 3 + legSwing * 0.4, 6, 9, 2.5); ctx.fill(); ctx.stroke();
+  _rr(ctx, 1, 3 - legSwing * 0.4, 6, 9, 2.5); ctx.fill(); ctx.stroke();
+
+  // からだ
+  ctx.fillStyle = bodyCol;
+  _rr(ctx, -8, -6, 16, 11, 4); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = bodyHi;
+  _rr(ctx, -8, -6, 6, 11, 4); ctx.fill();
+
+  // あたま
+  ctx.fillStyle = '#ffd9b3';
+  ctx.beginPath(); ctx.arc(0, -13, 9, 0, 7); ctx.fill(); ctx.stroke();
+
+  // ぼうし
+  ctx.fillStyle = capCol;
+  ctx.beginPath(); ctx.arc(0, -15, 9, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // つば
+  ctx.beginPath();
+  ctx.moveTo(5, -16);
+  ctx.quadraticCurveTo(14, -16, 15, -13);
+  ctx.quadraticCurveTo(9, -12, 4, -13);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  // かお（うしろむき いがい）
+  if (dir !== 'up') {
+    if (dir === 'down') {
+      ctx.fillStyle = '#26241f';
+      ctx.beginPath(); ctx.arc(-3, -13, 1.4, 0, 7); ctx.arc(3, -13, 1.4, 0, 7); ctx.fill();
+    } else {
+      ctx.fillStyle = '#26241f';
+      ctx.beginPath(); ctx.arc(3, -13, 1.4, 0, 7); ctx.arc(7, -13, 1.3, 0, 7); ctx.fill();
+    }
+  }
+
+  // CPU は ロボっぽい アンテナ
+  if (rival) {
+    ctx.strokeStyle = '#9fc0e8'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(0, -23); ctx.lineTo(0, -27); ctx.stroke();
+    ctx.fillStyle = '#ff5a5a';
+    ctx.beginPath(); ctx.arc(0, -28, 1.8, 0, 7); ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/* かどまる rect */
+function _rr(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+</script>
+</body>
+</html>

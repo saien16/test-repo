@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1f6b3a">
+<title>むしとりバトル 🐛</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- タイトル -->
+  <section id="title-screen" class="screen active">
+    <div class="title-wrap">
+      <div class="title-logo">むしとり<br><span>バトル</span></div>
+      <div class="title-bugs">🦋 🐝 🐞 🦗 🐛</div>
+      <button id="btn-start" class="big-btn">▶ はじめる</button>
+      <div class="title-foot">あみで むしを つかまえよう！</div>
+    </div>
+    <button id="btn-mute" class="mute-btn" aria-label="おと">🔊</button>
+  </section>
+
+  <!-- モード選択 -->
+  <section id="mode-screen" class="screen">
+    <h1 class="screen-title">モードを えらぶ</h1>
+    <div id="best-label" class="best-label">ソロ さいこう: 0 pt</div>
+    <div class="mode-grid">
+      <button id="btn-solo" class="mode-card solo">
+        <div class="mode-emoji">🌳</div>
+        <div class="mode-name">ソロ</div>
+        <div class="mode-desc">じかんない できるだけ おおく つかまえる</div>
+      </button>
+      <div class="mode-card vs">
+        <div class="mode-emoji">⚔️</div>
+        <div class="mode-name">たいせん（CPU）</div>
+        <div class="mode-desc">ライバルより たくさん つかまえろ！</div>
+        <div class="cpu-levels">
+          <button class="cpu-lv" data-cpulv="1">Lv1</button>
+          <button class="cpu-lv" data-cpulv="2">Lv2</button>
+          <button class="cpu-lv" data-cpulv="3">Lv3</button>
+          <button class="cpu-lv" data-cpulv="4">Lv4🌙</button>
+          <button class="cpu-lv" data-cpulv="5">Lv5🌙</button>
+        </div>
+        <div class="cpu-hint">かつと つぎの レベルが あく</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- フィールド -->
+  <section id="field-screen" class="screen">
+    <div class="hud">
+      <span id="hud-time" class="hud-pill">⏱ 90</span>
+      <span id="hud-score" class="hud-pill">🐛 0</span>
+      <span id="hud-cpu" class="hud-pill cpu">🤖 0</span>
+      <button id="btn-giveup" class="hud-give">やめる</button>
+    </div>
+    <div class="field-wrap">
+      <canvas id="field-canvas" width="420" height="600"></canvas>
+    </div>
+    <div class="dpad">
+      <button class="dbtn up" data-dir="up">▲</button>
+      <button class="dbtn left" data-dir="left">◀</button>
+      <button class="dbtn right" data-dir="right">▶</button>
+      <button class="dbtn down" data-dir="down">▼</button>
+    </div>
+  </section>
+
+  <!-- 捕獲シーン -->
+  <section id="catch-screen" class="screen">
+    <div id="catch-root"><!-- catch.js が描画 --></div>
+  </section>
+
+  <!-- リザルト -->
+  <section id="result-screen" class="screen">
+    <h1 class="screen-title">けっか</h1>
+    <div id="result-body"></div>
+    <button id="btn-again" class="big-btn">つぎへ</button>
+  </section>
+
+</div>
+<script>
+/*__JS__*/
+</script>
+</body>
+</html>

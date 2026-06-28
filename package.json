@@ -1,0 +1,16 @@
+{
+  "name": "mushitori-battle",
+  "version": "1.0.0",
+  "description": "対戦型むしとりゲーム（ソロモード付き）— 単一HTMLで動作",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "check": "node --check dist/index.html 2>/dev/null || node -e \"const fs=require('fs');const m=fs.readFileSync('dist/index.html','utf8').match(/<script>([\\s\\S]*)<\\/script>/);new Function(m[1]);console.log('syntax OK')\"",
+    "serve": "npx serve dist"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.61.1"
+  }
+}

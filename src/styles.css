@@ -1,0 +1,156 @@
+/* ============================================================
+   むしとりバトル — styles.css
+   スマホ縦画面（iPhone SE想定）/ 単一HTML。
+   画面は .screen を重ね、.active のみ表示。
+   ============================================================ */
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+  background: #0c1410; color: #fff; overflow: hidden;
+  user-select: none; -webkit-user-select: none;
+}
+#app {
+  position: relative; width: 100%; height: 100vh; height: 100dvh;
+  max-width: 480px; margin: 0 auto; overflow: hidden;
+}
+
+/* ---- 画面の重ね ---- */
+.screen { position: absolute; inset: 0; display: none; flex-direction: column;
+  align-items: center; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+.screen.active { display: flex; }
+
+.screen-title { font-size: 24px; margin: 18px 0 10px; letter-spacing: 2px;
+  text-shadow: 0 2px 0 rgba(0,0,0,.4); }
+
+/* ---- 共通ボタン ---- */
+.big-btn {
+  font: 700 22px/1 inherit; color: #fff; border: none; border-radius: 16px;
+  padding: 16px 34px; margin: 10px;
+  background: linear-gradient(#3fbf6f, #1f8f4d);
+  box-shadow: 0 5px 0 #145e34, 0 8px 16px rgba(0,0,0,.4); cursor: pointer;
+  transition: transform .06s, box-shadow .06s;
+}
+.big-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #145e34; }
+
+/* ============================================================
+   タイトル
+   ============================================================ */
+#title-screen {
+  justify-content: center;
+  background: radial-gradient(120% 80% at 50% 0%, #2e7d4f 0%, #143d27 55%, #0c1410 100%);
+}
+.title-wrap { display: flex; flex-direction: column; align-items: center; }
+.title-logo { font-size: 52px; font-weight: 900; text-align: center; line-height: 1.05;
+  text-shadow: 0 3px 0 #0a3a20, 0 6px 10px rgba(0,0,0,.5); letter-spacing: 3px; }
+.title-logo span { color: #ffe14d; font-size: 60px; }
+.title-bugs { font-size: 30px; margin: 22px 0 6px; letter-spacing: 8px; animation: bob 2.2s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(-7px); } }
+.title-foot { margin-top: 14px; opacity: .85; font-size: 14px; }
+.mute-btn { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,.35);
+  border: none; color: #fff; font-size: 22px; width: 46px; height: 46px; border-radius: 50%; cursor: pointer; }
+
+/* ============================================================
+   モード選択
+   ============================================================ */
+#mode-screen { background: linear-gradient(#143d27, #0c1410); justify-content: flex-start; }
+.best-label { font-size: 14px; color: #ffe14d; margin-bottom: 14px; }
+.mode-grid { width: 100%; padding: 0 16px; display: flex; flex-direction: column; gap: 14px; }
+.mode-card { border-radius: 18px; padding: 16px; text-align: center; border: none; color: #fff;
+  background: rgba(255,255,255,.06); box-shadow: 0 4px 12px rgba(0,0,0,.35); }
+.mode-card.solo { cursor: pointer; background: linear-gradient(135deg, #2f9e5c, #1c6b3e); }
+.mode-card.solo:active { transform: scale(.98); }
+.mode-card.vs { background: linear-gradient(135deg, #b5482e, #7d2e1c); }
+.mode-emoji { font-size: 40px; }
+.mode-name { font-size: 22px; font-weight: 800; margin: 4px 0; }
+.mode-desc { font-size: 13px; opacity: .9; }
+.cpu-levels { display: flex; gap: 8px; justify-content: center; margin: 12px 0 4px; flex-wrap: wrap; }
+.cpu-lv { font: 700 15px inherit; color: #fff; border: 2px solid rgba(255,255,255,.5);
+  background: rgba(0,0,0,.25); border-radius: 12px; padding: 8px 12px; cursor: pointer; }
+.cpu-lv:active { transform: translateY(2px); }
+.cpu-lv.locked { opacity: .35; border-style: dashed; }
+.cpu-lv.locked::after { content: " 🔒"; }
+.cpu-hint { font-size: 11px; opacity: .8; margin-top: 4px; }
+
+/* ============================================================
+   フィールド
+   ============================================================ */
+#field-screen { background: #0c1410; justify-content: flex-start; }
+.hud { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+.hud-pill { background: rgba(0,0,0,.45); border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 15px; }
+.hud-pill.cpu { background: rgba(180,72,46,.6); }
+.hud-give { margin-left: auto; background: rgba(255,255,255,.12); border: none; color: #fff;
+  border-radius: 10px; padding: 6px 12px; font: 700 13px inherit; cursor: pointer; }
+.field-wrap { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; min-height: 0; }
+#field-canvas { width: 100%; height: 100%; max-width: 480px; image-rendering: auto; touch-action: none; }
+
+/* dパッド */
+.dpad { position: relative; width: 190px; height: 190px; margin: 6px auto 16px; flex: none; }
+.dbtn { position: absolute; width: 62px; height: 62px; border-radius: 14px; border: none;
+  background: rgba(255,255,255,.16); color: #fff; font-size: 24px; cursor: pointer; }
+.dbtn:active { background: rgba(255,255,255,.4); }
+.dbtn.up { top: 0; left: 64px; }
+.dbtn.down { bottom: 0; left: 64px; }
+.dbtn.left { left: 0; top: 64px; }
+.dbtn.right { right: 0; top: 64px; }
+
+/* ============================================================
+   捕獲シーン（catch.js が #catch-root に描画）
+   スクロール禁止（UIで時計などが隠れない設計）
+   ============================================================ */
+#catch-screen { overflow: hidden; height: 100%; background: linear-gradient(#7ec9e8, #cde6b0 60%, #8bbf5a); }
+#catch-root { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.cs-top { display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: #14361f; font-weight: 800; }
+.cs-dist { background: rgba(255,255,255,.7); border-radius: 999px; padding: 4px 12px; }
+.cs-name { margin-left: auto; background: rgba(255,255,255,.7); border-radius: 999px; padding: 4px 12px; }
+/* 警戒ゲージ */
+.cs-alert-wrap { padding: 4px 12px; }
+.cs-alert-label { font-size: 12px; color: #14361f; font-weight: 700; display: flex; justify-content: space-between; }
+.cs-alert-bar { height: 14px; background: rgba(0,0,0,.25); border-radius: 999px; overflow: hidden; margin-top: 3px; }
+.cs-alert-fill { height: 100%; width: 0%; border-radius: 999px; transition: width .25s, background .25s; background: #41c46f; }
+.cs-alert-fill.warn { background: #f3b13b; }
+.cs-alert-fill.danger { background: #e2483a; }
+/* アリーナ（横視点） */
+.cs-arena { flex: 1; position: relative; min-height: 0; overflow: hidden; }
+.cs-arena.warn-glow { box-shadow: inset 0 0 60px 10px rgba(226,72,58,.5); }
+.cs-bug { position: absolute; top: 42%; transition: right .4s ease, transform .2s; }
+.cs-hunter { position: absolute; bottom: 8%; left: 6%; font-size: 40px; }
+.cs-warn-pop { position: absolute; top: 18%; right: 12%; font-size: 22px; font-weight: 900; color: #e2483a;
+  text-shadow: 0 2px 0 #fff; animation: pop .4s; }
+@keyframes pop { from { transform: scale(.4); opacity: 0; } }
+/* 行動ボタン */
+.cs-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; background: rgba(20,54,31,.92); }
+.cs-btn { font: 800 16px inherit; color: #fff; border: none; border-radius: 12px; padding: 14px 8px; cursor: pointer;
+  box-shadow: 0 3px 0 rgba(0,0,0,.3); }
+.cs-btn:active { transform: translateY(3px); box-shadow: none; }
+.cs-btn.approach { background: #c9742e; }
+.cs-btn.sneak { background: #4a8f5a; }
+.cs-btn.wait { background: #5566b5; }
+.cs-btn.net { background: #d24a6a; grid-column: 1 / -1; }
+.cs-btn small { display: block; font-size: 11px; font-weight: 600; opacity: .9; margin-top: 2px; }
+.cs-btn:disabled { opacity: .5; }
+.cs-log { padding: 6px 12px; height: 42px; font-size: 13px; color: #14361f; font-weight: 700; text-align: center; }
+
+/* ============================================================
+   リザルト
+   ============================================================ */
+#result-screen { background: linear-gradient(#1d2b6b, #0c1410); justify-content: flex-start; overflow-y: auto; }
+#result-body { width: 100%; padding: 0 16px; }
+.res-banner { text-align: center; font-size: 30px; font-weight: 900; margin: 6px 0 12px; }
+.res-banner.win { color: #ffe14d; text-shadow: 0 2px 0 #7a5a00; }
+.res-banner.lose { color: #c9d1e0; }
+.res-vs { display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 16px; text-align: center; margin-bottom: 10px; }
+.res-vs b { font-size: 28px; }
+.vsmid { opacity: .7; }
+.res-score { text-align: center; font-size: 18px; }
+.res-score b { font-size: 30px; color: #ffe14d; }
+.res-best { text-align: center; font-size: 13px; opacity: .85; margin-top: 4px; }
+.res-stat { text-align: center; font-size: 13px; opacity: .9; margin: 10px 0; }
+.res-list { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
+.res-bug { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.08);
+  border-radius: 10px; padding: 6px 10px; font-size: 12px; }
+.res-empty { text-align: center; opacity: .7; padding: 20px; }
+
+/* 紙吹雪（勝利） */
+.confetti { position: fixed; top: -10px; width: 9px; height: 14px; opacity: .9; z-index: 50; animation: fall linear forwards; }
+@keyframes fall { to { transform: translateY(105vh) rotate(540deg); } }
