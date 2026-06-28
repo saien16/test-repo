@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#1f6b3a">
 <title>むしとりバトル 🐛</title>
 <style>
+/* ===== src/styles.css ===== */
 /* ============================================================
    むしとりバトル — styles.css
    スマホ縦画面（iPhone SE想定）/ 単一HTML。
@@ -56,7 +57,9 @@ body {
 @keyframes bob { 50% { transform: translateY(-7px); } }
 .title-foot { margin-top: 14px; opacity: .85; font-size: 14px; }
 .mute-btn { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,.35);
-  border: none; color: #fff; font-size: 22px; width: 46px; height: 46px; border-radius: 50%; cursor: pointer; }
+  border: none; color: #fff; font-size: 22px; width: 46px; height: 46px; border-radius: 50%; cursor: pointer;
+  transition: transform .06s, background .06s; }
+.mute-btn:active { transform: scale(.88); background: rgba(0,0,0,.55); }
 
 /* ============================================================
    モード選択
@@ -75,7 +78,8 @@ body {
 .cpu-levels { display: flex; gap: 8px; justify-content: center; margin: 12px 0 4px; flex-wrap: wrap; }
 .cpu-lv { font: 700 15px inherit; color: #fff; border: 2px solid rgba(255,255,255,.5);
   background: rgba(0,0,0,.25); border-radius: 12px; padding: 8px 12px; cursor: pointer; }
-.cpu-lv:active { transform: translateY(2px); }
+.cpu-lv { transition: transform .06s, background .06s; }
+.cpu-lv:active { transform: translateY(2px) scale(.95); background: rgba(0,0,0,.45); }
 .cpu-lv.locked { opacity: .35; border-style: dashed; }
 .cpu-lv.locked::after { content: " 🔒"; }
 .cpu-hint { font-size: 11px; opacity: .8; margin-top: 4px; }
@@ -87,20 +91,43 @@ body {
 .hud { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
 .hud-pill { background: rgba(0,0,0,.45); border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 15px; }
 .hud-pill.cpu { background: rgba(180,72,46,.6); }
+.hud-pill.combo { background: rgba(226,128,40,.85); color: #fff; }
 .hud-give { margin-left: auto; background: rgba(255,255,255,.12); border: none; color: #fff;
-  border-radius: 10px; padding: 6px 12px; font: 700 13px inherit; cursor: pointer; }
-.field-wrap { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  border-radius: 10px; padding: 6px 12px; font: 700 13px inherit; cursor: pointer;
+  transition: transform .06s, background .06s; }
+.hud-give:active { transform: translateY(2px) scale(.96); background: rgba(255,255,255,.32); }
+.field-wrap { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; min-height: 0; position: relative; }
 #field-canvas { width: 100%; height: 100%; max-width: 480px; image-rendering: auto; touch-action: none; }
 
-/* dパッド */
-.dpad { position: relative; width: 190px; height: 190px; margin: 6px auto 16px; flex: none; }
-.dbtn { position: absolute; width: 62px; height: 62px; border-radius: 14px; border: none;
-  background: rgba(255,255,255,.16); color: #fff; font-size: 24px; cursor: pointer; }
-.dbtn:active { background: rgba(255,255,255,.4); }
-.dbtn.up { top: 0; left: 64px; }
-.dbtn.down { bottom: 0; left: 64px; }
-.dbtn.left { left: 0; top: 64px; }
-.dbtn.right { right: 0; top: 64px; }
+/* HUDコンボ ピルの パルス */
+.hud-pill.combo { animation: combopulse 1s ease-in-out infinite; }
+@keyframes combopulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+/* スコア ピルの 一瞬パルス（加点時） */
+.hud-pill.pulse { animation: scorepop .55s ease; }
+@keyframes scorepop { 0% { transform: scale(1); } 35% { transform: scale(1.35); color: #ffe14d; } 100% { transform: scale(1); } }
+
+/* 復帰トースト（フィールド上・中央やや上＝時計やdパッドを隠さない） */
+.toast { position: absolute; top: 14%; left: 50%; transform: translateX(-50%);
+  background: rgba(20,54,31,.92); color: #fff; border-radius: 14px; padding: 10px 16px;
+  font-weight: 800; font-size: 16px; text-align: center; white-space: nowrap; pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,.45); z-index: 30; max-width: 92%; }
+.toast .t-main { font-size: 17px; }
+.toast .t-big { color: #ffd84d; }
+.toast .t-combo { color: #ff9b4d; }
+.toast.toast-pop { animation: toastpop .5s ease; }
+@keyframes toastpop { 0% { transform: translateX(-50%) scale(.5); opacity: 0; } 60% { transform: translateX(-50%) scale(1.1); opacity: 1; } 100% { transform: translateX(-50%) scale(1); } }
+
+/* dパッド（ボタン拡大＋セーフエリア余白で誤タップ低減） */
+.dpad { position: relative; width: 220px; height: 220px;
+  margin: 6px auto calc(16px + env(safe-area-inset-bottom)); flex: none; }
+.dbtn { position: absolute; width: 68px; height: 68px; border-radius: 16px; border: none;
+  background: rgba(255,255,255,.16); color: #fff; font-size: 26px; cursor: pointer;
+  transition: transform .05s, background .05s; }
+.dbtn:active { background: rgba(255,255,255,.42); transform: scale(.92); }
+.dbtn.up { top: 0; left: 76px; }
+.dbtn.down { bottom: 0; left: 76px; }
+.dbtn.left { left: 0; top: 76px; }
+.dbtn.right { right: 0; top: 76px; }
 
 /* ============================================================
    捕獲シーン（catch.js が #catch-root に描画）
@@ -153,15 +180,196 @@ body {
 .res-score { text-align: center; font-size: 18px; }
 .res-score b { font-size: 30px; color: #ffe14d; }
 .res-best { text-align: center; font-size: 13px; opacity: .85; margin-top: 4px; }
-.res-stat { text-align: center; font-size: 13px; opacity: .9; margin: 10px 0; }
+.res-stat { text-align: center; font-size: 13px; opacity: .9; margin: 10px 0 4px; }
+.res-dex { text-align: center; font-size: 15px; font-weight: 800; color: #8fe0a8; margin: 0 0 10px; }
 .res-list { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
-.res-bug { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.08);
+.res-bug { position: relative; display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.08);
   border-radius: 10px; padding: 6px 10px; font-size: 12px; }
+.res-new { position: absolute; top: -7px; left: -7px; background: #ffce29; color: #5a3a00;
+  font-weight: 900; font-size: 10px; padding: 1px 5px; border-radius: 7px; transform: rotate(-12deg);
+  box-shadow: 0 1px 3px rgba(0,0,0,.4); }
 .res-empty { text-align: center; opacity: .7; padding: 20px; }
+.result-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.big-btn.retry { background: linear-gradient(#f0a93a, #d4842a); box-shadow: 0 5px 0 #9a5e15, 0 8px 16px rgba(0,0,0,.4); }
+.big-btn.retry:active { box-shadow: 0 1px 0 #9a5e15; }
 
 /* 紙吹雪（勝利） */
 .confetti { position: fixed; top: -10px; width: 9px; height: 14px; opacity: .9; z-index: 50; animation: fall linear forwards; }
 @keyframes fall { to { transform: translateY(105vh) rotate(540deg); } }
+
+/* ===== src/styles-catch.css ===== */
+/* ============================================================
+   むしとりバトル — styles-catch.css（捕獲シーンの ついかCSS）
+   build.mjs が styles.css の あとに 連結する（後勝ち）。
+   ・捕獲シーンの 演出・keyframes は ぜんぶ ここ。
+   ・#catch-screen の overflow:hidden;height:100% は こわさない。
+     演出は すべて transform / opacity / keyframes で 完結させる。
+   ============================================================ */
+
+/* ---- ② 虫の 生きてる感: いつも ふわふわ（idle bob） ---- */
+.cs-bug { animation: cs-bob 2.4s ease-in-out infinite; will-change: transform; }
+@keyframes cs-bob {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50%      { transform: translateY(-7px) rotate(1deg); }
+}
+
+/* ② 警戒≥70 で 小刻みに 震える（bob より つよく） */
+.cs-bug.tremble { animation: cs-tremble .14s linear infinite; }
+@keyframes cs-tremble {
+  0%   { transform: translate(0, 0) rotate(0); }
+  25%  { transform: translate(-2px, 1px) rotate(-2deg); }
+  50%  { transform: translate(2px, -1px) rotate(2deg); }
+  75%  { transform: translate(-1px, 2px) rotate(-1deg); }
+  100% { transform: translate(1px, -1px) rotate(1deg); }
+}
+
+/* ---- ① 命中フラッシュ（白）---- */
+.cs-flash {
+  position: absolute; inset: 0; background: #fff; opacity: 0;
+  pointer-events: none; z-index: 5; border-radius: 4px;
+  animation: cs-flash .34s ease-out forwards;
+}
+@keyframes cs-flash {
+  0%   { opacity: 0; }
+  20%  { opacity: .92; }
+  100% { opacity: 0; }
+}
+
+/* ① 命中: 虫が 網へ 吸い込まれ ちいさく消える */
+.cs-bug.caught-suck {
+  animation: cs-suck .5s cubic-bezier(.5, -0.2, .9, .4) forwards;
+  transform-origin: 30% 90%;
+}
+@keyframes cs-suck {
+  0%   { transform: scale(1) translate(0, 0) rotate(0); opacity: 1; }
+  60%  { transform: scale(.5) translate(-40px, 30px) rotate(-60deg); opacity: .9; }
+  100% { transform: scale(.05) translate(-90px, 70px) rotate(-200deg); opacity: 0; }
+}
+
+/* ① big の キラキラ */
+.cs-sparkle {
+  position: absolute; inset: 0; pointer-events: none; z-index: 6;
+}
+.cs-sparkle span {
+  position: absolute; font-size: 26px; opacity: 0;
+  animation: cs-spark .9s ease-out forwards;
+}
+.cs-sparkle span:nth-child(1) { left: 20%; top: 30%; animation-delay: 0s; }
+.cs-sparkle span:nth-child(2) { left: 55%; top: 18%; animation-delay: .08s; }
+.cs-sparkle span:nth-child(3) { left: 70%; top: 50%; animation-delay: .16s; }
+.cs-sparkle span:nth-child(4) { left: 38%; top: 55%; animation-delay: .24s; }
+.cs-sparkle span:nth-child(5) { left: 60%; top: 70%; animation-delay: .12s; }
+@keyframes cs-spark {
+  0%   { opacity: 0; transform: scale(.3) rotate(0); }
+  40%  { opacity: 1; transform: scale(1.2) rotate(40deg); }
+  100% { opacity: 0; transform: scale(.6) translateY(-22px) rotate(120deg); }
+}
+
+/* ① はずれ: 虫が 素早く回避＋小ゆれ（idle bob を 一時うわがき） */
+.cs-bug.dodge { animation: cs-dodge .36s ease-out; }
+@keyframes cs-dodge {
+  0%   { transform: translateX(0) rotate(0); }
+  25%  { transform: translateX(22px) rotate(8deg); }
+  50%  { transform: translateX(-10px) rotate(-6deg); }
+  75%  { transform: translateX(8px) rotate(4deg); }
+  100% { transform: translateX(0) rotate(0); }
+}
+
+/* ① 逃走: 画面外へ ダッシュ */
+.cs-bug.flee-dash { animation: cs-dash .55s ease-in forwards; }
+@keyframes cs-dash {
+  0%   { transform: translateX(0) scale(1); opacity: 1; }
+  30%  { transform: translateX(-14px) scale(1.05); opacity: 1; }
+  100% { transform: translateX(140%) scale(.7); opacity: 0; }
+}
+
+/* 逃走の 土ぼこり */
+.cs-dust {
+  position: absolute; bottom: 16%; right: 8%; font-size: 30px;
+  pointer-events: none; z-index: 4; opacity: 0;
+  animation: cs-dust .7s ease-out forwards;
+}
+@keyframes cs-dust {
+  0%   { opacity: 0; transform: translateX(0) scale(.6); }
+  30%  { opacity: .9; transform: translateX(-10px) scale(1); }
+  100% { opacity: 0; transform: translateX(-44px) scale(1.4); }
+}
+
+/* ---- ① 網スイング（hunter を 虫へ ふる）---- */
+.cs-hunter { transform-origin: 20% 90%; }
+.cs-hunter.swing { animation: cs-swing .46s ease-in-out; }
+@keyframes cs-swing {
+  0%   { transform: rotate(0) translate(0, 0); }
+  35%  { transform: rotate(-28deg) translate(6px, -6px); }
+  60%  { transform: rotate(38deg) translate(40px, -22px); }
+  100% { transform: rotate(0) translate(0, 0); }
+}
+
+/* ---- ④ 危険演出: ゲージ 鼓動パルス（≥90 で .danger）---- */
+.cs-alert-fill.danger { animation: cs-pulse .6s ease-in-out infinite; }
+@keyframes cs-pulse {
+  0%, 100% { filter: brightness(1);    box-shadow: 0 0 0 0 rgba(226,72,58,.0); }
+  50%      { filter: brightness(1.35); box-shadow: 0 0 8px 2px rgba(226,72,58,.7); }
+}
+
+/* ④ アリーナの warn-glow 明滅（≥90 で .danger-glow）。
+   既存の .cs-arena.warn-glow（inset shadow）の うえに 明滅を かさねる */
+.cs-arena.danger-glow { animation: cs-warnglow .7s ease-in-out infinite; }
+@keyframes cs-warnglow {
+  0%, 100% { box-shadow: inset 0 0 40px 6px rgba(226,72,58,.30); }
+  50%      { box-shadow: inset 0 0 80px 18px rgba(226,72,58,.75); }
+}
+
+/* ---- ⑤ 予告誘導: 「いま あみ！」ポップ ---- */
+.cs-warn-now {
+  position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
+  background: #e2483a; color: #fff; font-weight: 900; font-size: 18px;
+  padding: 6px 14px; border-radius: 999px; z-index: 7; white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0,0,0,.3);
+  animation: cs-nowpop .8s ease-in-out infinite;
+}
+@keyframes cs-nowpop {
+  0%, 100% { transform: translateX(-50%) scale(1);    opacity: .92; }
+  50%      { transform: translateX(-50%) scale(1.12); opacity: 1; }
+}
+
+/* ⑤ 予告中の 網ボタン 強調パルス */
+.cs-btn.net.urge { animation: cs-urge .7s ease-in-out infinite; }
+@keyframes cs-urge {
+  0%, 100% { transform: scale(1);     box-shadow: 0 0 0 0 rgba(255,210,80,.0); }
+  50%      { transform: scale(1.035); box-shadow: 0 0 0 5px rgba(255,210,80,.55); }
+}
+
+/* ---- ③ 命中目安 ◎/○/△ の 色（距離バッジ・網ボタンに 色つき）---- */
+.cs-mark { font-weight: 900; }
+.cs-mark.good { color: #1f9d4d; }
+.cs-mark.ok   { color: #e08a18; }
+.cs-mark.bad  { color: #d83a2a; }
+
+/* 距離バッジ じたいの ふちどり色（記号と そろえる） */
+.cs-dist.mk-good { box-shadow: inset 0 0 0 2px rgba(31,157,77,.6); }
+.cs-dist.mk-ok   { box-shadow: inset 0 0 0 2px rgba(224,138,24,.6); }
+.cs-dist.mk-bad  { box-shadow: inset 0 0 0 2px rgba(216,58,42,.6); }
+
+/* 網ボタンの ふちで 命中目安を 色づけ */
+.cs-btn.net.acc-good { box-shadow: 0 4px 0 #176b35, inset 0 0 0 2px rgba(255,255,255,.35); }
+.cs-btn.net.acc-ok   { box-shadow: 0 4px 0 #9a5e0e; }
+.cs-btn.net.acc-bad  { box-shadow: 0 4px 0 #8a2118; }
+.cs-btn.net .cs-net-main { display: block; }
+
+/* ---- ⑥ けいかいゲージ脇の じょうたい（絵文字＋ことば）---- */
+.cs-alert-state {
+  display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px;
+  font-weight: 800; font-size: 11px; color: #14361f;
+}
+.cs-alert-state.s-calm   { background: rgba(65,196,111,.30); }
+.cs-alert-state.s-care   { background: rgba(243,177,59,.32); }
+.cs-alert-state.s-danger { background: rgba(226,72,58,.30); color: #7a1810; }
+.cs-alert-state.s-flee   { background: rgba(226,72,58,.55); color: #fff;
+  animation: cs-pulse .6s ease-in-out infinite; }
+
+/* レイアウトが くずれない ようにする ねんのため（高さ固定は styles.css がもつ） */
+.cs-arena { position: relative; }
 
 </style>
 </head>
@@ -211,10 +419,12 @@ body {
       <span id="hud-time" class="hud-pill">⏱ 90</span>
       <span id="hud-score" class="hud-pill">🐛 0</span>
       <span id="hud-cpu" class="hud-pill cpu">🤖 0</span>
+      <span id="hud-combo" class="hud-pill combo" style="display:none">🔥コンボ ×2</span>
       <button id="btn-giveup" class="hud-give">やめる</button>
     </div>
     <div class="field-wrap">
       <canvas id="field-canvas" width="420" height="600"></canvas>
+      <div id="toast" class="toast" style="display:none"></div>
     </div>
     <div class="dpad">
       <button class="dbtn up" data-dir="up">▲</button>
@@ -233,7 +443,10 @@ body {
   <section id="result-screen" class="screen">
     <h1 class="screen-title">けっか</h1>
     <div id="result-body"></div>
-    <button id="btn-again" class="big-btn">つぎへ</button>
+    <div class="result-btns">
+      <button id="btn-retry" class="big-btn retry">🔁 もう一回</button>
+      <button id="btn-again" class="big-btn">つぎへ</button>
+    </div>
   </section>
 
 </div>
@@ -935,6 +1148,7 @@ const G = {
   timeLeft: 0,
   score: 0,
   cpuScore: 0,
+  combo: 0,         // れんぞく ほかく かず（0=とぎれた）
   caught: [],       // [{key,name,pts,mm,big}]
   cpuCaught: [],
   // フィールド
@@ -947,7 +1161,7 @@ const G = {
   // 捕獲シーン
   cs: null,
   // 保存
-  best: { solo: 0 },
+  best: { solo: 0, seen: [] }, // seen: つかまえた ことの ある しゅの キーはいれつ
   vsUnlocked: 1,    // 解放済みCPUレベル
   sfxOn: true,
 };
@@ -973,6 +1187,16 @@ const U = {
   },
 };
 
+/* ---- コンボ倍率（combo1→×1, 2→×1.25, 3→×1.5, 4→×1.75, 5+→×2） ---- */
+function comboMult(n) {
+  return Math.min(2, 1 + 0.25 * (n - 1));
+}
+
+/* ---- ずかんの総しゅすう ---- */
+function bugTotal() {
+  return (typeof BUGS !== 'undefined') ? Object.keys(BUGS).length : 0;
+}
+
 /* ---- DOM参照（init で埋める） ---- */
 const D = {};
 
@@ -993,6 +1217,7 @@ function loadSave() {
     if (raw) {
       const s = JSON.parse(raw);
       if (s.best) G.best = Object.assign(G.best, s.best);
+      if (!Array.isArray(G.best.seen)) G.best.seen = []; // ふるい セーブの ほご
       if (s.vsUnlocked) G.vsUnlocked = s.vsUnlocked;
       if (typeof s.sfxOn === 'boolean') G.sfxOn = s.sfxOn;
     }
@@ -1034,7 +1259,9 @@ function refreshModeSelect() {
 function startRun() {
   G.running = true;
   G.score = 0; G.cpuScore = 0;
+  G.combo = 0;
   G.caught = []; G.cpuCaught = [];
+  resetGiveup(); // 「やめる」かくにん じょうたいの リセット
   G.timeLeft = CONFIG.ROUND_SEC;
   G.signs = []; G.signSeq = 0;
   G.input.dx = 0; G.input.dy = 0;
@@ -1072,13 +1299,62 @@ function updateHud() {
     D.hudCpu.style.display = G.mode === 'vs' ? '' : 'none';
     D.hudCpu.textContent = '🤖 ' + G.cpuScore;
   }
+  if (D.hudCombo) {
+    if (G.combo >= 2) {
+      D.hudCombo.style.display = '';
+      D.hudCombo.textContent = '🔥コンボ ×' + G.combo;
+    } else {
+      D.hudCombo.style.display = 'none';
+    }
+  }
+}
+
+/* 一瞬だけ クラスを つけて はずす（パルス用） */
+function pulseEl(el, cls, ms) {
+  if (!el) return;
+  el.classList.remove(cls);
+  // リフロー させて アニメを やりなおす
+  void el.offsetWidth;
+  el.classList.add(cls);
+  setTimeout(function () { if (el) el.classList.remove(cls); }, ms || 500);
+}
+
+/* フィールド復帰トースト（時計や操作を隠さない位置＝中央やや上） */
+let _toastH = null;
+function showToast(html, ms) {
+  const t = D.toast;
+  if (!t) return;
+  t.innerHTML = html;
+  t.style.display = '';
+  pulseEl(t, 'toast-pop', 700);
+  if (_toastH) clearTimeout(_toastH);
+  _toastH = setTimeout(function () { if (t) t.style.display = 'none'; }, ms || 1400);
 }
 
 /* 捕獲シーンから もどる。result = {caught:bool, key, name, pts, mm, big} | null */
 function returnToField(result) {
   if (result && result.caught) {
+    // コンボ ふやして 倍率を かける（result.pts は base＝big×2 まで反映ずみ）
+    G.combo++;
+    const gained = Math.round((result.pts || 0) * comboMult(G.combo));
+    result.gained = gained; // りれきに のこす
+    // ずかん：はじめての しゅかどうか しらべてから seen へ
+    let isNew = false;
+    if (result.key) {
+      if (!Array.isArray(G.best.seen)) G.best.seen = [];
+      if (G.best.seen.indexOf(result.key) < 0) { isNew = true; G.best.seen.push(result.key); }
+    }
+    result.isNew = isNew;
     G.caught.push(result);
-    G.score += result.pts;
+    G.score += gained;
+    // トースト（でかい!!・コンボ×N を併記）
+    let extra = '';
+    if (result.big) extra += ' <b class="t-big">でかい!!</b>';
+    if (G.combo >= 2) extra += ' <b class="t-combo">コンボ ×' + G.combo + '</b>';
+    showToast('<span class="t-main">+' + gained + 'pt ' + (result.name || 'むし') + '！</span>' + extra, 1500);
+    pulseEl(D.hudScore, 'pulse', 600);
+  } else if (result && result.caught === false) {
+    G.combo = 0; // にがした → とぎれる
   }
   G.player.busy = false;
   G.cs = null;
@@ -1129,10 +1405,14 @@ function showResult(win) {
     Sound.sfx.win();
   }
   html += `<div class="res-stat">つかまえた: ${G.caught.length}ひき ／ でかい!! ×${big} ／ さいだい ${maxMm}mm</div>`;
-  // つかまえた虫の一覧
+  // ずかん コンプ ぐあい
+  const seenN = (G.best.seen && G.best.seen.length) || 0;
+  html += `<div class="res-dex">📖 ずかん ${seenN}/${bugTotal()}</div>`;
+  // つかまえた虫の一覧（はじめて の しゅには NEW バッジ）
   html += '<div class="res-list">';
   G.caught.forEach(c => {
-    html += `<div class="res-bug">${bugSprite(c.key, 42)}<span>${c.name}<br>${c.mm}mm ${c.big ? '★' : ''}</span></div>`;
+    const newBadge = c.isNew ? '<span class="res-new">NEW</span>' : '';
+    html += `<div class="res-bug">${newBadge}${bugSprite(c.key, 42)}<span>${c.name}<br>${c.mm}mm ${c.big ? '★' : ''}</span></div>`;
   });
   if (!G.caught.length) html += '<div class="res-empty">1ぴきも つかまえられなかった…</div>';
   html += '</div>';
@@ -1173,6 +1453,31 @@ function bindInput() {
 }
 
 /* ============================================================
+   「やめる」二だんかい かくにん
+   1回目：ラベルかえて トースト。2.5秒いないの 2回目で endRun。
+   ============================================================ */
+let _giveArmed = false;
+let _giveH = null;
+function resetGiveup() {
+  _giveArmed = false;
+  if (_giveH) { clearTimeout(_giveH); _giveH = null; }
+  if (D.giveBtn) D.giveBtn.textContent = 'やめる';
+}
+function handleGiveup() {
+  if (!G.running) return;
+  if (_giveArmed) {
+    resetGiveup();
+    endRun();
+    return;
+  }
+  _giveArmed = true;
+  if (D.giveBtn) D.giveBtn.textContent = 'ほんとに？';
+  showToast('もういちど おすと やめる', 2400);
+  if (_giveH) clearTimeout(_giveH);
+  _giveH = setTimeout(function () { resetGiveup(); }, 2500);
+}
+
+/* ============================================================
    初期化
    ============================================================ */
 function initGame() {
@@ -1181,6 +1486,9 @@ function initGame() {
   D.hudTime = document.getElementById('hud-time');
   D.hudScore = document.getElementById('hud-score');
   D.hudCpu = document.getElementById('hud-cpu');
+  D.hudCombo = document.getElementById('hud-combo');
+  D.toast = document.getElementById('toast');
+  D.giveBtn = document.getElementById('btn-giveup');
   D.bestLabel = document.getElementById('best-label');
   D.resultBody = document.getElementById('result-body');
 
@@ -1207,9 +1515,12 @@ function initGame() {
   const againBtn = document.getElementById('btn-again');
   if (againBtn) againBtn.addEventListener('click', () => { gotoModeSelect(); });
 
-  // フィールドの「あきらめる」
-  const giveBtn = document.getElementById('btn-giveup');
-  if (giveBtn) giveBtn.addEventListener('click', () => { if (G.running) endRun(); });
+  // リザルト →「もう一回」（直前の mode/cpuLv/night の まま）
+  const retryBtn = document.getElementById('btn-retry');
+  if (retryBtn) retryBtn.addEventListener('click', () => { startRun(); });
+
+  // フィールドの「やめる」（二だんかい かくにん）
+  if (D.giveBtn) D.giveBtn.addEventListener('click', handleGiveup);
 
   // サウンドトグル
   const muteBtn = document.getElementById('btn-mute');
@@ -1253,7 +1564,11 @@ function enterCatch(sign) {
   if (!bug) { returnToField(null); return; } // ねんのため
 
   // 個体差(0.85〜1.35) と 夜ボーナス で サイズと でかむし判定
-  var sizeF = 0.85 + U.rnd() * 0.5;
+  // ⑦(任意・軽) でかい!! を レア度と そうかん: レア(w 小)ほど 大物が でやすい
+  var w = bug.w || 3;
+  var rareBoost = w === 1 ? 0.10 : w === 2 ? 0.05 : 0; // やり過ぎない
+  var sizeF = 0.85 + U.rnd() * 0.5 + rareBoost;
+  sizeF = U.clamp(sizeF, 0.85, 1.45);
   var big = sizeF >= 1.25;
   var mm = Math.round(bug.sizeBase * sizeF * (G.night ? 1.06 : 1));
 
@@ -1269,6 +1584,7 @@ function enterCatch(sign) {
     pts: bug.pts * (big ? 2 : 1),
     over: false, // けっちゃくが ついたか
     busy: false, // えんしゅつ中（ボタン れんだ ふせぎ）
+    busyAnim: false, // 吸い込み／逃走の アニメ中（right を いじらない）
     warned: false, // 「にげそう!」予告ずみか
     graced: false, // 予告の 1かい ゆうよを つかったか
   };
@@ -1278,6 +1594,12 @@ function enterCatch(sign) {
   csLog('🌿 ガサッ…! <b>' + bug.name + '</b>を みつけた！（' + CONFIG.START_DIST + 'm さき・およそ ' + mm + 'mm）');
   Sound.sfx.select();
   showScreen('catch-screen');
+
+  // combo>=2 なら もりあげる（G.combo は core が かんり・ここでは よむだけ）
+  var combo = (typeof G !== 'undefined' && G && typeof G.combo === 'number') ? G.combo : 0;
+  if (combo >= 2) {
+    csLog('🔥 コンボ ×' + combo + ' つづいてる！ この いきおいで いこう！');
+  }
 
   // でかむしは とうじょうで ひとこえ
   if (big) {
@@ -1299,19 +1621,22 @@ function buildCatchUI() {
       '<span class="cs-name" id="cs-name">' + cs.name + (cs.big ? ' ★' : '') + '</span>' +
     '</div>' +
     '<div class="cs-alert-wrap">' +
-      '<div class="cs-alert-label"><span>けいかい</span><span id="cs-alert-num">0%</span></div>' +
+      '<div class="cs-alert-label">' +
+        '<span>けいかい <span class="cs-alert-state" id="cs-alert-state">よゆう😺</span></span>' +
+        '<span id="cs-alert-num">0%</span>' +
+      '</div>' +
       '<div class="cs-alert-bar"><div class="cs-alert-fill" id="cs-alert-fill"></div></div>' +
     '</div>' +
     '<div class="cs-arena" id="cs-arena">' +
       '<div class="cs-bug" id="cs-bug">' + bugSprite(cs.key, bugPx) + '</div>' +
-      '<div class="cs-hunter">🥅</div>' +
+      '<div class="cs-hunter" id="cs-hunter">🥅</div>' +
     '</div>' +
     '<div class="cs-log" id="cs-log"></div>' +
     '<div class="cs-actions">' +
       '<button class="cs-btn approach" id="cs-approach">ちかよる<small>2m すすむ・ばれやすい</small></button>' +
       '<button class="cs-btn sneak" id="cs-sneak">そっと<small>1m すすむ・しずか</small></button>' +
       '<button class="cs-btn wait" id="cs-wait">まつ<small>けいかいを さげる</small></button>' +
-      '<button class="cs-btn net" id="cs-net">あみを ふる！<small id="cs-net-acc"></small></button>' +
+      '<button class="cs-btn net" id="cs-net"><span class="cs-net-main">あみを ふる！</span><small id="cs-net-acc"></small></button>' +
     '</div>';
 
   document.getElementById('cs-approach').onclick = function () { csAct('approach'); };
@@ -1322,7 +1647,7 @@ function buildCatchUI() {
 
 /* むしの 見た目サイズ(px)。個体差で すこし おおきく */
 function csBugPx() {
-  var f = U.clamp(G.cs.sizeF, 0.85, 1.35);
+  var f = U.clamp(G.cs.sizeF, 0.85, 1.45);
   return Math.round(CS_BUG_PX_MIN + (CS_BUG_PX_MAX - CS_BUG_PX_MIN) * ((f - 0.85) / 0.5));
 }
 
@@ -1341,41 +1666,114 @@ function csHitRate() {
   return U.clamp(base + bonus, 0.05, 0.97);
 }
 
+/* 命中りつ → めやす記号 ◎/○/△ と クラス名 */
+function csHitMark(rate) {
+  if (rate >= 0.75) return { mark: '◎', cls: 'good', word: 'ねらいめ！' };
+  if (rate >= 0.55) return { mark: '○', cls: 'ok', word: 'いけそう' };
+  return { mark: '△', cls: 'bad', word: 'むずかしい' };
+}
+
 /* 画面（きょり・ゲージ・ボタン・むし位置）を かきなおす */
 function csRender() {
   var cs = G.cs;
   if (!cs) return;
   var a = Math.round(cs.alert);
   var aClamp = Math.min(100, Math.max(0, a));
+  var rate = csHitRate();
+  var hm = csHitMark(rate);
+  var round0 = Math.round(cs.dist) <= 0; // 0m（ちかすぎ）
 
+  // きょりバッジ: めやす記号を 色つきで そえる（数値%も いきる）
   var dist = document.getElementById('cs-dist');
-  if (dist) dist.textContent = cs.dist <= 1 ? '🎯 とどく！' : 'あと ' + cs.dist + 'm';
+  if (dist) {
+    var distTxt = cs.dist <= 1 ? '🎯 とどく！' : 'あと ' + cs.dist + 'm';
+    if (round0) distTxt = '⚠️ ちかすぎ！';
+    dist.innerHTML = distTxt + ' <span class="cs-mark ' + hm.cls + '">' + hm.mark + '</span>';
+    dist.classList.remove('mk-good', 'mk-ok', 'mk-bad');
+    dist.classList.add('mk-' + hm.cls);
+  }
 
   var fill = document.getElementById('cs-alert-fill');
   if (fill) {
     fill.style.width = aClamp + '%';
     fill.classList.toggle('warn', aClamp >= 70 && aClamp < 90);
-    fill.classList.toggle('danger', aClamp >= 90);
+    fill.classList.toggle('danger', aClamp >= 90); // ≥90 で 鼓動パルス(CSS)
   }
   var num = document.getElementById('cs-alert-num');
   if (num) num.textContent = aClamp + '%';
 
+  // ⑥ ゲージ脇の じょうたい（色だけに たよらない）
+  var stEl = document.getElementById('cs-alert-state');
+  if (stEl) {
+    var st = csAlertState(aClamp);
+    stEl.textContent = st.word + st.emoji;
+    stEl.classList.remove('s-calm', 's-care', 's-danger', 's-flee');
+    stEl.classList.add(st.cls);
+  }
+
   var arena = document.getElementById('cs-arena');
-  if (arena) arena.classList.toggle('warn-glow', aClamp >= 70);
+  if (arena) {
+    arena.classList.toggle('warn-glow', aClamp >= 70);
+    arena.classList.toggle('danger-glow', aClamp >= 90); // ④ 明滅
+  }
 
   // むしの 横位置: きょりが ちかいほど 左(プレイヤー)へ よる
   var bugEl = document.getElementById('cs-bug');
   if (bugEl) {
     var t = U.clamp(cs.dist / CONFIG.START_DIST, 0, 1); // 0=ちかい 1=とおい
-    bugEl.style.right = (6 + t * 30) + '%';
+    // えんしゅつ中(吸い込み・逃走)は right を いじらない
+    if (!cs.over && !cs.busyAnim) bugEl.style.right = (6 + t * 30) + '%';
+    // ② 警戒≥70 で 震える / 解除で 外す
+    bugEl.classList.toggle('tremble', aClamp >= 70 && !cs.over);
   }
 
-  // あみ命中りつ ひょうじ
+  // あみ命中りつ ひょうじ（記号＋%）。0mは「ちかすぎ！」を出す
   var accEl = document.getElementById('cs-net-acc');
-  if (accEl) accEl.textContent = 'めいちゅう やく ' + Math.round(csHitRate() * 100) + '%';
+  if (accEl) {
+    if (round0) {
+      accEl.innerHTML = '<span class="cs-mark ' + hm.cls + '">' + hm.mark + '</span> ちかすぎ！ てづかみは むずかしい';
+    } else {
+      accEl.innerHTML = '<span class="cs-mark ' + hm.cls + '">' + hm.mark + '</span> めいちゅう やく ' + Math.round(rate * 100) + '%';
+    }
+  }
+  var netBtn = document.getElementById('cs-net');
+  if (netBtn) {
+    netBtn.classList.remove('acc-good', 'acc-ok', 'acc-bad');
+    netBtn.classList.add('acc-' + hm.cls);
+    // ⑤ 予告(warn)中は 網ボタンを 強調パルス
+    netBtn.classList.toggle('urge', cs.warned && !cs.over);
+  }
+
+  // ⑤ 予告中の さそい「いま あみ！」
+  csUpdateWarnPop(cs.warned && !cs.over && aClamp >= CONFIG.ALERT_WARN);
 
   // ボタン ゆうこう／むこう
   csSetButtons(!cs.busy && !cs.over);
+}
+
+/* ⑥ けいかい度 → じょうたい（絵文字＋ことば＋クラス） */
+function csAlertState(a) {
+  if (a < 40) return { word: 'よゆう', emoji: '😺', cls: 's-calm' };
+  if (a < 70) return { word: 'ちゅうい', emoji: '😼', cls: 's-care' };
+  if (a < 90) return { word: 'あぶない', emoji: '🙀', cls: 's-danger' };
+  return { word: 'にげる！', emoji: '😾', cls: 's-flee' };
+}
+
+/* ⑤ 「いま あみ！」さそいポップの 出し入れ（常設・点滅はCSS） */
+function csUpdateWarnPop(show) {
+  var arena = document.getElementById('cs-arena');
+  if (!arena) return;
+  var pop = arena.querySelector('.cs-warn-now');
+  if (show) {
+    if (!pop) {
+      pop = document.createElement('div');
+      pop.className = 'cs-warn-now';
+      pop.textContent = 'いま あみ！';
+      arena.appendChild(pop);
+    }
+  } else if (pop) {
+    pop.remove();
+  }
 }
 
 /* ぜんボタンの ゆうこう／むこうを いっかつ きりかえ */
@@ -1486,6 +1884,45 @@ function csShowWarnPop() {
   setTimeout(function () { if (pop.parentNode) pop.remove(); }, 900);
 }
 
+/* クラスを つけて 一定時間後に はずす（アニメ完了まち・例外で落ちない） */
+function csClassFor(el, cls, ms) {
+  if (!el) return;
+  el.classList.add(cls);
+  setTimeout(function () { if (el && el.classList) el.classList.remove(cls); }, ms || 600);
+}
+
+/* ① 白フラッシュを アリーナに 一瞬 だす */
+function csFlash() {
+  var arena = document.getElementById('cs-arena');
+  if (!arena) return;
+  var fx = document.createElement('div');
+  fx.className = 'cs-flash';
+  arena.appendChild(fx);
+  setTimeout(function () { if (fx.parentNode) fx.remove(); }, 360);
+}
+
+/* ① big のキラキラ */
+function csSparkle() {
+  var arena = document.getElementById('cs-arena');
+  if (!arena) return;
+  var box = document.createElement('div');
+  box.className = 'cs-sparkle';
+  box.innerHTML = '<span>✨</span><span>⭐</span><span>✨</span><span>🌟</span><span>✨</span>';
+  arena.appendChild(box);
+  setTimeout(function () { if (box.parentNode) box.remove(); }, 900);
+}
+
+/* 逃走の 土ぼこり */
+function csDust() {
+  var arena = document.getElementById('cs-arena');
+  if (!arena) return;
+  var d = document.createElement('div');
+  d.className = 'cs-dust';
+  d.textContent = '💨';
+  arena.appendChild(d);
+  setTimeout(function () { if (d.parentNode) d.remove(); }, 700);
+}
+
 /* あみを ふる */
 function csSwing() {
   var cs = G.cs;
@@ -1497,24 +1934,30 @@ function csSwing() {
   var rate = csHitRate();
   csLog('🥅 えいっ！ あみを ふった！');
 
+  // ① 網スイングアニメ（虫へ ふる）
+  csClassFor(document.getElementById('cs-hunter'), 'swing', 460);
+
   setTimeout(function () {
     if (!cs || cs.over) return;
     if (U.chance(rate)) {
       // めいちゅう → ほかく せいこう
       cs.over = true;
+      cs.busyAnim = true;
       Sound.sfx.catch();
-      if (cs.big) Sound.sfx.big();
+      // ① 白フラッシュ＋虫が 網へ 吸い込まれ消える
+      csFlash();
       var bugEl = document.getElementById('cs-bug');
-      if (bugEl) bugEl.style.transform = 'scale(.2)';
+      if (bugEl) { bugEl.classList.add('caught-suck'); }
+      if (cs.big) { Sound.sfx.big(); csSparkle(); } // big は キラキラ追加・音
       csLog('🎉 やったー！ <b>' + cs.name + '</b>（' + cs.mm + 'mm）を つかまえた！ +' + cs.pts + 'てん'
         + (cs.big ? '（でかボーナス ×2！）' : ''));
       csFinish(true);
     } else {
-      // はずれ → けいかい大up
+      // はずれ → 虫が 素早く回避＋小ゆれ → けいかい大up
       Sound.sfx.miss();
       cs.alert = U.clamp(cs.alert + 35, 0, 200);
       var bugEl2 = document.getElementById('cs-bug');
-      if (bugEl2) { bugEl2.style.transform = 'translateX(-6px)'; setTimeout(function(){ if(bugEl2) bugEl2.style.transform=''; }, 200); }
+      csClassFor(bugEl2, 'dodge', 360); // ① 素早い回避＋小ゆれ
       csRender();
       if (cs.alert >= CONFIG.ALERT_FLEE) {
         csLog('😖 はずした…！ ' + cs.name + 'が おどろいた！');
@@ -1537,10 +1980,15 @@ function csSwing() {
 function csFlee(msg) {
   var cs = G.cs;
   if (!cs || cs.over) { /* over=trueでも 演出ずみなら そのまま */ }
-  if (cs) cs.over = true;
+  if (cs) { cs.over = true; cs.busyAnim = true; }
   Sound.sfx.flee();
   var bugEl = document.getElementById('cs-bug');
-  if (bugEl) { bugEl.style.transition = 'right .5s ease, opacity .5s'; bugEl.style.right = '-30%'; bugEl.style.opacity = '0'; }
+  if (bugEl) {
+    bugEl.classList.remove('tremble');
+    bugEl.classList.add('flee-dash'); // ① 画面外へ ダッシュ（CSS）
+  }
+  csDust(); // ① 土ぼこり
+  csUpdateWarnPop(false);
   csLog(msg);
   csSetButtons(false);
   csFinish(false);
@@ -2881,6 +3329,24 @@ function _update(dtMs, now) {
   }
 
   if (G.mode === 'vs') cpuTick(dtMs);
+
+  // テンポ: 場の けはいが ふえなさすぎ／枯れすぎ ないよう、たまに 目安数まで そっと おぎなう。
+  // （やり過ぎない: たりない ぶんを ゆっくり 1こずつ。既存の respawn と けんかしない軽い保険）
+  _topUpSigns(dtMs);
+}
+
+/* けはいの 目安数を ほそく たもつ（こまめに 1こだけ おぎなう）。れいがいで おちない */
+let _signTopAcc = 0;
+function _topUpSigns(dtMs) {
+  try {
+    if (!G.running || !G.signs) return;
+    _signTopAcc += dtMs || 0;
+    if (_signTopAcc < 900) return; // やく0.9秒ごとに しらべる（軽く）
+    _signTopAcc = 0;
+    const target = (typeof CONFIG !== 'undefined' && CONFIG.SIGN_TARGET) ? CONFIG.SIGN_TARGET : 9;
+    // 既存の respawn タイマも うごくので、ここでは「いちじるしく たりない」ときだけ 1こ
+    if (G.signs.length < target - 1) spawnSign();
+  } catch (e) { /* むし */ }
 }
 
 /* プレイヤーが けはいタイルへ → 捕獲シーンへ */
@@ -3039,8 +3505,22 @@ function _drawField(now) {
     } else if (it.kind === 'sign') {
       const s = it.sign;
       const cx = sX(_tileCx(s.tx)), cy = sY(_tileCy(s.ty));
-      if (T && T.sign) T.sign(ctx, cx, cy, TS, time);
-      else { ctx.fillStyle = '#3e7e36'; ctx.beginPath(); ctx.arc(cx, cy, TS * 0.25, 0, 7); ctx.fill(); }
+      // レアヒント: w で みための おおきさ＆きらめきを かえる（tiles.js は さわらない）
+      const rare = _signRare(s);           // 1=レア / 2=中堅 / 3=ふつう
+      _drawSignAura(ctx, cx, cy, TS, rare, s, time); // けはいの まえに オーラ／ひかり
+      const scale = rare === 1 ? 1.32 : rare === 2 ? 1.14 : 1.0; // レアほど 大きめ
+      if (T && T.sign) {
+        if (scale !== 1) {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.scale(scale, scale);
+          T.sign(ctx, 0, 0, TS, time);
+          ctx.restore();
+        } else {
+          T.sign(ctx, cx, cy, TS, time);
+        }
+      } else { ctx.fillStyle = '#3e7e36'; ctx.beginPath(); ctx.arc(cx, cy, TS * 0.25 * scale, 0, 7); ctx.fill(); }
+      if (rare === 1) _drawSignSparkle(ctx, cx, cy, TS, s, time); // レアは 星の きらめきを うえに
     } else if (it.kind === 'cpu') {
       const c = G.cpu;
       const cx = sX(c.x), cy = sY(c.y);
@@ -3068,6 +3548,127 @@ function _drawField(now) {
     grad.addColorStop(1, 'rgba(8,12,30,.75)');
     ctx.fillStyle = grad; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   }
+}
+
+/* けはいの レア度を かえす（1=レア / 2=中堅 / 3=ふつう）。BUGS未定義でも おちない */
+function _signRare(s) {
+  try {
+    const b = (typeof BUGS !== 'undefined' && s && s.key) ? BUGS[s.key] : null;
+    const w = (b && typeof b.w === 'number') ? b.w : 3;
+    if (w <= 1) return 1;
+    if (w === 2) return 2;
+    return 3;
+  } catch (e) { return 3; }
+}
+
+/* けはいの 種いろ（淡いオーラ用）。なければ きいろ系で フォールバック */
+function _signColor(s) {
+  try {
+    const b = (typeof BUGS !== 'undefined' && s && s.key) ? BUGS[s.key] : null;
+    const c = b && b.color;
+    if (typeof c === 'string' && c[0] === '#' && (c.length === 7 || c.length === 4)) return c;
+  } catch (e) { /* むし */ }
+  return '#ffe478';
+}
+
+/* '#rrggbb' / '#rgb' を rgba もじれつへ（パースできなければ きいろ） */
+function _toRgba(hex, a) {
+  try {
+    let h = hex;
+    if (h.length === 4) h = '#' + h[1] + h[1] + h[2] + h[2] + h[3] + h[3];
+    const r = parseInt(h.slice(1, 3), 16);
+    const g = parseInt(h.slice(3, 5), 16);
+    const b = parseInt(h.slice(5, 7), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return 'rgba(255,228,120,' + a + ')';
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+  } catch (e) { return 'rgba(255,228,120,' + a + ')'; }
+}
+
+/* けはいの あしもとに 淡い ひかりの オーラ（レアほど 大きく あかるく 明滅）。
+   Tiles.sign の まえに よぶ（うしろがわの ひかり）。れいがいで おちない。 */
+function _drawSignAura(ctx, cx, cy, ts, rare, s, time) {
+  try {
+    if (rare === 3) return; // ふつう は いままで どおり（そうしょく なし）
+    const t = (time || 0) * 0.001;
+    const col = _signColor(s);
+    // 明滅（0..1）。レアは つよめ、中堅は ひかえめ
+    const puls = 0.5 + 0.5 * Math.sin(t * (rare === 1 ? 3.2 : 2.2) + (s && s.id ? s.id : 0));
+    const baseR = rare === 1 ? ts * 0.62 : ts * 0.42;
+    const r = baseR * (1 + 0.10 * puls);
+    const aMax = rare === 1 ? 0.34 : 0.18;
+    const a = aMax * (0.6 + 0.4 * puls);
+    ctx.save();
+    let g = null;
+    try { g = ctx.createRadialGradient(cx, cy - ts * 0.12, r * 0.15, cx, cy - ts * 0.12, r); }
+    catch (e) { g = null; }
+    if (g) {
+      g.addColorStop(0, _toRgba(col, a));
+      g.addColorStop(0.6, _toRgba(col, a * 0.5));
+      g.addColorStop(1, _toRgba(col, 0));
+      ctx.fillStyle = g;
+    } else {
+      ctx.fillStyle = _toRgba(col, a * 0.5);
+    }
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - ts * 0.12, r, r * 0.78, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // レアは ひかりの リングも ひとつ（まわる ような 明滅）
+    if (rare === 1) {
+      ctx.lineWidth = Math.max(1, ts * 0.03);
+      ctx.strokeStyle = _toRgba(col, 0.30 * (0.5 + 0.5 * puls));
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - ts * 0.05, r * 0.78, r * 0.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  } catch (e) { /* むし */ }
+}
+
+/* レアの けはいに 星の きらめき（Tiles.sign の うえに かさねる）。れいがいで おちない */
+function _drawSignSparkle(ctx, cx, cy, ts, s, time) {
+  try {
+    const t = (time || 0) * 0.001;
+    const seedId = (s && s.id) ? s.id : 1;
+    const stars = 3;
+    ctx.save();
+    for (let i = 0; i < stars; i++) {
+      // それぞれ ちがう いちで まわりながら ちかちか
+      const ang = t * 1.1 + i * (Math.PI * 2 / stars) + seedId * 0.7;
+      const orbit = ts * (0.34 + 0.06 * Math.sin(t * 2 + i));
+      const sxp = cx + Math.cos(ang) * orbit;
+      const syp = cy - ts * 0.55 + Math.sin(ang) * orbit * 0.5;
+      const tw = 0.5 + 0.5 * Math.sin(t * 5 + i * 1.9 + seedId);
+      const a = 0.45 + 0.5 * tw;
+      const sr = ts * (0.05 + 0.04 * tw);
+      _drawStar(ctx, sxp, syp, sr, a);
+    }
+    ctx.restore();
+  } catch (e) { /* むし */ }
+}
+
+/* ちいさな 4ほうの きらきら星（十字のひかり） */
+function _drawStar(ctx, x, y, r, a) {
+  try {
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+    ctx.beginPath();
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x + r * 0.28, y - r * 0.28);
+    ctx.lineTo(x + r, y);
+    ctx.lineTo(x + r * 0.28, y + r * 0.28);
+    ctx.lineTo(x, y + r);
+    ctx.lineTo(x - r * 0.28, y + r * 0.28);
+    ctx.lineTo(x - r, y);
+    ctx.lineTo(x - r * 0.28, y - r * 0.28);
+    ctx.closePath();
+    ctx.fill();
+    // ちゅうしんの ほんのり きいろ
+    ctx.fillStyle = 'rgba(255,240,170,' + (a * 0.8) + ')';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  } catch (e) { /* むし */ }
 }
 
 /* 歩きフェーズ（0..1）。moving中は じかんで ぐるぐる、とまっていれば ゆっくり ゆれ */

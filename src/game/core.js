@@ -41,6 +41,7 @@ const G = {
   timeLeft: 0,
   score: 0,
   cpuScore: 0,
+  combo: 0,         // れんぞく ほかく かず（0=とぎれた）
   caught: [],       // [{key,name,pts,mm,big}]
   cpuCaught: [],
   // フィールド
@@ -53,7 +54,7 @@ const G = {
   // 捕獲シーン
   cs: null,
   // 保存
-  best: { solo: 0 },
+  best: { solo: 0, seen: [] }, // seen: つかまえた ことの ある しゅの キーはいれつ
   vsUnlocked: 1,    // 解放済みCPUレベル
   sfxOn: true,
 };
@@ -79,6 +80,16 @@ const U = {
   },
 };
 
+/* ---- コンボ倍率（combo1→×1, 2→×1.25, 3→×1.5, 4→×1.75, 5+→×2） ---- */
+function comboMult(n) {
+  return Math.min(2, 1 + 0.25 * (n - 1));
+}
+
+/* ---- ずかんの総しゅすう ---- */
+function bugTotal() {
+  return (typeof BUGS !== 'undefined') ? Object.keys(BUGS).length : 0;
+}
+
 /* ---- DOM参照（init で埋める） ---- */
 const D = {};
 
@@ -99,6 +110,7 @@ function loadSave() {
     if (raw) {
       const s = JSON.parse(raw);
       if (s.best) G.best = Object.assign(G.best, s.best);
+      if (!Array.isArray(G.best.seen)) G.best.seen = []; // ふるい セーブの ほご
       if (s.vsUnlocked) G.vsUnlocked = s.vsUnlocked;
       if (typeof s.sfxOn === 'boolean') G.sfxOn = s.sfxOn;
     }
@@ -140,7 +152,9 @@ function refreshModeSelect() {
 function startRun() {
   G.running = true;
   G.score = 0; G.cpuScore = 0;
+  G.combo = 0;
   G.caught = []; G.cpuCaught = [];
+  resetGiveup(); // 「やめる」かくにん じょうたいの リセット
   G.timeLeft = CONFIG.ROUND_SEC;
   G.signs = []; G.signSeq = 0;
   G.input.dx = 0; G.input.dy = 0;
@@ -178,13 +192,62 @@ function updateHud() {
     D.hudCpu.style.display = G.mode === 'vs' ? '' : 'none';
     D.hudCpu.textContent = '🤖 ' + G.cpuScore;
   }
+  if (D.hudCombo) {
+    if (G.combo >= 2) {
+      D.hudCombo.style.display = '';
+      D.hudCombo.textContent = '🔥コンボ ×' + G.combo;
+    } else {
+      D.hudCombo.style.display = 'none';
+    }
+  }
+}
+
+/* 一瞬だけ クラスを つけて はずす（パルス用） */
+function pulseEl(el, cls, ms) {
+  if (!el) return;
+  el.classList.remove(cls);
+  // リフロー させて アニメを やりなおす
+  void el.offsetWidth;
+  el.classList.add(cls);
+  setTimeout(function () { if (el) el.classList.remove(cls); }, ms || 500);
+}
+
+/* フィールド復帰トースト（時計や操作を隠さない位置＝中央やや上） */
+let _toastH = null;
+function showToast(html, ms) {
+  const t = D.toast;
+  if (!t) return;
+  t.innerHTML = html;
+  t.style.display = '';
+  pulseEl(t, 'toast-pop', 700);
+  if (_toastH) clearTimeout(_toastH);
+  _toastH = setTimeout(function () { if (t) t.style.display = 'none'; }, ms || 1400);
 }
 
 /* 捕獲シーンから もどる。result = {caught:bool, key, name, pts, mm, big} | null */
 function returnToField(result) {
   if (result && result.caught) {
+    // コンボ ふやして 倍率を かける（result.pts は base＝big×2 まで反映ずみ）
+    G.combo++;
+    const gained = Math.round((result.pts || 0) * comboMult(G.combo));
+    result.gained = gained; // りれきに のこす
+    // ずかん：はじめての しゅかどうか しらべてから seen へ
+    let isNew = false;
+    if (result.key) {
+      if (!Array.isArray(G.best.seen)) G.best.seen = [];
+      if (G.best.seen.indexOf(result.key) < 0) { isNew = true; G.best.seen.push(result.key); }
+    }
+    result.isNew = isNew;
     G.caught.push(result);
-    G.score += result.pts;
+    G.score += gained;
+    // トースト（でかい!!・コンボ×N を併記）
+    let extra = '';
+    if (result.big) extra += ' <b class="t-big">でかい!!</b>';
+    if (G.combo >= 2) extra += ' <b class="t-combo">コンボ ×' + G.combo + '</b>';
+    showToast('<span class="t-main">+' + gained + 'pt ' + (result.name || 'むし') + '！</span>' + extra, 1500);
+    pulseEl(D.hudScore, 'pulse', 600);
+  } else if (result && result.caught === false) {
+    G.combo = 0; // にがした → とぎれる
   }
   G.player.busy = false;
   G.cs = null;
@@ -235,10 +298,14 @@ function showResult(win) {
     Sound.sfx.win();
   }
   html += `<div class="res-stat">つかまえた: ${G.caught.length}ひき ／ でかい!! ×${big} ／ さいだい ${maxMm}mm</div>`;
-  // つかまえた虫の一覧
+  // ずかん コンプ ぐあい
+  const seenN = (G.best.seen && G.best.seen.length) || 0;
+  html += `<div class="res-dex">📖 ずかん ${seenN}/${bugTotal()}</div>`;
+  // つかまえた虫の一覧（はじめて の しゅには NEW バッジ）
   html += '<div class="res-list">';
   G.caught.forEach(c => {
-    html += `<div class="res-bug">${bugSprite(c.key, 42)}<span>${c.name}<br>${c.mm}mm ${c.big ? '★' : ''}</span></div>`;
+    const newBadge = c.isNew ? '<span class="res-new">NEW</span>' : '';
+    html += `<div class="res-bug">${newBadge}${bugSprite(c.key, 42)}<span>${c.name}<br>${c.mm}mm ${c.big ? '★' : ''}</span></div>`;
   });
   if (!G.caught.length) html += '<div class="res-empty">1ぴきも つかまえられなかった…</div>';
   html += '</div>';
@@ -279,6 +346,31 @@ function bindInput() {
 }
 
 /* ============================================================
+   「やめる」二だんかい かくにん
+   1回目：ラベルかえて トースト。2.5秒いないの 2回目で endRun。
+   ============================================================ */
+let _giveArmed = false;
+let _giveH = null;
+function resetGiveup() {
+  _giveArmed = false;
+  if (_giveH) { clearTimeout(_giveH); _giveH = null; }
+  if (D.giveBtn) D.giveBtn.textContent = 'やめる';
+}
+function handleGiveup() {
+  if (!G.running) return;
+  if (_giveArmed) {
+    resetGiveup();
+    endRun();
+    return;
+  }
+  _giveArmed = true;
+  if (D.giveBtn) D.giveBtn.textContent = 'ほんとに？';
+  showToast('もういちど おすと やめる', 2400);
+  if (_giveH) clearTimeout(_giveH);
+  _giveH = setTimeout(function () { resetGiveup(); }, 2500);
+}
+
+/* ============================================================
    初期化
    ============================================================ */
 function initGame() {
@@ -287,6 +379,9 @@ function initGame() {
   D.hudTime = document.getElementById('hud-time');
   D.hudScore = document.getElementById('hud-score');
   D.hudCpu = document.getElementById('hud-cpu');
+  D.hudCombo = document.getElementById('hud-combo');
+  D.toast = document.getElementById('toast');
+  D.giveBtn = document.getElementById('btn-giveup');
   D.bestLabel = document.getElementById('best-label');
   D.resultBody = document.getElementById('result-body');
 
@@ -313,9 +408,12 @@ function initGame() {
   const againBtn = document.getElementById('btn-again');
   if (againBtn) againBtn.addEventListener('click', () => { gotoModeSelect(); });
 
-  // フィールドの「あきらめる」
-  const giveBtn = document.getElementById('btn-giveup');
-  if (giveBtn) giveBtn.addEventListener('click', () => { if (G.running) endRun(); });
+  // リザルト →「もう一回」（直前の mode/cpuLv/night の まま）
+  const retryBtn = document.getElementById('btn-retry');
+  if (retryBtn) retryBtn.addEventListener('click', () => { startRun(); });
+
+  // フィールドの「やめる」（二だんかい かくにん）
+  if (D.giveBtn) D.giveBtn.addEventListener('click', handleGiveup);
 
   // サウンドトグル
   const muteBtn = document.getElementById('btn-mute');

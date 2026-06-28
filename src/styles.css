@@ -48,7 +48,9 @@ body {
 @keyframes bob { 50% { transform: translateY(-7px); } }
 .title-foot { margin-top: 14px; opacity: .85; font-size: 14px; }
 .mute-btn { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,.35);
-  border: none; color: #fff; font-size: 22px; width: 46px; height: 46px; border-radius: 50%; cursor: pointer; }
+  border: none; color: #fff; font-size: 22px; width: 46px; height: 46px; border-radius: 50%; cursor: pointer;
+  transition: transform .06s, background .06s; }
+.mute-btn:active { transform: scale(.88); background: rgba(0,0,0,.55); }
 
 /* ============================================================
    モード選択
@@ -67,7 +69,8 @@ body {
 .cpu-levels { display: flex; gap: 8px; justify-content: center; margin: 12px 0 4px; flex-wrap: wrap; }
 .cpu-lv { font: 700 15px inherit; color: #fff; border: 2px solid rgba(255,255,255,.5);
   background: rgba(0,0,0,.25); border-radius: 12px; padding: 8px 12px; cursor: pointer; }
-.cpu-lv:active { transform: translateY(2px); }
+.cpu-lv { transition: transform .06s, background .06s; }
+.cpu-lv:active { transform: translateY(2px) scale(.95); background: rgba(0,0,0,.45); }
 .cpu-lv.locked { opacity: .35; border-style: dashed; }
 .cpu-lv.locked::after { content: " 🔒"; }
 .cpu-hint { font-size: 11px; opacity: .8; margin-top: 4px; }
@@ -79,20 +82,43 @@ body {
 .hud { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
 .hud-pill { background: rgba(0,0,0,.45); border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 15px; }
 .hud-pill.cpu { background: rgba(180,72,46,.6); }
+.hud-pill.combo { background: rgba(226,128,40,.85); color: #fff; }
 .hud-give { margin-left: auto; background: rgba(255,255,255,.12); border: none; color: #fff;
-  border-radius: 10px; padding: 6px 12px; font: 700 13px inherit; cursor: pointer; }
-.field-wrap { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  border-radius: 10px; padding: 6px 12px; font: 700 13px inherit; cursor: pointer;
+  transition: transform .06s, background .06s; }
+.hud-give:active { transform: translateY(2px) scale(.96); background: rgba(255,255,255,.32); }
+.field-wrap { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; min-height: 0; position: relative; }
 #field-canvas { width: 100%; height: 100%; max-width: 480px; image-rendering: auto; touch-action: none; }
 
-/* dパッド */
-.dpad { position: relative; width: 190px; height: 190px; margin: 6px auto 16px; flex: none; }
-.dbtn { position: absolute; width: 62px; height: 62px; border-radius: 14px; border: none;
-  background: rgba(255,255,255,.16); color: #fff; font-size: 24px; cursor: pointer; }
-.dbtn:active { background: rgba(255,255,255,.4); }
-.dbtn.up { top: 0; left: 64px; }
-.dbtn.down { bottom: 0; left: 64px; }
-.dbtn.left { left: 0; top: 64px; }
-.dbtn.right { right: 0; top: 64px; }
+/* HUDコンボ ピルの パルス */
+.hud-pill.combo { animation: combopulse 1s ease-in-out infinite; }
+@keyframes combopulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+/* スコア ピルの 一瞬パルス（加点時） */
+.hud-pill.pulse { animation: scorepop .55s ease; }
+@keyframes scorepop { 0% { transform: scale(1); } 35% { transform: scale(1.35); color: #ffe14d; } 100% { transform: scale(1); } }
+
+/* 復帰トースト（フィールド上・中央やや上＝時計やdパッドを隠さない） */
+.toast { position: absolute; top: 14%; left: 50%; transform: translateX(-50%);
+  background: rgba(20,54,31,.92); color: #fff; border-radius: 14px; padding: 10px 16px;
+  font-weight: 800; font-size: 16px; text-align: center; white-space: nowrap; pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,.45); z-index: 30; max-width: 92%; }
+.toast .t-main { font-size: 17px; }
+.toast .t-big { color: #ffd84d; }
+.toast .t-combo { color: #ff9b4d; }
+.toast.toast-pop { animation: toastpop .5s ease; }
+@keyframes toastpop { 0% { transform: translateX(-50%) scale(.5); opacity: 0; } 60% { transform: translateX(-50%) scale(1.1); opacity: 1; } 100% { transform: translateX(-50%) scale(1); } }
+
+/* dパッド（ボタン拡大＋セーフエリア余白で誤タップ低減） */
+.dpad { position: relative; width: 220px; height: 220px;
+  margin: 6px auto calc(16px + env(safe-area-inset-bottom)); flex: none; }
+.dbtn { position: absolute; width: 68px; height: 68px; border-radius: 16px; border: none;
+  background: rgba(255,255,255,.16); color: #fff; font-size: 26px; cursor: pointer;
+  transition: transform .05s, background .05s; }
+.dbtn:active { background: rgba(255,255,255,.42); transform: scale(.92); }
+.dbtn.up { top: 0; left: 76px; }
+.dbtn.down { bottom: 0; left: 76px; }
+.dbtn.left { left: 0; top: 76px; }
+.dbtn.right { right: 0; top: 76px; }
 
 /* ============================================================
    捕獲シーン（catch.js が #catch-root に描画）
@@ -145,11 +171,18 @@ body {
 .res-score { text-align: center; font-size: 18px; }
 .res-score b { font-size: 30px; color: #ffe14d; }
 .res-best { text-align: center; font-size: 13px; opacity: .85; margin-top: 4px; }
-.res-stat { text-align: center; font-size: 13px; opacity: .9; margin: 10px 0; }
+.res-stat { text-align: center; font-size: 13px; opacity: .9; margin: 10px 0 4px; }
+.res-dex { text-align: center; font-size: 15px; font-weight: 800; color: #8fe0a8; margin: 0 0 10px; }
 .res-list { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 16px; }
-.res-bug { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.08);
+.res-bug { position: relative; display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.08);
   border-radius: 10px; padding: 6px 10px; font-size: 12px; }
+.res-new { position: absolute; top: -7px; left: -7px; background: #ffce29; color: #5a3a00;
+  font-weight: 900; font-size: 10px; padding: 1px 5px; border-radius: 7px; transform: rotate(-12deg);
+  box-shadow: 0 1px 3px rgba(0,0,0,.4); }
 .res-empty { text-align: center; opacity: .7; padding: 20px; }
+.result-btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.big-btn.retry { background: linear-gradient(#f0a93a, #d4842a); box-shadow: 0 5px 0 #9a5e15, 0 8px 16px rgba(0,0,0,.4); }
+.big-btn.retry:active { box-shadow: 0 1px 0 #9a5e15; }
 
 /* 紙吹雪（勝利） */
 .confetti { position: fixed; top: -10px; width: 9px; height: 14px; opacity: .9; z-index: 50; animation: fall linear forwards; }

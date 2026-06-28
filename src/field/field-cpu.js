@@ -495,6 +495,24 @@ function _update(dtMs, now) {
   }
 
   if (G.mode === 'vs') cpuTick(dtMs);
+
+  // テンポ: 場の けはいが ふえなさすぎ／枯れすぎ ないよう、たまに 目安数まで そっと おぎなう。
+  // （やり過ぎない: たりない ぶんを ゆっくり 1こずつ。既存の respawn と けんかしない軽い保険）
+  _topUpSigns(dtMs);
+}
+
+/* けはいの 目安数を ほそく たもつ（こまめに 1こだけ おぎなう）。れいがいで おちない */
+let _signTopAcc = 0;
+function _topUpSigns(dtMs) {
+  try {
+    if (!G.running || !G.signs) return;
+    _signTopAcc += dtMs || 0;
+    if (_signTopAcc < 900) return; // やく0.9秒ごとに しらべる（軽く）
+    _signTopAcc = 0;
+    const target = (typeof CONFIG !== 'undefined' && CONFIG.SIGN_TARGET) ? CONFIG.SIGN_TARGET : 9;
+    // 既存の respawn タイマも うごくので、ここでは「いちじるしく たりない」ときだけ 1こ
+    if (G.signs.length < target - 1) spawnSign();
+  } catch (e) { /* むし */ }
 }
 
 /* プレイヤーが けはいタイルへ → 捕獲シーンへ */
@@ -653,8 +671,22 @@ function _drawField(now) {
     } else if (it.kind === 'sign') {
       const s = it.sign;
       const cx = sX(_tileCx(s.tx)), cy = sY(_tileCy(s.ty));
-      if (T && T.sign) T.sign(ctx, cx, cy, TS, time);
-      else { ctx.fillStyle = '#3e7e36'; ctx.beginPath(); ctx.arc(cx, cy, TS * 0.25, 0, 7); ctx.fill(); }
+      // レアヒント: w で みための おおきさ＆きらめきを かえる（tiles.js は さわらない）
+      const rare = _signRare(s);           // 1=レア / 2=中堅 / 3=ふつう
+      _drawSignAura(ctx, cx, cy, TS, rare, s, time); // けはいの まえに オーラ／ひかり
+      const scale = rare === 1 ? 1.32 : rare === 2 ? 1.14 : 1.0; // レアほど 大きめ
+      if (T && T.sign) {
+        if (scale !== 1) {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.scale(scale, scale);
+          T.sign(ctx, 0, 0, TS, time);
+          ctx.restore();
+        } else {
+          T.sign(ctx, cx, cy, TS, time);
+        }
+      } else { ctx.fillStyle = '#3e7e36'; ctx.beginPath(); ctx.arc(cx, cy, TS * 0.25 * scale, 0, 7); ctx.fill(); }
+      if (rare === 1) _drawSignSparkle(ctx, cx, cy, TS, s, time); // レアは 星の きらめきを うえに
     } else if (it.kind === 'cpu') {
       const c = G.cpu;
       const cx = sX(c.x), cy = sY(c.y);
@@ -682,6 +714,127 @@ function _drawField(now) {
     grad.addColorStop(1, 'rgba(8,12,30,.75)');
     ctx.fillStyle = grad; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   }
+}
+
+/* けはいの レア度を かえす（1=レア / 2=中堅 / 3=ふつう）。BUGS未定義でも おちない */
+function _signRare(s) {
+  try {
+    const b = (typeof BUGS !== 'undefined' && s && s.key) ? BUGS[s.key] : null;
+    const w = (b && typeof b.w === 'number') ? b.w : 3;
+    if (w <= 1) return 1;
+    if (w === 2) return 2;
+    return 3;
+  } catch (e) { return 3; }
+}
+
+/* けはいの 種いろ（淡いオーラ用）。なければ きいろ系で フォールバック */
+function _signColor(s) {
+  try {
+    const b = (typeof BUGS !== 'undefined' && s && s.key) ? BUGS[s.key] : null;
+    const c = b && b.color;
+    if (typeof c === 'string' && c[0] === '#' && (c.length === 7 || c.length === 4)) return c;
+  } catch (e) { /* むし */ }
+  return '#ffe478';
+}
+
+/* '#rrggbb' / '#rgb' を rgba もじれつへ（パースできなければ きいろ） */
+function _toRgba(hex, a) {
+  try {
+    let h = hex;
+    if (h.length === 4) h = '#' + h[1] + h[1] + h[2] + h[2] + h[3] + h[3];
+    const r = parseInt(h.slice(1, 3), 16);
+    const g = parseInt(h.slice(3, 5), 16);
+    const b = parseInt(h.slice(5, 7), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return 'rgba(255,228,120,' + a + ')';
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+  } catch (e) { return 'rgba(255,228,120,' + a + ')'; }
+}
+
+/* けはいの あしもとに 淡い ひかりの オーラ（レアほど 大きく あかるく 明滅）。
+   Tiles.sign の まえに よぶ（うしろがわの ひかり）。れいがいで おちない。 */
+function _drawSignAura(ctx, cx, cy, ts, rare, s, time) {
+  try {
+    if (rare === 3) return; // ふつう は いままで どおり（そうしょく なし）
+    const t = (time || 0) * 0.001;
+    const col = _signColor(s);
+    // 明滅（0..1）。レアは つよめ、中堅は ひかえめ
+    const puls = 0.5 + 0.5 * Math.sin(t * (rare === 1 ? 3.2 : 2.2) + (s && s.id ? s.id : 0));
+    const baseR = rare === 1 ? ts * 0.62 : ts * 0.42;
+    const r = baseR * (1 + 0.10 * puls);
+    const aMax = rare === 1 ? 0.34 : 0.18;
+    const a = aMax * (0.6 + 0.4 * puls);
+    ctx.save();
+    let g = null;
+    try { g = ctx.createRadialGradient(cx, cy - ts * 0.12, r * 0.15, cx, cy - ts * 0.12, r); }
+    catch (e) { g = null; }
+    if (g) {
+      g.addColorStop(0, _toRgba(col, a));
+      g.addColorStop(0.6, _toRgba(col, a * 0.5));
+      g.addColorStop(1, _toRgba(col, 0));
+      ctx.fillStyle = g;
+    } else {
+      ctx.fillStyle = _toRgba(col, a * 0.5);
+    }
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - ts * 0.12, r, r * 0.78, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // レアは ひかりの リングも ひとつ（まわる ような 明滅）
+    if (rare === 1) {
+      ctx.lineWidth = Math.max(1, ts * 0.03);
+      ctx.strokeStyle = _toRgba(col, 0.30 * (0.5 + 0.5 * puls));
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - ts * 0.05, r * 0.78, r * 0.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  } catch (e) { /* むし */ }
+}
+
+/* レアの けはいに 星の きらめき（Tiles.sign の うえに かさねる）。れいがいで おちない */
+function _drawSignSparkle(ctx, cx, cy, ts, s, time) {
+  try {
+    const t = (time || 0) * 0.001;
+    const seedId = (s && s.id) ? s.id : 1;
+    const stars = 3;
+    ctx.save();
+    for (let i = 0; i < stars; i++) {
+      // それぞれ ちがう いちで まわりながら ちかちか
+      const ang = t * 1.1 + i * (Math.PI * 2 / stars) + seedId * 0.7;
+      const orbit = ts * (0.34 + 0.06 * Math.sin(t * 2 + i));
+      const sxp = cx + Math.cos(ang) * orbit;
+      const syp = cy - ts * 0.55 + Math.sin(ang) * orbit * 0.5;
+      const tw = 0.5 + 0.5 * Math.sin(t * 5 + i * 1.9 + seedId);
+      const a = 0.45 + 0.5 * tw;
+      const sr = ts * (0.05 + 0.04 * tw);
+      _drawStar(ctx, sxp, syp, sr, a);
+    }
+    ctx.restore();
+  } catch (e) { /* むし */ }
+}
+
+/* ちいさな 4ほうの きらきら星（十字のひかり） */
+function _drawStar(ctx, x, y, r, a) {
+  try {
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+    ctx.beginPath();
+    ctx.moveTo(x, y - r);
+    ctx.lineTo(x + r * 0.28, y - r * 0.28);
+    ctx.lineTo(x + r, y);
+    ctx.lineTo(x + r * 0.28, y + r * 0.28);
+    ctx.lineTo(x, y + r);
+    ctx.lineTo(x - r * 0.28, y + r * 0.28);
+    ctx.lineTo(x - r, y);
+    ctx.lineTo(x - r * 0.28, y - r * 0.28);
+    ctx.closePath();
+    ctx.fill();
+    // ちゅうしんの ほんのり きいろ
+    ctx.fillStyle = 'rgba(255,240,170,' + (a * 0.8) + ')';
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  } catch (e) { /* むし */ }
 }
 
 /* 歩きフェーズ（0..1）。moving中は じかんで ぐるぐる、とまっていれば ゆっくり ゆれ */

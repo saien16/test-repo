@@ -1,7 +1,7 @@
 /* build.mjs — src を連結して dist/index.html を生成する。
    ESモジュール化しない方針。ORDER順に <script> へ流し込む。
    使い方: node build.mjs  /  node build.mjs --watch */
-import { readFileSync, writeFileSync, watch, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, watch, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,8 +18,14 @@ const ORDER = [
   'src/field/field-cpu.js',
 ];
 
+// CSSは複数ファイルを連結（ある分だけ。後勝ちで上書き調整できる）
+const CSS_ORDER = ['src/styles.css', 'src/styles-catch.css'];
+
 function build() {
-  const css = readFileSync(R('src/styles.css'), 'utf8');
+  const css = CSS_ORDER
+    .filter(f => existsSync(R(f)))
+    .map(f => `/* ===== ${f} ===== */\n${readFileSync(R(f), 'utf8')}`)
+    .join('\n');
   const js = ORDER.map(f => {
     const code = readFileSync(R(f), 'utf8');
     return `\n/* ===== ${f} ===== */\n${code}`;

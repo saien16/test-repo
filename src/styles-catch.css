@@ -1,0 +1,172 @@
+/* ============================================================
+   むしとりバトル — styles-catch.css（捕獲シーンの ついかCSS）
+   build.mjs が styles.css の あとに 連結する（後勝ち）。
+   ・捕獲シーンの 演出・keyframes は ぜんぶ ここ。
+   ・#catch-screen の overflow:hidden;height:100% は こわさない。
+     演出は すべて transform / opacity / keyframes で 完結させる。
+   ============================================================ */
+
+/* ---- ② 虫の 生きてる感: いつも ふわふわ（idle bob） ---- */
+.cs-bug { animation: cs-bob 2.4s ease-in-out infinite; will-change: transform; }
+@keyframes cs-bob {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50%      { transform: translateY(-7px) rotate(1deg); }
+}
+
+/* ② 警戒≥70 で 小刻みに 震える（bob より つよく） */
+.cs-bug.tremble { animation: cs-tremble .14s linear infinite; }
+@keyframes cs-tremble {
+  0%   { transform: translate(0, 0) rotate(0); }
+  25%  { transform: translate(-2px, 1px) rotate(-2deg); }
+  50%  { transform: translate(2px, -1px) rotate(2deg); }
+  75%  { transform: translate(-1px, 2px) rotate(-1deg); }
+  100% { transform: translate(1px, -1px) rotate(1deg); }
+}
+
+/* ---- ① 命中フラッシュ（白）---- */
+.cs-flash {
+  position: absolute; inset: 0; background: #fff; opacity: 0;
+  pointer-events: none; z-index: 5; border-radius: 4px;
+  animation: cs-flash .34s ease-out forwards;
+}
+@keyframes cs-flash {
+  0%   { opacity: 0; }
+  20%  { opacity: .92; }
+  100% { opacity: 0; }
+}
+
+/* ① 命中: 虫が 網へ 吸い込まれ ちいさく消える */
+.cs-bug.caught-suck {
+  animation: cs-suck .5s cubic-bezier(.5, -0.2, .9, .4) forwards;
+  transform-origin: 30% 90%;
+}
+@keyframes cs-suck {
+  0%   { transform: scale(1) translate(0, 0) rotate(0); opacity: 1; }
+  60%  { transform: scale(.5) translate(-40px, 30px) rotate(-60deg); opacity: .9; }
+  100% { transform: scale(.05) translate(-90px, 70px) rotate(-200deg); opacity: 0; }
+}
+
+/* ① big の キラキラ */
+.cs-sparkle {
+  position: absolute; inset: 0; pointer-events: none; z-index: 6;
+}
+.cs-sparkle span {
+  position: absolute; font-size: 26px; opacity: 0;
+  animation: cs-spark .9s ease-out forwards;
+}
+.cs-sparkle span:nth-child(1) { left: 20%; top: 30%; animation-delay: 0s; }
+.cs-sparkle span:nth-child(2) { left: 55%; top: 18%; animation-delay: .08s; }
+.cs-sparkle span:nth-child(3) { left: 70%; top: 50%; animation-delay: .16s; }
+.cs-sparkle span:nth-child(4) { left: 38%; top: 55%; animation-delay: .24s; }
+.cs-sparkle span:nth-child(5) { left: 60%; top: 70%; animation-delay: .12s; }
+@keyframes cs-spark {
+  0%   { opacity: 0; transform: scale(.3) rotate(0); }
+  40%  { opacity: 1; transform: scale(1.2) rotate(40deg); }
+  100% { opacity: 0; transform: scale(.6) translateY(-22px) rotate(120deg); }
+}
+
+/* ① はずれ: 虫が 素早く回避＋小ゆれ（idle bob を 一時うわがき） */
+.cs-bug.dodge { animation: cs-dodge .36s ease-out; }
+@keyframes cs-dodge {
+  0%   { transform: translateX(0) rotate(0); }
+  25%  { transform: translateX(22px) rotate(8deg); }
+  50%  { transform: translateX(-10px) rotate(-6deg); }
+  75%  { transform: translateX(8px) rotate(4deg); }
+  100% { transform: translateX(0) rotate(0); }
+}
+
+/* ① 逃走: 画面外へ ダッシュ */
+.cs-bug.flee-dash { animation: cs-dash .55s ease-in forwards; }
+@keyframes cs-dash {
+  0%   { transform: translateX(0) scale(1); opacity: 1; }
+  30%  { transform: translateX(-14px) scale(1.05); opacity: 1; }
+  100% { transform: translateX(140%) scale(.7); opacity: 0; }
+}
+
+/* 逃走の 土ぼこり */
+.cs-dust {
+  position: absolute; bottom: 16%; right: 8%; font-size: 30px;
+  pointer-events: none; z-index: 4; opacity: 0;
+  animation: cs-dust .7s ease-out forwards;
+}
+@keyframes cs-dust {
+  0%   { opacity: 0; transform: translateX(0) scale(.6); }
+  30%  { opacity: .9; transform: translateX(-10px) scale(1); }
+  100% { opacity: 0; transform: translateX(-44px) scale(1.4); }
+}
+
+/* ---- ① 網スイング（hunter を 虫へ ふる）---- */
+.cs-hunter { transform-origin: 20% 90%; }
+.cs-hunter.swing { animation: cs-swing .46s ease-in-out; }
+@keyframes cs-swing {
+  0%   { transform: rotate(0) translate(0, 0); }
+  35%  { transform: rotate(-28deg) translate(6px, -6px); }
+  60%  { transform: rotate(38deg) translate(40px, -22px); }
+  100% { transform: rotate(0) translate(0, 0); }
+}
+
+/* ---- ④ 危険演出: ゲージ 鼓動パルス（≥90 で .danger）---- */
+.cs-alert-fill.danger { animation: cs-pulse .6s ease-in-out infinite; }
+@keyframes cs-pulse {
+  0%, 100% { filter: brightness(1);    box-shadow: 0 0 0 0 rgba(226,72,58,.0); }
+  50%      { filter: brightness(1.35); box-shadow: 0 0 8px 2px rgba(226,72,58,.7); }
+}
+
+/* ④ アリーナの warn-glow 明滅（≥90 で .danger-glow）。
+   既存の .cs-arena.warn-glow（inset shadow）の うえに 明滅を かさねる */
+.cs-arena.danger-glow { animation: cs-warnglow .7s ease-in-out infinite; }
+@keyframes cs-warnglow {
+  0%, 100% { box-shadow: inset 0 0 40px 6px rgba(226,72,58,.30); }
+  50%      { box-shadow: inset 0 0 80px 18px rgba(226,72,58,.75); }
+}
+
+/* ---- ⑤ 予告誘導: 「いま あみ！」ポップ ---- */
+.cs-warn-now {
+  position: absolute; top: 8%; left: 50%; transform: translateX(-50%);
+  background: #e2483a; color: #fff; font-weight: 900; font-size: 18px;
+  padding: 6px 14px; border-radius: 999px; z-index: 7; white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0,0,0,.3);
+  animation: cs-nowpop .8s ease-in-out infinite;
+}
+@keyframes cs-nowpop {
+  0%, 100% { transform: translateX(-50%) scale(1);    opacity: .92; }
+  50%      { transform: translateX(-50%) scale(1.12); opacity: 1; }
+}
+
+/* ⑤ 予告中の 網ボタン 強調パルス */
+.cs-btn.net.urge { animation: cs-urge .7s ease-in-out infinite; }
+@keyframes cs-urge {
+  0%, 100% { transform: scale(1);     box-shadow: 0 0 0 0 rgba(255,210,80,.0); }
+  50%      { transform: scale(1.035); box-shadow: 0 0 0 5px rgba(255,210,80,.55); }
+}
+
+/* ---- ③ 命中目安 ◎/○/△ の 色（距離バッジ・網ボタンに 色つき）---- */
+.cs-mark { font-weight: 900; }
+.cs-mark.good { color: #1f9d4d; }
+.cs-mark.ok   { color: #e08a18; }
+.cs-mark.bad  { color: #d83a2a; }
+
+/* 距離バッジ じたいの ふちどり色（記号と そろえる） */
+.cs-dist.mk-good { box-shadow: inset 0 0 0 2px rgba(31,157,77,.6); }
+.cs-dist.mk-ok   { box-shadow: inset 0 0 0 2px rgba(224,138,24,.6); }
+.cs-dist.mk-bad  { box-shadow: inset 0 0 0 2px rgba(216,58,42,.6); }
+
+/* 網ボタンの ふちで 命中目安を 色づけ */
+.cs-btn.net.acc-good { box-shadow: 0 4px 0 #176b35, inset 0 0 0 2px rgba(255,255,255,.35); }
+.cs-btn.net.acc-ok   { box-shadow: 0 4px 0 #9a5e0e; }
+.cs-btn.net.acc-bad  { box-shadow: 0 4px 0 #8a2118; }
+.cs-btn.net .cs-net-main { display: block; }
+
+/* ---- ⑥ けいかいゲージ脇の じょうたい（絵文字＋ことば）---- */
+.cs-alert-state {
+  display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px;
+  font-weight: 800; font-size: 11px; color: #14361f;
+}
+.cs-alert-state.s-calm   { background: rgba(65,196,111,.30); }
+.cs-alert-state.s-care   { background: rgba(243,177,59,.32); }
+.cs-alert-state.s-danger { background: rgba(226,72,58,.30); color: #7a1810; }
+.cs-alert-state.s-flee   { background: rgba(226,72,58,.55); color: #fff;
+  animation: cs-pulse .6s ease-in-out infinite; }
+
+/* レイアウトが くずれない ようにする ねんのため（高さ固定は styles.css がもつ） */
+.cs-arena { position: relative; }

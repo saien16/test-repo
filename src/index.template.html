@@ -55,10 +55,12 @@
       <span id="hud-time" class="hud-pill">⏱ 90</span>
       <span id="hud-score" class="hud-pill">🐛 0</span>
       <span id="hud-cpu" class="hud-pill cpu">🤖 0</span>
+      <span id="hud-combo" class="hud-pill combo" style="display:none">🔥コンボ ×2</span>
       <button id="btn-giveup" class="hud-give">やめる</button>
     </div>
     <div class="field-wrap">
       <canvas id="field-canvas" width="420" height="600"></canvas>
+      <div id="toast" class="toast" style="display:none"></div>
     </div>
     <div class="dpad">
       <button class="dbtn up" data-dir="up">▲</button>
@@ -77,7 +79,10 @@
   <section id="result-screen" class="screen">
     <h1 class="screen-title">けっか</h1>
     <div id="result-body"></div>
-    <button id="btn-again" class="big-btn">つぎへ</button>
+    <div class="result-btns">
+      <button id="btn-retry" class="big-btn retry">🔁 もう一回</button>
+      <button id="btn-again" class="big-btn">つぎへ</button>
+    </div>
   </section>
 
 </div>
