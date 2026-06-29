@@ -298,7 +298,13 @@ if (typeof document !== 'undefined' && document.getElementById) {
       '<div class="logbox">' + g.log.slice(-6).reverse().map(l => '<div>' + l + '</div>').join('') + '</div>';
 
     $('battle-root').querySelectorAll('.act:not(.off)').forEach(b =>
-      b.addEventListener('click', () => { applyAction(G, b.dataset.act); afterAction(); }));
+      b.addEventListener('click', () => {
+        Sound.unlock();
+        const act = b.dataset.act;
+        // 撃破/カード/カットインは banner 側で音が出る。移動系だけ select 音。
+        if (!/^(strike:|card:|ci_)/.test(act)) Sound.play('select');
+        applyAction(G, act); afterAction();
+      }));
   }
 
   function popBanner(b) {
@@ -309,12 +315,13 @@ if (typeof document !== 'undefined' && document.getElementById) {
       (b.en ? '<div class="banner-en">' + b.en + '</div>' : '') +
       (b.crit ? '<div class="banner-crit">会心!</div>' : '');
     $('app').appendChild(el);
+    Sound.play(b.tone === 'ci' ? 'cutin' : (b.crit ? 'crit' : 'strike'));
     setTimeout(() => el.remove(), 1100);
   }
 
   function afterAction() {
     if (G.banner) { popBanner(G.banner); G.banner = null; }
-    if (G.result) return renderResult();
+    if (G.result) { Sound.play(G.result === 'win' ? 'win' : 'lose'); return renderResult(); }
     renderBattle();
   }
 
@@ -387,11 +394,19 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
 
   document.addEventListener('DOMContentLoaded', () => {
-    $('btn-start').addEventListener('click', () => { renderBriefing(); show('briefing-screen'); });
-    $('btn-codex').addEventListener('click', () => { renderCodex(); show('codex-screen'); });
-    $('btn-codex-back').addEventListener('click', () => show('title-screen'));
-    $('btn-sortie').addEventListener('click', startGame);
-    $('btn-retry').addEventListener('click', startGame);
-    $('btn-title').addEventListener('click', () => show('title-screen'));
+    const tap = (id, fn) => $(id).addEventListener('click', () => { Sound.unlock(); fn(); });
+    tap('btn-start', () => { Sound.play('select'); renderBriefing(); show('briefing-screen'); });
+    tap('btn-codex', () => { Sound.play('select'); renderCodex(); show('codex-screen'); });
+    tap('btn-codex-back', () => show('title-screen'));
+    tap('btn-sortie', () => { Sound.play('select'); startGame(); });
+    tap('btn-retry', () => { Sound.play('select'); startGame(); });
+    tap('btn-title', () => show('title-screen'));
+    $('btn-mute').addEventListener('click', () => {
+      Sound.unlock();
+      const m = !Sound.isMuted();
+      Sound.setMuted(m);
+      $('btn-mute').textContent = m ? '🔇' : '🔊';
+      if (!m) Sound.play('select');
+    });
   });
 }
