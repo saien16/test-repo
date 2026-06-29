@@ -1,0 +1,90 @@
+/* styles.css — マルこれ MVP（ターミナル/サイバー基調・スマホ縦想定） */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: radial-gradient(120% 80% at 50% 0%, #0e161b 0%, #070a0d 70%);
+  color: #cfe9d8; font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+  font-size: 15px; line-height: 1.5;
+}
+#app { max-width: 480px; margin: 0 auto; min-height: 100%; position: relative; }
+.screen { display: none; padding: 16px; min-height: 100vh; }
+.screen.active { display: block; }
+.screen-title { font-size: 20px; color: #6fe3a6; border-left: 4px solid #2f9e63; padding-left: 10px; margin: 6px 0 14px; }
+
+/* タイトル */
+.title-wrap { text-align: center; padding-top: 16vh; }
+.title-logo { font-size: 56px; font-weight: 900; letter-spacing: 2px; color: #7CFFB2; text-shadow: 0 0 18px rgba(72,255,160,.45); }
+.title-logo span { color: #ff6b6b; }
+.title-sub { color: #8fb6a3; margin-top: 8px; }
+.title-glyphs { font-size: 26px; margin: 22px 0; letter-spacing: 6px; }
+.title-foot { color: #5e7d6e; margin-top: 10px; font-size: 13px; }
+
+.big-btn {
+  display: block; width: 100%; max-width: 320px; margin: 18px auto 0; padding: 14px;
+  font-size: 18px; font-weight: 800; color: #07120b; background: linear-gradient(180deg,#7CFFB2,#34c878);
+  border: 0; border-radius: 12px; box-shadow: 0 6px 0 #1d6b41; cursor: pointer;
+}
+.big-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 #1d6b41; }
+.big-btn.retry { background: linear-gradient(180deg,#ffd479,#f0a93a); box-shadow: 0 6px 0 #9c6a14; }
+
+/* ブリーフィング */
+.intro { background: #0f1b18; border: 1px solid #1f3a30; border-radius: 10px; padding: 12px; }
+.hint { color: #9fd9bb; font-size: 13px; background: #0c1512; border-radius: 10px; padding: 10px; }
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.card { background: #0f1620; border: 1px solid #243447; border-radius: 10px; padding: 10px; }
+.card-top { display: flex; justify-content: space-between; align-items: baseline; }
+.card-top b { color: #ff8a8a; }
+.card-top span { font-size: 11px; color: #6f8597; }
+.card-cia { font-size: 13px; margin: 4px 0; }
+.card-role { font-size: 11px; color: #7fd0ff; }
+.card-desc { font-size: 11px; color: #9fb3c2; margin-top: 4px; }
+
+/* HUD / バー */
+.hud { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.pill { font-size: 12px; padding: 5px 9px; border-radius: 999px; background: #0f1b18; border: 1px solid #244; }
+.pill.turn { background: #1b1320; border-color: #5a3a6a; color: #e6b8ff; }
+.bar { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 12px; }
+.bar-label { width: 64px; flex: none; }
+.bar-track { flex: 1; height: 12px; background: #0b1310; border-radius: 999px; overflow: hidden; border: 1px solid #1d2c25; }
+.bar-fill { display: block; height: 100%; }
+.bar-fill.warn { background: linear-gradient(90deg,#f0a93a,#ff5252); }
+.bar-fill.c { background: #4aa3ff; }
+.bar-fill.i { background: #44d07b; }
+.bar-fill.a { background: #ffd34a; }
+.bar-num { width: 34px; text-align: right; flex: none; color: #b9d6c7; }
+
+/* 経路 */
+.path { display: flex; align-items: center; gap: 4px; justify-content: center; margin: 10px 0; flex-wrap: wrap; }
+.hop { font-size: 12px; padding: 4px 8px; border-radius: 8px; background: #101a16; border: 1px solid #243; color: #6c8a7b; }
+.hop.on { background: #16352a; border-color: #2f9e63; color: #aef0c9; }
+.hop-arrow { color: #5e7d6e; font-size: 12px; }
+
+/* ボス */
+.boss { background: #0e1620; border: 1px solid #2a3b50; border-radius: 12px; padding: 12px; margin: 8px 0; }
+.boss-head { font-weight: 800; color: #ff9d9d; margin-bottom: 8px; }
+.boss-head .hv { font-size: 11px; color: #9fb3c2; font-weight: 400; }
+.badge { font-size: 10px; padding: 2px 6px; border-radius: 6px; margin-left: 4px; }
+.badge.ci { background: #2a1b3a; color: #e0b3ff; border: 1px solid #6a4a8a; }
+.boss-foot { font-size: 11px; color: #8fb6a3; margin-top: 6px; }
+
+/* 行動ボタン */
+.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+.act { text-align: left; padding: 8px 10px; border-radius: 10px; background: #122019; border: 1px solid #2a4a3a; color: #d6f0e0; cursor: pointer; }
+.act b { display: block; font-size: 13px; }
+.act small { display: block; font-size: 10px; color: #8fb6a3; margin-top: 2px; }
+.act:active { transform: translateY(1px); }
+.act.off { opacity: .4; cursor: not-allowed; }
+
+/* ログ */
+.logbox { background: #080d0b; border: 1px solid #1a2620; border-radius: 10px; padding: 8px; font-size: 11px; color: #9fcbb3; max-height: 130px; overflow: auto; }
+.logbox div { padding: 1px 0; border-bottom: 1px dashed #16221c; }
+
+/* リザルト */
+.verdict { font-size: 28px; font-weight: 900; text-align: center; margin: 12px 0; }
+.verdict.win { color: #7CFFB2; text-shadow: 0 0 16px rgba(72,255,160,.5); }
+.verdict.lose { color: #ff6b6b; }
+.stat { text-align: center; color: #9fb3c2; font-size: 13px; }
+.debrief { background: #0f1b18; border: 1px solid #2f4a3c; border-radius: 10px; padding: 12px; margin-top: 14px; }
+.debrief b { color: #7fd0ff; }
+.debrief p { margin: 6px 0 0; font-size: 13px; }
+.result-btns { margin-top: 18px; }

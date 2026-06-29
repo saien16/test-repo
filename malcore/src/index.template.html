@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f12">
+<title>マルこれ 🦠</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- タイトル -->
+  <section id="title-screen" class="screen active">
+    <div class="title-wrap">
+      <div class="title-logo">マル<span>これ</span></div>
+      <div class="title-sub">マルウェアコレクション — 攻めて学ぶセキュリティ</div>
+      <div class="title-glyphs">🦠 🛡️ ⚔️ 📡 🧬</div>
+      <button id="btn-start" class="big-btn">▶ はじめる</button>
+      <div class="title-foot">攻撃を遊んで、防御に活かす。</div>
+    </div>
+  </section>
+
+  <!-- 作戦ブリーフィング -->
+  <section id="briefing-screen" class="screen">
+    <h1 class="screen-title">作戦: ゼニス銀行</h1>
+    <div id="briefing-body"></div>
+    <button id="btn-sortie" class="big-btn">🦠 出撃</button>
+  </section>
+
+  <!-- 戦闘 -->
+  <section id="battle-screen" class="screen">
+    <div id="battle-root"><!-- core.js が描画 --></div>
+  </section>
+
+  <!-- リザルト -->
+  <section id="result-screen" class="screen">
+    <h1 class="screen-title">作戦結果</h1>
+    <div id="result-body"></div>
+    <div class="result-btns">
+      <button id="btn-retry" class="big-btn retry">🔁 もう一度</button>
+      <button id="btn-title" class="big-btn">タイトルへ</button>
+    </div>
+  </section>
+
+</div>
+<script>
+/*__JS__*/
+</script>
+</body>
+</html>
