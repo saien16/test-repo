@@ -138,6 +138,30 @@ body {
 .badge.ci { background: #2a1b3a; color: #e0b3ff; border: 1px solid #6a4a8a; }
 .boss-foot { font-size: 11px; color: #8fb6a3; margin-top: 6px; }
 
+/* 防御力（ゲージ別＋効いている対策） */
+.defrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #24384a; font-size: 12px; }
+.def-title { color: #9fb3c2; font-weight: 700; }
+.def-g { font-weight: 800; }
+.def-g.c { color: #6fb6ff; } .def-g.i { color: #5fe0a0; } .def-g.a { color: #ffd86a; }
+.def-list { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+.def-chip { font-size: 10px; padding: 2px 6px; border-radius: 6px; background: #15273a; border: 1px solid #2f4f6a; color: #bfe0ff; }
+.def-chip.none { background: #2a1814; border-color: #6a3a2a; color: #ffb89a; }
+
+/* 勝敗の決着演出 */
+.finish { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; pointer-events: none; animation: finishIn .4s ease-out; }
+.finish.win { background: radial-gradient(60% 40% at 50% 45%, rgba(40,120,70,.55), rgba(4,8,6,.86)); }
+.finish.lose { background: radial-gradient(60% 40% at 50% 45%, rgba(120,30,30,.5), rgba(6,4,4,.88)); }
+.finish-big { font-size: 40px; font-weight: 900; letter-spacing: 1px; animation: finishPop .5s ease-out; }
+.finish.win .finish-big { color: #7CFFB2; text-shadow: 0 0 22px rgba(72,255,160,.7); }
+.finish.lose .finish-big { color: #ff6b6b; text-shadow: 0 0 18px rgba(255,80,80,.6); }
+.finish-sub { margin-top: 10px; font-size: 15px; color: #d6e6dd; }
+@keyframes finishIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes finishPop { 0% { transform: scale(.5); opacity: 0; } 55% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+/* 本命DBが砕ける */
+.bossspr.shatter { animation: shatter 1s ease-in forwards; }
+@keyframes shatter { 0% { transform: scale(1) rotate(0); opacity: 1; } 40% { transform: scale(1.2) rotate(-8deg); } 100% { transform: scale(.2) rotate(40deg); opacity: 0; } }
+
 /* 行動ボタン */
 .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
 .act { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px; border-radius: 10px; background: #122019; border: 1px solid #2a4a3a; color: #d6f0e0; cursor: pointer; }

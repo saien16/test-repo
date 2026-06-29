@@ -21,13 +21,13 @@ function createGame(stage, equipped, levels) {
     equipped: (equipped || []).slice(0, 3), // 装備した攻撃手法カード（最大3）
     footholds: { outside: true, pc: false, db: false },
     botnet: false,    // 踏み台をボット化したか（A火力+10%）
-    fwOpen: false,    // 境界FWを開通したか
     reconDone: false, // 本命を偵察したか
     diagDone: false,  // ブルーのセキュリティ診断が発動済みか
     cut: { hHack: 0, vDiag: 0 }, // カットイン残ターン
+    defenses: (stage.defenses || []).map(d => ({ ...d, state: 'active' })), // 対策の状態
     db: {
       C: db.C, I: db.I, A: db.A,
-      baseH: db.H, baseV: db.V, mit: db.mit,
+      baseH: db.H, baseV: db.V, baseDef: db.baseDef || {},
       initTotal: db.C + db.I + db.A,
     },
     log: ['◆ 出撃: ' + stage.name + '（制限 ' + stage.turnLimit + 'T）'],
@@ -57,13 +57,52 @@ function costLabel(cost) {
   return p.join('/');
 }
 
+/* ===== 防御力（本体 + 有効な対策の寄与） ===== */
+function defenseDef(d) { return d.def || {}; }
+// ゲージの素の防御力（本体 + active な対策）。0..∞（後でハードニング倍率・上限0.8）
+function gaugeDefRaw(g, gauge) {
+  let d = (g.db.baseDef && g.db.baseDef[gauge]) || 0;
+  (g.defenses || []).forEach(df => { if (df.state === 'active') d += (defenseDef(df)[gauge] || 0); });
+  return d;
+}
+// 実効緩和率（ハードニング倍率込み・上限0.8）
+function gaugeMit(g, gauge, ignoreH) {
+  const H = ignoreH ? 0 : effH(g);
+  return Math.min(0.80, gaugeDefRaw(g, gauge) * (0.5 + H / 100));
+}
+// 経路ゲート（境界FW等）が開いているか
+function gateOpen(g) {
+  const gate = (g.defenses || []).find(d => d.gate);
+  return !gate || gate.state !== 'active';
+}
+// その対策に有効な無効化手段が残っているか
+function activeDefenses(g) { return (g.defenses || []).filter(d => d.state === 'active'); }
+
+/* ===== 検知（警戒度）モデル ===== */
+const GAUGE_NOISE = { C: 0.5, I: 1.0, A: 1.5 }; // 機密性=静か / 可用性=派手
+function primGauge(cia) {
+  let g = 'C', best = -1;
+  ['C', 'I', 'A'].forEach(k => { if ((cia[k] || 0) > best) { best = cia[k] || 0; g = k; } });
+  return g;
+}
+function detectMul(g, gauge, level) {
+  let m = 1 + 0.2 * (level || 0);          // 世代が進むほど検知されやすい
+  if (g.stage.edr) m += 0.3;               // EDR/振る舞い検知
+  activeDefenses(g).forEach(d => {
+    if (d.detect && d.detect[gauge]) m += d.detect[gauge]; // 監視対策が有効ならそのゲージは検知UP
+    if (d.detect && d.detect.all) m += d.detect.all;
+  });
+  return m;
+}
+function strikeWarn(g, gauge, level, base) {
+  return Math.max(1, Math.round((base || 10) * (GAUGE_NOISE[gauge] || 1) * detectMul(g, gauge, level)));
+}
+
 /* ===== ダメージ計算（1ゲージ分） ===== */
 function gaugeDamage(g, base, gauge, opt) {
   opt = opt || {};
-  const H = opt.ignoreH ? 0 : effH(g); // ゼロデイ等はハードニング無視
   const V = effV(g);
-  const defMul = 0.5 + H / 100;
-  const mit = Math.min(0.80, (g.db.mit[gauge] || 0) * defMul);
+  const mit = gaugeMit(g, gauge, opt.ignoreH); // ゼロデイ等はハードニング無視
   const hit = 0.6 + (V / 100) * 0.8;
   const crit = _rng() < V / 100 ? 1.5 : 1.0;
   return { dmg: base * (1 - mit) * hit * crit, crit: crit > 1 };
@@ -113,12 +152,21 @@ function listActions(g) {
       'フィッシングで踏み台に足場確立。 W+5');
   can('botnet', '🏴 ボット化（社員PC）', f.pc && !g.botnet, f.pc ? '実施済み' : '踏み台が必要',
       '踏み台をボット化。可用性火力+10%。 W+5');
-  can('fw_evade', '🌫️ 境界FWを回避', f.pc && !g.fwOpen && g.res.info >= 15, f.pc ? (g.fwOpen ? '開通済み' : '情報15が必要') : '踏み台が必要',
-      '正規経路に偽装して通す。情報-15 / W+2');
+  // 対策の無効化（回避/破壊）。剥がすと防御力が一気に低下し、本体防御だけが残る。
   const hasBreaker = g.hand.some(id => (malById(id) || {}).breaker);
-  can('fw_break', '💥 境界FWを破壊', f.pc && !g.fwOpen && hasBreaker, f.pc ? (g.fwOpen ? '開通済み' : '装置破壊ロールが必要') : '踏み台が必要',
-      '装置破壊ロールで強行突破。 W+25（派手）');
-  can('pivot', '↔️ 横展開 → 本命DB', f.pc && g.fwOpen && !f.db, f.db ? '到達済み' : (g.fwOpen ? '踏み台が必要' : '境界FWが閉'),
+  activeDefenses(g).forEach(d => {
+    if (d.evade) {
+      can('evade:' + d.id, '🌫️ ' + d.name + 'を回避', f.pc && canAfford(g, d.evade),
+          f.pc ? '資源不足(' + costLabel(d.evade) + ')' : '踏み台が必要',
+          '正規に偽装し無効化。防御力↓＆検知↓。' + costLabel(d.evade) + ' / W+2');
+    }
+    if (d.breakable) {
+      can('break:' + d.id, '💥 ' + d.name + 'を破壊', f.pc && hasBreaker,
+          f.pc ? '装置破壊ロールが必要' : '踏み台が必要',
+          '装置破壊ロールで強行無効化。防御力↓だが W+25（派手）');
+    }
+  });
+  can('pivot', '↔️ 横展開 → 本命DB', f.pc && gateOpen(g) && !f.db, f.db ? '到達済み' : (gateOpen(g) ? '踏み台が必要' : '境界FWが閉'),
       '本命へ到達。 W+5');
   can('ci_recon', '🛠️ 偵察カットイン（H -20/3T）', g.reconDone && g.res.info >= 20, g.reconDone ? '情報20が必要' : '先に偵察が必要',
       'ハードニングを下げ通りやすくする。情報-20 / W+5');
@@ -131,8 +179,9 @@ function listActions(g) {
     const L = (g.levels && g.levels[id]) || 0;
     const s = malStats(m, L);
     const tag = L > 0 ? EVO_SUFFIX[L].replace('・', '') + ' ' : '';
+    const w = strikeWarn(g, primGauge(s), L);
     can('strike:' + id, '⚔️ ' + tag + (m.waza ? m.waza.name.replace(/！+$/, '') : m.name), f.db, '本命未到達',
-        'C' + s.C + '/I' + s.I + '/A' + s.A + ' で攻撃。 W+10');
+        'C' + s.C + '/I' + s.I + '/A' + s.A + ' で攻撃。 W+' + w);
   });
   // 装備技カード（本命到達後・資源を満たすとき）
   (g.equipped || []).forEach(id => {
@@ -140,9 +189,10 @@ function listActions(g) {
     const ok = f.db && canAfford(g, c.cost);
     const reason = !f.db ? '本命未到達' : '資源不足(' + costLabel(c.cost) + ')';
     const cia = c.cia || {};
+    const w = strikeWarn(g, c.gauge || primGauge(cia), 0, 8);
     can('card:' + id, '🃏 ' + c.name, ok, reason,
         'C' + (cia.C || 0) + '/I' + (cia.I || 0) + '/A' + (cia.A || 0) +
-        (c.special === 'ignoreH' ? ' 貫通' : '') + ' ' + costLabel(c.cost) + ' W+8');
+        (c.special === 'ignoreH' ? ' 貫通' : '') + ' ' + costLabel(c.cost) + ' W+' + w);
   });
   return A;
 }
@@ -162,10 +212,14 @@ function applyAction(g, actionId) {
     g.footholds.pc = true; warn = 5; msg = 'フィッシング成功: 社員PCに足場を確立';
   } else if (actionId === 'botnet') {
     g.botnet = true; warn = 5; msg = '社員PCをボット化: 可用性火力 +10%';
-  } else if (actionId === 'fw_evade') {
-    g.fwOpen = true; g.res.info -= 15; warn = 2; msg = '境界FWを回避: 正規経路に偽装して通過';
-  } else if (actionId === 'fw_break') {
-    g.fwOpen = true; warn = 25; msg = '境界FWを破壊: 経路は開いたが警戒度が跳ね上がった';
+  } else if (actionId.startsWith('evade:')) {
+    const d = g.defenses.find(x => x.id === actionId.slice(6));
+    payCost(g, d.evade); d.state = 'evaded'; warn = 2;
+    msg = d.name + 'を回避: 防御力が低下（本体防御のみ）。検知もしにくくなった';
+  } else if (actionId.startsWith('break:')) {
+    const d = g.defenses.find(x => x.id === actionId.slice(6));
+    d.state = 'destroyed'; warn = 25;
+    msg = d.name + 'を破壊: 防御力が一気に低下したが警戒度が跳ね上がった';
   } else if (actionId === 'pivot') {
     g.footholds.db = true; warn = 5; msg = '横展開成功: 本命「勘定系DB」へ到達';
   } else if (actionId === 'ci_recon') {
@@ -180,7 +234,7 @@ function applyAction(g, actionId) {
     const L = (g.levels && g.levels[id]) || 0;
     const s = malStats(m, L);
     const r = resolveStrike(g, s, { botnet: g.botnet });
-    warn = 10;
+    warn = strikeWarn(g, primGauge(s), L);
     const w = m.waza || { name: m.name, en: '', gauge: 'C' };
     const nm = wazaName(m, L);
     // 技名カットイン演出（攻撃名を必殺技として表示・攻撃表情のキャラつき）
@@ -192,7 +246,7 @@ function applyAction(g, actionId) {
     const c = cardById(actionId.slice(5));
     payCost(g, c.cost);
     const r = resolveStrike(g, c.cia || {}, { botnet: g.botnet, ignoreH: c.special === 'ignoreH' });
-    warn = 8;
+    warn = strikeWarn(g, c.gauge || primGauge(c.cia || {}), 0, 8);
     g.banner = { name: c.name + '！', en: c.en, tone: 'strike', gauge: c.gauge, crit: r.crit, defense: c.defense };
     msg = '🃏 ' + c.name + (r.crit ? ' 会心!' : '') + ' 🔵-' + Math.round(r.rc.dmg) +
           ' 🟢-' + Math.round(r.ri.dmg) + ' 🟡-' + Math.round(r.ra.dmg);
@@ -254,6 +308,7 @@ const MALCORE = {
   createGame, listActions, applyAction, endTurn, checkEnd,
   effH, effV, gaugeDamage, resolveStrike, canAfford, debrief, setRng,
   malStats, wazaName, evoCost, evoMul, EVO_MAX,
+  gaugeMit, gaugeDefRaw, gateOpen, strikeWarn, primGauge,
   STAGE: (typeof STAGE_ZENITH !== 'undefined') ? STAGE_ZENITH : null,
   CARDS: (typeof CARDS !== 'undefined') ? CARDS : [],
 };
@@ -278,6 +333,21 @@ if (typeof document !== 'undefined' && document.getElementById) {
       '<span class="bar-num">' + Math.round(val) + '</span></div>';
   }
 
+  // 本命の防御力（ゲージ別の実効緩和％）と、効いている対策を表示
+  function defensePanel(g) {
+    const pct = (gauge) => Math.round(gaugeMit(g, gauge) * 100);
+    const act = activeDefenses(g);
+    const list = act.length
+      ? act.map(d => '<span class="def-chip">🛡 ' + d.name + '</span>').join('')
+      : '<span class="def-chip none">本体防御のみ</span>';
+    return '<div class="defrow">' +
+      '<span class="def-title">防御力</span>' +
+      '<span class="def-g c">🔵' + pct('C') + '%</span>' +
+      '<span class="def-g i">🟢' + pct('I') + '%</span>' +
+      '<span class="def-g a">🟡' + pct('A') + '%</span>' +
+      '<span class="def-list">' + list + '</span></div>';
+  }
+
   function renderBattle() {
     const g = G, d = g.db;
     const dbState = (function () {
@@ -295,7 +365,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       const next = g.stage.path[i + 1];
       // pc → db の間に境界FW装置（開通=通路 / 閉鎖=FWアイコン）
       if (next === 'db') {
-        const dev = g.fwOpen
+        const dev = gateOpen(g)
           ? '<span class="hop-arrow open">▶</span>'
           : '<span class="hop fw"><span class="nodespr sm">' + SPRITES.node('fw') + '</span><small>境界FW</small></span>';
         return hop + dev;
@@ -333,6 +403,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
         bar('🔵 機密性', d.C, 160, 'c') +
         bar('🟢 完全性', d.I, 100, 'i') +
         bar('🟡 可用性', d.A, 100, 'a') +
+        defensePanel(g) +
         '<div class="boss-foot">勝利: CIA合計を ' + Math.round(d.initTotal * g.stage.win.ratio) +
           ' 以下に（現在 ' + Math.round(d.C + d.I + d.A) + '）</div>' +
       '</div>' +
@@ -385,11 +456,29 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const counter = G.counter; G.counter = null;
     if (G.result) {
       Sound.stopBgm();
-      Sound.play(G.result === 'win' ? 'win' : 'lose');
-      return renderResult();
+      renderBattle();                                   // 最終状態（HP/防御力）を見せる
+      setTimeout(() => showFinish(G.result), 650);      // 決め技の後に決着演出
+      return;
     }
     renderBattle();
     if (counter) setTimeout(() => popCounter(counter), 720); // 行動バナーの後に被弾演出
+  }
+
+  // 勝敗の決着演出（切り替えが速すぎて分かりにくい問題への対応・1.9秒見せる）
+  function showFinish(res) {
+    const win = res === 'win';
+    document.querySelectorAll('.banner').forEach(e => e.remove());
+    Sound.play(win ? 'win' : 'lose');
+    if (win) document.querySelectorAll('.bossspr').forEach(b => b.classList.add('shatter')); // 本命DBが砕ける
+    else { const a = $('app'); a.classList.remove('shake'); void a.offsetWidth; a.classList.add('shake'); }
+    const title = win ? '🏆 制圧成功！' : (res === 'lose_turn' ? '⏳ タイムオーバー' : '🚨 駆除された');
+    const sub = win ? '本命「勘定系DB」を掌握した'
+      : (res === 'lose_turn' ? 'ブルーチームの封じ込めが間に合った' : '警戒度MAX — 足場を一斉駆除された');
+    const el = document.createElement('div');
+    el.className = 'finish ' + (win ? 'win' : 'lose');
+    el.innerHTML = '<div class="finish-big">' + title + '</div><div class="finish-sub">' + sub + '</div>';
+    $('app').appendChild(el);
+    setTimeout(() => { el.remove(); renderResult(); }, 1900);
   }
 
   function renderResult() {
