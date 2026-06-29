@@ -8,7 +8,7 @@ let _rng = Math.random;
 function setRng(fn) { _rng = fn; }
 
 /* ===== ゲーム状態生成 ===== */
-function createGame(stage) {
+function createGame(stage, equipped) {
   const db = stage.nodes.db;
   return {
     stage,
@@ -17,6 +17,7 @@ function createGame(stage) {
     warning: 0,
     res: { info: 40, tech: 20, res: 20 }, // 初期資源
     hand: ['zeus', 'iloveyou', 'mydoom', 'blaster'],
+    equipped: (equipped || []).slice(0, 3), // 装備した攻撃手法カード（最大3）
     footholds: { outside: true, pc: false, db: false },
     botnet: false,    // 踏み台をボット化したか（A火力+10%）
     fwOpen: false,    // 境界FWを開通したか
@@ -37,14 +38,52 @@ function createGame(stage) {
 function effH(g) { return Math.max(0, Math.min(100, g.db.baseH - (g.cut.hHack > 0 ? 20 : 0))); }
 function effV(g) { return Math.max(0, Math.min(100, g.db.baseV + (g.cut.vDiag > 0 ? 25 : 0))); }
 
+/* ===== 資源コスト ===== */
+function canAfford(g, cost) {
+  if (!cost) return true;
+  return (g.res.info >= (cost.info || 0)) && (g.res.tech >= (cost.tech || 0)) && (g.res.res >= (cost.res || 0));
+}
+function payCost(g, cost) {
+  if (!cost) return;
+  g.res.info -= (cost.info || 0); g.res.tech -= (cost.tech || 0); g.res.res -= (cost.res || 0);
+}
+function costLabel(cost) {
+  if (!cost) return '';
+  const p = [];
+  if (cost.info) p.push('情報' + cost.info);
+  if (cost.tech) p.push('技術' + cost.tech);
+  if (cost.res) p.push('資源' + cost.res);
+  return p.join('/');
+}
+
 /* ===== ダメージ計算（1ゲージ分） ===== */
-function gaugeDamage(g, base, gauge) {
-  const H = effH(g), V = effV(g);
+function gaugeDamage(g, base, gauge, opt) {
+  opt = opt || {};
+  const H = opt.ignoreH ? 0 : effH(g); // ゼロデイ等はハードニング無視
+  const V = effV(g);
   const defMul = 0.5 + H / 100;
   const mit = Math.min(0.80, (g.db.mit[gauge] || 0) * defMul);
   const hit = 0.6 + (V / 100) * 0.8;
   const crit = _rng() < V / 100 ? 1.5 : 1.0;
   return { dmg: base * (1 - mit) * hit * crit, crit: crit > 1 };
+}
+
+/* ===== 撃破の共通処理（マルウェア・カード共用） =====
+   cia: {C,I,A} の基礎攻撃力。opt.ignoreH / opt.botnet(可用性ボーナス) */
+function resolveStrike(g, cia, opt) {
+  opt = opt || {};
+  const aBonus = opt.botnet ? 1.10 : 1.0;
+  const rc = gaugeDamage(g, cia.C || 0, 'C', opt);
+  const ri = gaugeDamage(g, cia.I || 0, 'I', opt);
+  const ra = gaugeDamage(g, (cia.A || 0) * aBonus, 'A', opt);
+  g.db.C = Math.max(0, g.db.C - rc.dmg);
+  g.db.I = Math.max(0, g.db.I - ri.dmg);
+  g.db.A = Math.max(0, g.db.A - ra.dmg);
+  // 戦利品（削った量に応じて資源獲得）
+  g.res.info += Math.floor(rc.dmg / 10);
+  g.res.tech += Math.floor(ri.dmg / 10);
+  g.res.res += Math.floor(ra.dmg / 10);
+  return { rc, ri, ra, crit: (rc.crit || ri.crit || ra.crit) };
 }
 
 /* ===== 行動一覧（状態に応じて可否を返す） ===== */
@@ -71,11 +110,21 @@ function listActions(g) {
   can('ci_diag', '🧪 診断カットイン（V +25/3T）', g.res.tech >= 15, '技術15が必要',
       '脆弱性を露出させ命中・会心UP。技術-15 / W+5');
 
-  // 撃破（本命に到達後、手持ちごと）
+  // 撃破（本命に到達後、手持ちのマルウェア固有技ごと）
   g.hand.forEach(id => {
     const m = malById(id);
-    can('strike:' + id, '⚔️ 撃破: ' + m.name, f.db, '本命未到達',
+    can('strike:' + id, '⚔️ ' + (m.waza ? m.waza.name.replace(/！+$/, '') : m.name), f.db, '本命未到達',
         'C' + m.C + '/I' + m.I + '/A' + m.A + ' で攻撃。 W+10');
+  });
+  // 装備技カード（本命到達後・資源を満たすとき）
+  (g.equipped || []).forEach(id => {
+    const c = cardById(id); if (!c) return;
+    const ok = f.db && canAfford(g, c.cost);
+    const reason = !f.db ? '本命未到達' : '資源不足(' + costLabel(c.cost) + ')';
+    const cia = c.cia || {};
+    can('card:' + id, '🃏 ' + c.name, ok, reason,
+        'C' + (cia.C || 0) + '/I' + (cia.I || 0) + '/A' + (cia.A || 0) +
+        (c.special === 'ignoreH' ? ' 貫通' : '') + ' ' + costLabel(c.cost) + ' W+8');
   });
   return A;
 }
@@ -108,24 +157,21 @@ function applyAction(g, actionId) {
     g.banner = { name: 'ヴァルナラビリティ・スキャン！', en: 'Vulnerability Scan', tone: 'ci' };
   } else if (actionId.startsWith('strike:')) {
     const m = malById(actionId.slice(7));
-    const aBonus = g.botnet ? 1.10 : 1.0;
-    const rc = gaugeDamage(g, m.C, 'C');
-    const ri = gaugeDamage(g, m.I, 'I');
-    const ra = gaugeDamage(g, m.A * aBonus, 'A');
-    g.db.C = Math.max(0, g.db.C - rc.dmg);
-    g.db.I = Math.max(0, g.db.I - ri.dmg);
-    g.db.A = Math.max(0, g.db.A - ra.dmg);
-    // 戦利品（削った量に応じて資源獲得）
-    g.res.info += Math.floor(rc.dmg / 10);
-    g.res.tech += Math.floor(ri.dmg / 10);
-    g.res.res += Math.floor(ra.dmg / 10);
+    const r = resolveStrike(g, { C: m.C, I: m.I, A: m.A }, { botnet: g.botnet });
     warn = 10;
-    const crit = (rc.crit || ri.crit || ra.crit);
     const w = m.waza || { name: m.name + ' 撃破', en: '', gauge: 'C' };
     // 技名カットイン演出（攻撃名を必殺技として表示）
-    g.banner = { name: w.name, en: w.en, tone: 'strike', gauge: w.gauge, crit, defense: w.defense };
-    msg = '⚡ ' + w.name + (crit ? ' 会心!' : '') + ' 🔵-' + Math.round(rc.dmg) +
-          ' 🟢-' + Math.round(ri.dmg) + ' 🟡-' + Math.round(ra.dmg);
+    g.banner = { name: w.name, en: w.en, tone: 'strike', gauge: w.gauge, crit: r.crit, defense: w.defense };
+    msg = '⚡ ' + w.name + (r.crit ? ' 会心!' : '') + ' 🔵-' + Math.round(r.rc.dmg) +
+          ' 🟢-' + Math.round(r.ri.dmg) + ' 🟡-' + Math.round(r.ra.dmg);
+  } else if (actionId.startsWith('card:')) {
+    const c = cardById(actionId.slice(5));
+    payCost(g, c.cost);
+    const r = resolveStrike(g, c.cia || {}, { botnet: g.botnet, ignoreH: c.special === 'ignoreH' });
+    warn = 8;
+    g.banner = { name: c.name + '！', en: c.en, tone: 'strike', gauge: c.gauge, crit: r.crit, defense: c.defense };
+    msg = '🃏 ' + c.name + (r.crit ? ' 会心!' : '') + ' 🔵-' + Math.round(r.rc.dmg) +
+          ' 🟢-' + Math.round(r.ri.dmg) + ' 🟡-' + Math.round(r.ra.dmg);
   }
 
   g.warning = Math.min(100, g.warning + warn);
@@ -180,8 +226,9 @@ function debrief(g) {
 /* ===== エクスポート（テスト/UI共用） ===== */
 const MALCORE = {
   createGame, listActions, applyAction, endTurn, checkEnd,
-  effH, effV, gaugeDamage, debrief, setRng,
+  effH, effV, gaugeDamage, resolveStrike, canAfford, debrief, setRng,
   STAGE: (typeof STAGE_ZENITH !== 'undefined') ? STAGE_ZENITH : null,
+  CARDS: (typeof CARDS !== 'undefined') ? CARDS : [],
 };
 if (typeof globalThis !== 'undefined') globalThis.MALCORE = MALCORE;
 
@@ -222,11 +269,12 @@ if (typeof document !== 'undefined' && document.getElementById) {
       (g.cut.hHack > 0 ? '<span class="badge ci">🛠️H-20(' + g.cut.hHack + 'T)</span>' : '') +
       (g.cut.vDiag > 0 ? '<span class="badge ci">🧪V+25(' + g.cut.vDiag + 'T)</span>' : '');
 
-    const acts = listActions(g).map(a =>
-      '<button class="act ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
-      (a.enabled ? '' : 'disabled title="' + a.reason + '"') + '>' +
-      '<b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></button>'
-    ).join('');
+    const acts = listActions(g).map(a => {
+      const kind = a.id.startsWith('card:') ? ' card' : (a.id.startsWith('strike:') ? ' strike' : '');
+      return '<button class="act' + kind + ' ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
+        (a.enabled ? '' : 'disabled title="' + a.reason + '"') + '>' +
+        '<b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></button>';
+    }).join('');
 
     $('battle-root').innerHTML =
       '<div class="hud">' +
@@ -281,7 +329,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
       '<div class="debrief"><b>防御官の総評</b><p>' + debrief(G) + '</p></div>';
   }
 
-  function startGame() { G = createGame(STAGE_ZENITH); show('battle-screen'); renderBattle(); }
+  let equipped = []; // 装備中の攻撃手法カード（最大3）
+
+  function startGame() { G = createGame(STAGE_ZENITH, equipped); show('battle-screen'); renderBattle(); }
 
   function renderBriefing() {
     const handHtml = ['zeus', 'iloveyou', 'mydoom', 'blaster'].map(id => {
@@ -292,15 +342,54 @@ if (typeof document !== 'undefined' && document.getElementById) {
         (m.waza ? '<div class="card-waza">⚡ ' + m.waza.name + '</div>' : '') +
         '<div class="card-desc">' + m.desc + '</div></div>';
     }).join('');
+    // 装備技カードの選択（最大3）
+    const equipHtml = CARDS.map(c =>
+      '<button class="equip ' + (equipped.includes(c.id) ? 'on' : '') + '" data-card="' + c.id + '">' +
+      '<b>🃏 ' + c.name + '</b><small>' + gaugeMark(c) + ' ' + costLabel(c.cost) +
+      (c.special === 'ignoreH' ? ' / 貫通' : '') + '</small></button>'
+    ).join('');
     $('briefing-body').innerHTML =
       '<p class="intro">' + STAGE_ZENITH.intro + '</p>' +
-      '<p class="hint">王道: 偵察 → 初期侵害 → ボット化 → 横展開(FW回避) → 偵察CI → 診断CI → 撃破×2。' +
+      '<p class="hint">王道: 偵察 → 初期侵害 → 横展開(FW回避) → 偵察CI → 診断CI → 撃破×2。' +
       'カットインで本命を「通りやすく」してから Zeus で機密性を抜け。</p>' +
-      '<div class="cards">' + handHtml + '</div>';
+      '<h2 class="sub">編成（固有技）</h2><div class="cards">' + handHtml + '</div>' +
+      '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3</small></h2>' +
+      '<div class="equips">' + equipHtml + '</div>';
+    $('briefing-body').querySelectorAll('.equip').forEach(b =>
+      b.addEventListener('click', () => { toggleEquip(b.dataset.card); renderBriefing(); }));
+  }
+
+  function gaugeMark(c) {
+    const cia = c.cia || {};
+    return (cia.C ? '🔵' + cia.C + ' ' : '') + (cia.I ? '🟢' + cia.I + ' ' : '') + (cia.A ? '🟡' + cia.A : '');
+  }
+
+  function toggleEquip(id) {
+    const i = equipped.indexOf(id);
+    if (i >= 0) equipped.splice(i, 1);
+    else if (equipped.length < 3) equipped.push(id);
+  }
+
+  // 図鑑（全カードを英名・型・世代・対策つきで一覧）
+  function renderCodex() {
+    const groups = [['C', '🔵 機密性'], ['I', '🟢 完全性'], ['A', '🟡 可用性']];
+    const html = groups.map(([g, title]) => {
+      const items = CARDS.filter(c => c.gauge === g).map(c =>
+        '<div class="codex-card"><div class="cc-top"><b>⚡ ' + c.name + '</b>' +
+        '<span class="cc-gen">世代' + c.gen + '</span></div>' +
+        '<div class="cc-en">' + c.en + ' ・ ' + c.type + ' ・ ' + c.tactic + '</div>' +
+        '<div class="cc-desc">' + c.desc + '</div>' +
+        '<div class="cc-def">🛡️ ' + c.defense + '</div></div>'
+      ).join('');
+      return '<h2 class="sub">' + title + '</h2>' + items;
+    }).join('');
+    $('codex-body').innerHTML = html;
   }
 
   document.addEventListener('DOMContentLoaded', () => {
     $('btn-start').addEventListener('click', () => { renderBriefing(); show('briefing-screen'); });
+    $('btn-codex').addEventListener('click', () => { renderCodex(); show('codex-screen'); });
+    $('btn-codex-back').addEventListener('click', () => show('title-screen'));
     $('btn-sortie').addEventListener('click', startGame);
     $('btn-retry').addEventListener('click', startGame);
     $('btn-title').addEventListener('click', () => show('title-screen'));

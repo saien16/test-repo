@@ -65,5 +65,38 @@ assert(g5.banner && g5.banner.name && g5.banner.name.indexOf('マン・イン・
 assert(sandbox.MAL.every(m => m.waza && m.waza.name && m.waza.en && m.waza.defense),
        '全マルウェアが固有技（技名・英名・対策）を持つ');
 
+// 6) 図鑑データが整っている（全カードが技名/英名/型/世代/対策/コストを持つ）
+console.log('シナリオ6: カード図鑑データ');
+const cards = sandbox.CARDS || M.CARDS;
+assert(cards.length >= 10, 'カードが10枚以上ある（' + cards.length + '枚）');
+assert(cards.every(c => c.name && c.en && c.type && c.tactic !== undefined && c.defense && c.cia && c.cost),
+       '全カードが技名・英名・型・戦術・対策・配分・コストを持つ');
+
+// 7) 装備技カードで撃破でき、資源不足ならゲートされ、技名カットインが立つ
+console.log('シナリオ7: 装備技カードの撃破');
+M.setRng(() => 0.99);
+const g7 = M.createGame(M.STAGE, ['sqli']);
+['breach', 'fw_evade', 'pivot'].forEach(a => M.applyAction(g7, a));
+assert((M.listActions(g7).find(a => a.id === 'card:sqli') || {}).enabled,
+       '装備したSQLインジェクションが本命到達後に撃てる');
+g7.res.info = 5; // コスト(情報10)に満たない
+assert(!(M.listActions(g7).find(a => a.id === 'card:sqli') || {}).enabled,
+       '資源不足ならカードはゲートされる');
+g7.res.info = 40;
+M.applyAction(g7, 'card:sqli');
+assert(g7.banner && g7.banner.name.indexOf('SQL・インジェクション') === 0, '撃破時にカードの技名カットインが立つ');
+
+// 8) ゼロデイはハードニング無視（同条件で通常より機密性ダメージが大きい）
+console.log('シナリオ8: ゼロデイ貫通');
+M.setRng(() => 0.99);
+const gz = M.createGame(M.STAGE, ['zeroday']);
+['breach', 'fw_evade', 'pivot'].forEach(a => M.applyAction(gz, a)); // baseH55、監査でT4後70
+const cBeforeZ = gz.db.C;
+gz.res.info = 99; gz.res.tech = 99; // ゼロデイのコストを賄う
+M.applyAction(gz, 'card:zeroday');
+const zDmg = cBeforeZ - gz.db.C;
+// 比較: 同じ威力80でハードニング有り(プロキシ緩和0.30×防御力倍率)の理論値より大きいはず
+assert(zDmg > 80 * (1 - 0.30) * (0.6 + 0.35 * 0.8) - 1, 'ゼロデイはハードニング無視で機密性を強く貫通（' + Math.round(zDmg) + '）');
+
 console.log(fails === 0 ? '\n✅ すべて通過' : `\n❌ ${fails}件 失敗`);
 process.exit(fails === 0 ? 0 : 1);

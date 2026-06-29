@@ -11,6 +11,7 @@ const R = (p) => resolve(__dir, p);
 // 連結順（依存の都合）: データ → コア
 const ORDER = [
   'src/data/malware.js',
+  'src/data/cards.js',
   'src/data/enemies.js',
   'src/game/core.js',
 ];

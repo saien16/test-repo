@@ -26,6 +26,10 @@ body {
 }
 .big-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 #1d6b41; }
 .big-btn.retry { background: linear-gradient(180deg,#ffd479,#f0a93a); box-shadow: 0 6px 0 #9c6a14; }
+.big-btn.ghost { background: #12201a; color: #9fe7c1; box-shadow: 0 6px 0 #0c1712; border: 1px solid #2a4a3a; }
+
+.sub { font-size: 14px; color: #9fe7c1; margin: 16px 0 6px; border-bottom: 1px solid #1f3a30; padding-bottom: 4px; }
+.sub small { color: #7fb89c; font-weight: 400; }
 
 /* ブリーフィング */
 .intro { background: #0f1b18; border: 1px solid #1f3a30; border-radius: 10px; padding: 12px; }
@@ -99,6 +103,26 @@ body {
 .act small { display: block; font-size: 10px; color: #8fb6a3; margin-top: 2px; }
 .act:active { transform: translateY(1px); }
 .act.off { opacity: .4; cursor: not-allowed; }
+.act.strike { border-color: #6a4a2a; background: #1d1710; }
+.act.strike b { color: #ffd34a; }
+.act.card { border-color: #6a2a4a; background: #1d1018; }
+.act.card b { color: #ff8ac0; }
+
+/* 装備技カード選択 */
+.equips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.equip { text-align: left; padding: 8px 10px; border-radius: 10px; background: #14101a; border: 1px solid #3a2a4a; color: #e6d0f0; cursor: pointer; }
+.equip b { display: block; font-size: 12px; color: #ff8ac0; }
+.equip small { display: block; font-size: 10px; color: #b39fc2; margin-top: 2px; }
+.equip.on { border-color: #ff8ac0; box-shadow: 0 0 10px rgba(255,138,192,.4); background: #241430; }
+
+/* 図鑑 */
+.codex-card { background: #0f1620; border: 1px solid #243447; border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+.cc-top { display: flex; justify-content: space-between; align-items: baseline; }
+.cc-top b { color: #ffd34a; font-size: 14px; }
+.cc-gen { font-size: 11px; color: #8fb6a3; }
+.cc-en { font-size: 11px; color: #7fd0ff; margin: 3px 0; }
+.cc-desc { font-size: 12px; color: #cfe9d8; }
+.cc-def { font-size: 12px; color: #9fe7c1; margin-top: 4px; background: #0c1512; border-radius: 6px; padding: 5px 7px; }
 
 /* ログ */
 .logbox { background: #080d0b; border: 1px solid #1a2620; border-radius: 10px; padding: 8px; font-size: 11px; color: #9fcbb3; max-height: 130px; overflow: auto; }
