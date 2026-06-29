@@ -758,6 +758,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
 
   function popBanner(b) {
+    // 連続発動で重ならないよう、既存バナーを消してから出す
+    document.querySelectorAll('.banner').forEach(e => e.remove());
     const el = document.createElement('div');
     el.className = 'banner ' + (b.tone || '') + (b.crit ? ' crit' : '');
     el.innerHTML =
