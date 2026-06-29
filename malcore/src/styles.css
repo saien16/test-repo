@@ -52,10 +52,22 @@ body {
 .nodespr { width: 48px; height: 48px; }
 .nodespr.sm { width: 34px; height: 34px; }
 .bossspr { width: 52px; height: 52px; }
+/* 世代進化のオーラ（見た目パワーアップ） */
+.malspr.evo1 { filter: drop-shadow(0 0 6px rgba(255,211,74,.8)); }
+.malspr.evo2 { filter: drop-shadow(0 0 9px rgba(255,170,40,.95)) drop-shadow(0 0 3px rgba(255,255,180,.9)); }
+/* 本命DBが瀕死(crit)のとき小刻みに揺れる */
+.bossspr.crit { animation: hpShake .5s linear infinite; }
+@keyframes hpShake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-2px) rotate(-2deg)} 75%{transform:translateX(2px) rotate(2deg)} }
 .card-cia { font-size: 13px; margin: 4px 0; }
 .card-role { font-size: 11px; color: #7fd0ff; }
 .card-waza { font-size: 12px; font-weight: 800; color: #ffd34a; margin: 4px 0 2px; text-shadow: 0 0 8px rgba(255,211,74,.4); }
 .card-desc { font-size: 11px; color: #9fb3c2; margin-top: 4px; }
+.evo-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 11px;
+  background: linear-gradient(180deg,#ffd34a,#f0a93a); color: #5a3a00; font-weight: 900; vertical-align: middle; }
+.evo-btn { width: 100%; margin-top: 8px; padding: 7px; border-radius: 8px; font-size: 12px; font-weight: 800;
+  background: #2a2010; color: #ffd79a; border: 1px solid #6a4a1a; cursor: pointer; }
+.evo-btn:disabled { opacity: .45; cursor: not-allowed; }
+.evo-btn:not(:disabled):active { transform: translateY(1px); }
 
 /* 技カットイン バナー */
 .banner {
@@ -69,6 +81,9 @@ body {
   text-shadow: 0 0 14px rgba(255,90,90,.9), 0 2px 0 #6a0d0d;
   transform: skewX(-8deg);
 }
+.banner-spr { width: 84px; height: 84px; margin: 0 auto 2px; animation: lunge .4s ease-out; }
+.banner-spr svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 0 8px rgba(0,0,0,.5)); }
+@keyframes lunge { 0%{transform:scale(.5) translateY(20px); opacity:0} 60%{transform:scale(1.15) translateY(-4px); opacity:1} 100%{transform:scale(1) translateY(0)} }
 .banner-en { font-size: 13px; color: #ffd9d9; letter-spacing: 3px; margin-top: 4px; }
 .banner-crit { font-size: 20px; font-weight: 900; color: #ffd34a; text-shadow: 0 0 12px rgba(255,211,74,.9); margin-top: 2px; }
 .banner.ci .banner-name { background: linear-gradient(90deg, rgba(138,90,255,0) 0%, rgba(138,90,255,.85) 50%, rgba(138,90,255,0) 100%); text-shadow: 0 0 14px rgba(170,120,255,.9), 0 2px 0 #2a1060; }
@@ -153,6 +168,7 @@ body {
 .verdict.win { color: #7CFFB2; text-shadow: 0 0 16px rgba(72,255,160,.5); }
 .verdict.lose { color: #ff6b6b; }
 .stat { text-align: center; color: #9fb3c2; font-size: 13px; }
+.reward { text-align: center; color: #ffd79a; font-size: 13px; margin-top: 10px; background: #1f1808; border: 1px solid #6a4a1a; border-radius: 8px; padding: 8px; }
 .debrief { background: #0f1b18; border: 1px solid #2f4a3c; border-radius: 10px; padding: 12px; margin-top: 14px; }
 .debrief b { color: #7fd0ff; }
 .debrief p { margin: 6px 0 0; font-size: 13px; }

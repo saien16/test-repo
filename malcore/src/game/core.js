@@ -8,7 +8,7 @@ let _rng = Math.random;
 function setRng(fn) { _rng = fn; }
 
 /* ===== ゲーム状態生成 ===== */
-function createGame(stage, equipped) {
+function createGame(stage, equipped, levels) {
   const db = stage.nodes.db;
   return {
     stage,
@@ -17,6 +17,7 @@ function createGame(stage, equipped) {
     warning: 0,
     res: { info: 40, tech: 20, res: 20 }, // 初期資源
     hand: ['zeus', 'iloveyou', 'mydoom', 'blaster'],
+    levels: levels || {},               // 世代進化レベル（id→0..2）
     equipped: (equipped || []).slice(0, 3), // 装備した攻撃手法カード（最大3）
     footholds: { outside: true, pc: false, db: false },
     botnet: false,    // 踏み台をボット化したか（A火力+10%）
@@ -68,6 +69,20 @@ function gaugeDamage(g, base, gauge, opt) {
   return { dmg: base * (1 - mit) * hit * crit, crit: crit > 1 };
 }
 
+/* ===== 世代進化 ===== */
+const EVO_MAX = 2;
+const EVO_SUFFIX = ['', '・改', '・改弐'];
+function evoMul(level) { return 1 + 0.25 * (level || 0); }        // Lv0=1.0 / Lv1=1.25 / Lv2=1.5
+function evoCost(level) { return level <= 0 ? 2 : 3; }            // 次の世代への開発Pコスト
+function malStats(m, level) {
+  const k = evoMul(level);
+  return { C: Math.round(m.C * k), I: Math.round(m.I * k), A: Math.round(m.A * k) };
+}
+function wazaName(m, level) {
+  const base = (m.waza ? m.waza.name : m.name).replace(/！+$/, '');
+  return base + (EVO_SUFFIX[level] || '') + '！！';
+}
+
 /* ===== 撃破の共通処理（マルウェア・カード共用） =====
    cia: {C,I,A} の基礎攻撃力。opt.ignoreH / opt.botnet(可用性ボーナス) */
 function resolveStrike(g, cia, opt) {
@@ -110,11 +125,14 @@ function listActions(g) {
   can('ci_diag', '🧪 診断カットイン（V +25/3T）', g.res.tech >= 15, '技術15が必要',
       '脆弱性を露出させ命中・会心UP。技術-15 / W+5');
 
-  // 撃破（本命に到達後、手持ちのマルウェア固有技ごと）
+  // 撃破（本命に到達後、手持ちのマルウェア固有技ごと。世代進化を反映）
   g.hand.forEach(id => {
     const m = malById(id);
-    can('strike:' + id, '⚔️ ' + (m.waza ? m.waza.name.replace(/！+$/, '') : m.name), f.db, '本命未到達',
-        'C' + m.C + '/I' + m.I + '/A' + m.A + ' で攻撃。 W+10');
+    const L = (g.levels && g.levels[id]) || 0;
+    const s = malStats(m, L);
+    const tag = L > 0 ? EVO_SUFFIX[L].replace('・', '') + ' ' : '';
+    can('strike:' + id, '⚔️ ' + tag + (m.waza ? m.waza.name.replace(/！+$/, '') : m.name), f.db, '本命未到達',
+        'C' + s.C + '/I' + s.I + '/A' + s.A + ' で攻撃。 W+10');
   });
   // 装備技カード（本命到達後・資源を満たすとき）
   (g.equipped || []).forEach(id => {
@@ -156,13 +174,18 @@ function applyAction(g, actionId) {
     g.cut.vDiag = 3; g.res.tech -= 15; warn = 5; msg = '🧪 診断カットイン発動! 脆弱性 +25（3T）';
     g.banner = { name: 'ヴァルナラビリティ・スキャン！', en: 'Vulnerability Scan', tone: 'ci' };
   } else if (actionId.startsWith('strike:')) {
-    const m = malById(actionId.slice(7));
-    const r = resolveStrike(g, { C: m.C, I: m.I, A: m.A }, { botnet: g.botnet });
+    const id = actionId.slice(7);
+    const m = malById(id);
+    const L = (g.levels && g.levels[id]) || 0;
+    const s = malStats(m, L);
+    const r = resolveStrike(g, s, { botnet: g.botnet });
     warn = 10;
-    const w = m.waza || { name: m.name + ' 撃破', en: '', gauge: 'C' };
-    // 技名カットイン演出（攻撃名を必殺技として表示）
-    g.banner = { name: w.name, en: w.en, tone: 'strike', gauge: w.gauge, crit: r.crit, defense: w.defense };
-    msg = '⚡ ' + w.name + (r.crit ? ' 会心!' : '') + ' 🔵-' + Math.round(r.rc.dmg) +
+    const w = m.waza || { name: m.name, en: '', gauge: 'C' };
+    const nm = wazaName(m, L);
+    // 技名カットイン演出（攻撃名を必殺技として表示・攻撃表情のキャラつき）
+    g.banner = { name: nm, en: w.en, tone: 'strike', gauge: w.gauge, crit: r.crit,
+                 defense: w.defense, sprId: id, gen: L };
+    msg = '⚡ ' + nm + (r.crit ? ' 会心!' : '') + ' 🔵-' + Math.round(r.rc.dmg) +
           ' 🟢-' + Math.round(r.ri.dmg) + ' 🟡-' + Math.round(r.ra.dmg);
   } else if (actionId.startsWith('card:')) {
     const c = cardById(actionId.slice(5));
@@ -227,6 +250,7 @@ function debrief(g) {
 const MALCORE = {
   createGame, listActions, applyAction, endTurn, checkEnd,
   effH, effV, gaugeDamage, resolveStrike, canAfford, debrief, setRng,
+  malStats, wazaName, evoCost, evoMul, EVO_MAX,
   STAGE: (typeof STAGE_ZENITH !== 'undefined') ? STAGE_ZENITH : null,
   CARDS: (typeof CARDS !== 'undefined') ? CARDS : [],
 };
@@ -253,11 +277,16 @@ if (typeof document !== 'undefined' && document.getElementById) {
 
   function renderBattle() {
     const g = G, d = g.db;
+    const dbState = (function () {
+      const r = (d.C + d.I + d.A) / d.initTotal;
+      return r > 0.66 ? 'ok' : (r > 0.33 ? 'hurt' : 'crit');
+    })();
     const hops = g.stage.path.map((n, i) => {
       const reached = n === 'outside' ? true : g.footholds[n];
       const nm = n === 'outside' ? '外部' : g.stage.nodes[n].name.split('（')[0];
+      const sprOpt = n === 'db' ? { state: dbState } : undefined;
       const hop = '<span class="hop ' + (reached ? 'on' : '') + '">' +
-        '<span class="nodespr">' + SPRITES.node(n === 'outside' ? 'outside' : n) + '</span>' +
+        '<span class="nodespr">' + SPRITES.node(n === 'outside' ? 'outside' : n, sprOpt) + '</span>' +
         '<small>' + nm + '</small></span>';
       if (i === g.stage.path.length - 1) return hop;
       const next = g.stage.path[i + 1];
@@ -278,7 +307,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
 
     const acts = listActions(g).map(a => {
       const kind = a.id.startsWith('card:') ? ' card' : (a.id.startsWith('strike:') ? ' strike' : '');
-      const spr = a.id.startsWith('strike:') ? '<span class="actspr">' + SPRITES.mal(a.id.slice(7)) + '</span>' : '';
+      const spr = a.id.startsWith('strike:')
+        ? '<span class="actspr">' + SPRITES.mal(a.id.slice(7), { gen: (g.levels && g.levels[a.id.slice(7)]) || 0 }) + '</span>' : '';
       return '<button class="act' + kind + ' ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
         (a.enabled ? '' : 'disabled title="' + a.reason + '"') + '>' +
         spr + '<span class="act-txt"><b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></span></button>';
@@ -294,7 +324,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       bar('🚨 警戒度', g.warning, 100, 'warn') +
       '<div class="path">' + pathHtml + '</div>' +
       '<div class="boss">' +
-        '<div class="boss-head"><span class="bossspr">' + SPRITES.node('db') + '</span>' +
+        '<div class="boss-head"><span class="bossspr ' + dbState + '">' + SPRITES.node('db', { state: dbState }) + '</span>' +
           '<span class="boss-title">★ ' + g.stage.nodes.db.name +
           '<span class="hv">H ' + effH(g) + ' / V ' + effV(g) + ' ' + cutBadges + '</span></span></div>' +
         bar('🔵 機密性', d.C, 160, 'c') +
@@ -321,7 +351,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
     document.querySelectorAll('.banner').forEach(e => e.remove());
     const el = document.createElement('div');
     el.className = 'banner ' + (b.tone || '') + (b.crit ? ' crit' : '');
-    el.innerHTML =
+    const spr = b.sprId ? '<div class="banner-spr">' + SPRITES.mal(b.sprId, { expr: 'attack', gen: b.gen || 0 }) + '</div>' : '';
+    el.innerHTML = spr +
       '<div class="banner-name">⚡ ' + b.name + '</div>' +
       (b.en ? '<div class="banner-en">' + b.en + '</div>' : '') +
       (b.crit ? '<div class="banner-crit">会心!</div>' : '');
@@ -339,28 +370,60 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function renderResult() {
     show('result-screen');
     const win = G.result === 'win';
+    let reward = '';
+    if (win) { // 勝利で開発P獲得（次の進化資金）
+      devP += 3; saveJSON('malcore.devP', devP);
+      reward = '<div class="reward">🛠️ 開発P +3（所持 ' + devP + '）— ブリーフィングで世代進化に使える</div>';
+    }
     $('result-body').innerHTML =
       '<div class="verdict ' + (win ? 'win' : 'lose') + '">' +
         (win ? '🏆 攻略成功' : (G.result === 'lose_turn' ? '⏳ タイムオーバー' : '🚨 駆除された')) + '</div>' +
       '<div class="stat">残りCIA合計 ' + Math.round(G.db.C + G.db.I + G.db.A) +
         ' ／ 使用 ' + (G.turn) + 'T ／ 警戒度 ' + G.warning + '</div>' +
+      reward +
       '<div class="debrief"><b>防御官の総評</b><p>' + debrief(G) + '</p></div>';
   }
 
   let equipped = []; // 装備中の攻撃手法カード（最大3）
 
-  function startGame() { G = createGame(STAGE_ZENITH, equipped); show('battle-screen'); renderBattle(); }
+  // 世代進化の永続状態（localStorage、無ければデモ用に開発P=4で開始）
+  let levels = loadJSON('malcore.levels', {});
+  let devP = loadJSON('malcore.devP', 4);
+  function loadJSON(key, def) {
+    try { const v = localStorage.getItem(key); return v == null ? def : JSON.parse(v); } catch (e) { return def; }
+  }
+  function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+
+  function startGame() { G = createGame(STAGE_ZENITH, equipped, levels); show('battle-screen'); renderBattle(); }
+
+  function evolve(id) {
+    const L = levels[id] || 0;
+    if (L >= EVO_MAX) return;
+    const cost = evoCost(L);
+    if (devP < cost) return;
+    devP -= cost; levels[id] = L + 1;
+    saveJSON('malcore.levels', levels); saveJSON('malcore.devP', devP);
+    Sound.play('cutin');
+    renderBriefing();
+  }
 
   function renderBriefing() {
     const handHtml = ['zeus', 'iloveyou', 'mydoom', 'blaster'].map(id => {
       const m = malById(id);
+      const L = levels[id] || 0;
+      const s = MALCORE.malStats(m, L);
+      const badge = L > 0 ? '<span class="evo-badge">' + ['', '改', '改弐'][L] + '</span>' : '';
+      const maxed = L >= EVO_MAX;
+      const cost = evoCost(L);
+      const evoBtn = '<button class="evo-btn" data-evo="' + id + '" ' + (maxed || devP < cost ? 'disabled' : '') + '>' +
+        (maxed ? '進化MAX' : '⬆ 進化（開発P ' + cost + '）') + '</button>';
       return '<div class="card"><div class="card-top">' +
-        '<span class="malspr">' + SPRITES.mal(id) + '</span>' +
-        '<span class="card-name"><b>' + m.name + '</b><span>' + m.year + '</span></span></div>' +
-        '<div class="card-cia">🔵' + m.C + ' 🟢' + m.I + ' 🟡' + m.A + '</div>' +
+        '<span class="malspr evo' + L + '">' + SPRITES.mal(id, { gen: L }) + '</span>' +
+        '<span class="card-name"><b>' + m.name + badge + '</b><span>' + m.year + ' / 世代Lv' + L + '</span></span></div>' +
+        '<div class="card-cia">🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</div>' +
         '<div class="card-role">' + m.role + ' / ' + m.sub + '</div>' +
-        (m.waza ? '<div class="card-waza">⚡ ' + m.waza.name + '</div>' : '') +
-        '<div class="card-desc">' + m.desc + '</div></div>';
+        (m.waza ? '<div class="card-waza">⚡ ' + MALCORE.wazaName(m, L) + '</div>' : '') +
+        evoBtn + '</div>';
     }).join('');
     // 装備技カードの選択（最大3）
     const equipHtml = CARDS.map(c =>
@@ -370,13 +433,14 @@ if (typeof document !== 'undefined' && document.getElementById) {
     ).join('');
     $('briefing-body').innerHTML =
       '<p class="intro">' + STAGE_ZENITH.intro + '</p>' +
-      '<p class="hint">王道: 偵察 → 初期侵害 → 横展開(FW回避) → 偵察CI → 診断CI → 撃破×2。' +
-      'カットインで本命を「通りやすく」してから Zeus で機密性を抜け。</p>' +
-      '<h2 class="sub">編成（固有技）</h2><div class="cards">' + handHtml + '</div>' +
+      '<h2 class="sub">編成（固有技）<small>🛠️ 開発P ' + devP + '</small></h2>' +
+      '<div class="cards">' + handHtml + '</div>' +
       '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3</small></h2>' +
       '<div class="equips">' + equipHtml + '</div>';
     $('briefing-body').querySelectorAll('.equip').forEach(b =>
       b.addEventListener('click', () => { toggleEquip(b.dataset.card); renderBriefing(); }));
+    $('briefing-body').querySelectorAll('.evo-btn').forEach(b =>
+      b.addEventListener('click', () => { Sound.unlock(); evolve(b.dataset.evo); }));
   }
 
   function gaugeMark(c) {
@@ -412,7 +476,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     tap('btn-codex', () => { Sound.play('select'); renderCodex(); show('codex-screen'); });
     tap('btn-codex-back', () => show('title-screen'));
     tap('btn-sortie', () => { Sound.play('select'); startGame(); });
-    tap('btn-retry', () => { Sound.play('select'); startGame(); });
+    tap('btn-retry', () => { Sound.play('select'); renderBriefing(); show('briefing-screen'); });
     tap('btn-title', () => show('title-screen'));
     $('btn-mute').addEventListener('click', () => {
       Sound.unlock();

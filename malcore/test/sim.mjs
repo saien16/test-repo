@@ -106,5 +106,25 @@ assert(SP && ['zeus', 'iloveyou', 'mydoom', 'blaster'].every(id => /^<svg/.test(
 assert(['outside', 'pc', 'db', 'fw'].every(k => /^<svg/.test(SP.node(k))),
        '全ノード(外部/PC/本命DB/境界FW)にSVGがある');
 
+// 10) キャラ差分: 攻撃表情とDBやられ顔が通常と異なる
+console.log('シナリオ10: キャラ差分');
+assert(SP.mal('zeus', { expr: 'attack' }) !== SP.mal('zeus', { expr: 'normal' }), '攻撃表情は通常と差分がある');
+assert(SP.node('db', { state: 'crit' }) !== SP.node('db', { state: 'ok' }), '本命DBの瀕死顔は平常と差分がある');
+assert(SP.mal('zeus', { gen: 2 }) !== SP.mal('zeus', { gen: 0 }), '世代進化で見た目が変わる');
+
+// 11) 世代進化: ステータスと技名が強化される
+console.log('シナリオ11: 世代進化');
+const zeus = sandbox.MAL.find(m => m.id === 'zeus');
+assert(M.malStats(zeus, 2).C === Math.round(zeus.C * 1.5), '改弐(Lv2)で機密性攻撃が1.5倍');
+assert(/改弐/.test(M.wazaName(zeus, 2)), '改弐の技名に「改弐」が付く');
+// 進化Zeusは素のZeusより本命に多くダメージを与える
+M.setRng(() => 0.99);
+const base = M.createGame(M.STAGE, [], { zeus: 0 });
+const evo = M.createGame(M.STAGE, [], { zeus: 2 });
+['breach', 'fw_evade', 'pivot'].forEach(a => { M.applyAction(base, a); M.applyAction(evo, a); });
+const cBase = base.db.C, cEvo = evo.db.C;
+M.applyAction(base, 'strike:zeus'); M.applyAction(evo, 'strike:zeus');
+assert((cEvo - evo.db.C) > (cBase - base.db.C) + 5, '改弐Zeusは素のZeusより本命を多く削る');
+
 console.log(fails === 0 ? '\n✅ すべて通過' : `\n❌ ${fails}件 失敗`);
 process.exit(fails === 0 ? 0 : 1);
