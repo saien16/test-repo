@@ -56,5 +56,14 @@ const wBefore = g4.warning;
 M.applyAction(g4, 'fw_break');
 assert(g4.warning - wBefore >= 25, '境界FW破壊で警戒度が大きく上昇（+25）');
 
+// 5) 撃破で技名カットイン（banner）が立つ／全マルウェアが固有技を持つ
+console.log('シナリオ5: 技名カットイン');
+const g5 = newGame();
+playAll(g5, ['breach', 'fw_evade', 'pivot', 'strike:zeus']);
+assert(g5.banner && g5.banner.name && g5.banner.name.indexOf('マン・イン・ザ・ブラウザ') === 0,
+       '撃破時に固有技名のカットインが立つ（Zeus=マン・イン・ザ・ブラウザ）');
+assert(sandbox.MAL.every(m => m.waza && m.waza.name && m.waza.en && m.waza.defense),
+       '全マルウェアが固有技（技名・英名・対策）を持つ');
+
 console.log(fails === 0 ? '\n✅ すべて通過' : `\n❌ ${fails}件 失敗`);
 process.exit(fails === 0 ? 0 : 1);

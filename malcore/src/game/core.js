@@ -102,8 +102,10 @@ function applyAction(g, actionId) {
     g.footholds.db = true; warn = 5; msg = '横展開成功: 本命「勘定系DB」へ到達';
   } else if (actionId === 'ci_recon') {
     g.cut.hHack = 3; g.res.info -= 20; warn = 5; msg = '🛠️ 偵察カットイン発動! ハードニング -20（3T）';
+    g.banner = { name: 'ポート・スキャン！', en: 'Port Scan', tone: 'ci' };
   } else if (actionId === 'ci_diag') {
     g.cut.vDiag = 3; g.res.tech -= 15; warn = 5; msg = '🧪 診断カットイン発動! 脆弱性 +25（3T）';
+    g.banner = { name: 'ヴァルナラビリティ・スキャン！', en: 'Vulnerability Scan', tone: 'ci' };
   } else if (actionId.startsWith('strike:')) {
     const m = malById(actionId.slice(7));
     const aBonus = g.botnet ? 1.10 : 1.0;
@@ -118,8 +120,11 @@ function applyAction(g, actionId) {
     g.res.tech += Math.floor(ri.dmg / 10);
     g.res.res += Math.floor(ra.dmg / 10);
     warn = 10;
-    const crit = (rc.crit || ri.crit || ra.crit) ? ' 会心!' : '';
-    msg = '⚔️ ' + m.name + ' 撃破' + crit + ': 🔵-' + Math.round(rc.dmg) +
+    const crit = (rc.crit || ri.crit || ra.crit);
+    const w = m.waza || { name: m.name + ' 撃破', en: '', gauge: 'C' };
+    // 技名カットイン演出（攻撃名を必殺技として表示）
+    g.banner = { name: w.name, en: w.en, tone: 'strike', gauge: w.gauge, crit, defense: w.defense };
+    msg = '⚡ ' + w.name + (crit ? ' 会心!' : '') + ' 🔵-' + Math.round(rc.dmg) +
           ' 🟢-' + Math.round(ri.dmg) + ' 🟡-' + Math.round(ra.dmg);
   }
 
@@ -248,7 +253,19 @@ if (typeof document !== 'undefined' && document.getElementById) {
       b.addEventListener('click', () => { applyAction(G, b.dataset.act); afterAction(); }));
   }
 
+  function popBanner(b) {
+    const el = document.createElement('div');
+    el.className = 'banner ' + (b.tone || '') + (b.crit ? ' crit' : '');
+    el.innerHTML =
+      '<div class="banner-name">⚡ ' + b.name + '</div>' +
+      (b.en ? '<div class="banner-en">' + b.en + '</div>' : '') +
+      (b.crit ? '<div class="banner-crit">会心!</div>' : '');
+    $('app').appendChild(el);
+    setTimeout(() => el.remove(), 1100);
+  }
+
   function afterAction() {
+    if (G.banner) { popBanner(G.banner); G.banner = null; }
     if (G.result) return renderResult();
     renderBattle();
   }
@@ -272,6 +289,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       return '<div class="card"><div class="card-top"><b>' + m.name + '</b><span>' + m.year + '</span></div>' +
         '<div class="card-cia">🔵' + m.C + ' 🟢' + m.I + ' 🟡' + m.A + '</div>' +
         '<div class="card-role">' + m.role + ' / ' + m.sub + '</div>' +
+        (m.waza ? '<div class="card-waza">⚡ ' + m.waza.name + '</div>' : '') +
         '<div class="card-desc">' + m.desc + '</div></div>';
     }).join('');
     $('briefing-body').innerHTML =

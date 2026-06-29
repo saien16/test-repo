@@ -46,7 +46,32 @@ body {
 .card-top span { font-size: 11px; color: #6f8597; }
 .card-cia { font-size: 13px; margin: 4px 0; }
 .card-role { font-size: 11px; color: #7fd0ff; }
+.card-waza { font-size: 12px; font-weight: 800; color: #ffd34a; margin: 4px 0 2px; text-shadow: 0 0 8px rgba(255,211,74,.4); }
 .card-desc { font-size: 11px; color: #9fb3c2; margin-top: 4px; }
+
+/* 技カットイン バナー */
+.banner {
+  position: fixed; left: 0; right: 0; top: 38%; z-index: 50; text-align: center;
+  pointer-events: none; animation: bannerPop 1.1s ease-out forwards;
+}
+.banner-name {
+  display: inline-block; font-size: 30px; font-weight: 900; color: #fff;
+  padding: 8px 20px; letter-spacing: 1px;
+  background: linear-gradient(90deg, rgba(255,82,82,0) 0%, rgba(255,82,82,.85) 50%, rgba(255,82,82,0) 100%);
+  text-shadow: 0 0 14px rgba(255,90,90,.9), 0 2px 0 #6a0d0d;
+  transform: skewX(-8deg);
+}
+.banner-en { font-size: 13px; color: #ffd9d9; letter-spacing: 3px; margin-top: 4px; }
+.banner-crit { font-size: 20px; font-weight: 900; color: #ffd34a; text-shadow: 0 0 12px rgba(255,211,74,.9); margin-top: 2px; }
+.banner.ci .banner-name { background: linear-gradient(90deg, rgba(138,90,255,0) 0%, rgba(138,90,255,.85) 50%, rgba(138,90,255,0) 100%); text-shadow: 0 0 14px rgba(170,120,255,.9), 0 2px 0 #2a1060; }
+.banner.crit .banner-name { background: linear-gradient(90deg, rgba(255,170,40,0) 0%, rgba(255,170,40,.9) 50%, rgba(255,170,40,0) 100%); }
+@keyframes bannerPop {
+  0%   { opacity: 0; transform: scale(.6); }
+  18%  { opacity: 1; transform: scale(1.12); }
+  30%  { transform: scale(1); }
+  78%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.02); }
+}
 
 /* HUD / バー */
 .hud { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -149,24 +174,32 @@ const MAL = [
     C: 95, I: 45, A: 15,
     role: '撃破(C特化)', sub: '偵察', recon: true, breaker: false,
     desc: 'バンキング型トロイ。認証情報を窃取し機密性(🔵)を一気に抜く本命撃破役。',
+    waza: { name: 'マン・イン・ザ・ブラウザ！！', en: 'Man-in-the-Browser', gauge: 'C',
+            defense: 'MFAと取引署名で、単独の認証情報漏えいを無効化する。' },
   },
   {
     id: 'iloveyou', name: 'ILOVEYOU', year: 2000, gen: 0,
     C: 55, I: 85, A: 60,
     role: '撃破(I)', sub: '侵入', recon: false, breaker: false,
     desc: 'メール感染ワーム。ファイルを上書き破壊し完全性(🟢)を激しく削る。',
+    waza: { name: 'メールワーム・オーバーライト！！', en: 'Mail Worm Overwrite', gauge: 'I',
+            defense: '添付スクリプトの実行制限と、重要データのバックアップ。' },
   },
   {
     id: 'mydoom', name: 'MyDoom', year: 2004, gen: 0,
     C: 55, I: 25, A: 85,
     role: '足場/ボット', sub: '撃破(A)', recon: false, breaker: false,
     desc: 'バックドアを開き踏み台をボット化。可用性(🟡)も高い。',
+    waza: { name: 'ボットネット・コンスクリプション！！', en: 'Botnet Conscription', gauge: 'A',
+            defense: '外向き接続と開放ポートの監視（egress filtering）。' },
   },
   {
     id: 'blaster', name: 'Blaster', year: 2003, gen: 0,
     C: 10, I: 25, A: 85,
     role: '撃破(A)', sub: '装置破壊', recon: false, breaker: true,
     desc: 'RPC型ワーム。機器をクラッシュさせ防御装置(境界FW等)を破壊できる。',
+    waza: { name: 'バッファ・オーバーフロー！！', en: 'Buffer Overflow', gauge: 'A',
+            defense: 'パッチ適用とDEP/ASLR、RPCポートの遮断。' },
   },
 ];
 
@@ -312,8 +345,10 @@ function applyAction(g, actionId) {
     g.footholds.db = true; warn = 5; msg = '横展開成功: 本命「勘定系DB」へ到達';
   } else if (actionId === 'ci_recon') {
     g.cut.hHack = 3; g.res.info -= 20; warn = 5; msg = '🛠️ 偵察カットイン発動! ハードニング -20（3T）';
+    g.banner = { name: 'ポート・スキャン！', en: 'Port Scan', tone: 'ci' };
   } else if (actionId === 'ci_diag') {
     g.cut.vDiag = 3; g.res.tech -= 15; warn = 5; msg = '🧪 診断カットイン発動! 脆弱性 +25（3T）';
+    g.banner = { name: 'ヴァルナラビリティ・スキャン！', en: 'Vulnerability Scan', tone: 'ci' };
   } else if (actionId.startsWith('strike:')) {
     const m = malById(actionId.slice(7));
     const aBonus = g.botnet ? 1.10 : 1.0;
@@ -328,8 +363,11 @@ function applyAction(g, actionId) {
     g.res.tech += Math.floor(ri.dmg / 10);
     g.res.res += Math.floor(ra.dmg / 10);
     warn = 10;
-    const crit = (rc.crit || ri.crit || ra.crit) ? ' 会心!' : '';
-    msg = '⚔️ ' + m.name + ' 撃破' + crit + ': 🔵-' + Math.round(rc.dmg) +
+    const crit = (rc.crit || ri.crit || ra.crit);
+    const w = m.waza || { name: m.name + ' 撃破', en: '', gauge: 'C' };
+    // 技名カットイン演出（攻撃名を必殺技として表示）
+    g.banner = { name: w.name, en: w.en, tone: 'strike', gauge: w.gauge, crit, defense: w.defense };
+    msg = '⚡ ' + w.name + (crit ? ' 会心!' : '') + ' 🔵-' + Math.round(rc.dmg) +
           ' 🟢-' + Math.round(ri.dmg) + ' 🟡-' + Math.round(ra.dmg);
   }
 
@@ -458,7 +496,19 @@ if (typeof document !== 'undefined' && document.getElementById) {
       b.addEventListener('click', () => { applyAction(G, b.dataset.act); afterAction(); }));
   }
 
+  function popBanner(b) {
+    const el = document.createElement('div');
+    el.className = 'banner ' + (b.tone || '') + (b.crit ? ' crit' : '');
+    el.innerHTML =
+      '<div class="banner-name">⚡ ' + b.name + '</div>' +
+      (b.en ? '<div class="banner-en">' + b.en + '</div>' : '') +
+      (b.crit ? '<div class="banner-crit">会心!</div>' : '');
+    $('app').appendChild(el);
+    setTimeout(() => el.remove(), 1100);
+  }
+
   function afterAction() {
+    if (G.banner) { popBanner(G.banner); G.banner = null; }
     if (G.result) return renderResult();
     renderBattle();
   }
@@ -482,6 +532,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       return '<div class="card"><div class="card-top"><b>' + m.name + '</b><span>' + m.year + '</span></div>' +
         '<div class="card-cia">🔵' + m.C + ' 🟢' + m.I + ' 🟡' + m.A + '</div>' +
         '<div class="card-role">' + m.role + ' / ' + m.sub + '</div>' +
+        (m.waza ? '<div class="card-waza">⚡ ' + m.waza.name + '</div>' : '') +
         '<div class="card-desc">' + m.desc + '</div></div>';
     }).join('');
     $('briefing-body').innerHTML =
