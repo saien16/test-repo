@@ -88,6 +88,13 @@ body {
 .banner-crit { font-size: 20px; font-weight: 900; color: #ffd34a; text-shadow: 0 0 12px rgba(255,211,74,.9); margin-top: 2px; }
 .banner.ci .banner-name { background: linear-gradient(90deg, rgba(138,90,255,0) 0%, rgba(138,90,255,.85) 50%, rgba(138,90,255,0) 100%); text-shadow: 0 0 14px rgba(170,120,255,.9), 0 2px 0 #2a1060; }
 .banner.crit .banner-name { background: linear-gradient(90deg, rgba(255,170,40,0) 0%, rgba(255,170,40,.9) 50%, rgba(255,170,40,0) 100%); }
+.banner.counter .banner-name { font-size: 24px; background: linear-gradient(90deg, rgba(79,163,255,0) 0%, rgba(79,163,255,.85) 50%, rgba(79,163,255,0) 100%); text-shadow: 0 0 12px rgba(120,180,255,.9), 0 2px 0 #103a6a; }
+.banner-spr.hurt { animation: hurtShake .45s ease-in-out; }
+@keyframes hurtShake { 0%,100%{transform:translateX(0) rotate(0)} 20%{transform:translateX(-5px) rotate(-6deg)} 50%{transform:translateX(5px) rotate(6deg)} 80%{transform:translateX(-3px) rotate(-3deg)} }
+
+/* 画面シェイク（被弾） */
+#app.shake { animation: appShake .42s ease-in-out; }
+@keyframes appShake { 0%,100%{transform:translateX(0)} 15%{transform:translateX(-7px)} 35%{transform:translateX(6px)} 55%{transform:translateX(-5px)} 75%{transform:translateX(4px)} }
 @keyframes bannerPop {
   0%   { opacity: 0; transform: scale(.6); }
   18%  { opacity: 1; transform: scale(1.12); }

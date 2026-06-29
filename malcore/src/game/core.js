@@ -153,6 +153,7 @@ function applyAction(g, actionId) {
   const valid = listActions(g).find(a => a.id === actionId && a.enabled);
   if (!valid) return { ok: false, msg: 'その行動は今できない' };
 
+  g.counter = null; // ブルー反撃（被弾）フラグ。endTurnで立つ
   let warn = 0, msg = '';
   if (actionId === 'recon') {
     g.reconDone = true; warn = 2;
@@ -213,12 +214,14 @@ function endTurn(g) {
   if (g.turn % g.stage.audit.every === 0) {
     g.db.baseH = Math.min(100, g.db.baseH + g.stage.audit.hardenUp);
     g.log.push('T' + g.turn + '  🔵 システム監査: ハードニング +' + g.stage.audit.hardenUp + '（→' + g.db.baseH + '）');
+    g.counter = { kind: 'audit', label: 'システム監査 H+' + g.stage.audit.hardenUp };
   }
   // ブルー: セキュリティ診断（警戒度が閾値超えで一度だけV↓）
   if (!g.diagDone && g.warning >= g.stage.diag.warnThreshold) {
     g.db.baseV = Math.max(0, g.db.baseV - g.stage.diag.vulnDown);
     g.diagDone = true;
     g.log.push('T' + g.turn + '  🔵 セキュリティ診断: 脆弱性 -' + g.stage.diag.vulnDown + '（→' + g.db.baseV + '）');
+    g.counter = { kind: 'diag', label: 'セキュリティ診断 V-' + g.stage.diag.vulnDown };
   }
 
   checkEnd(g);
@@ -361,10 +364,32 @@ if (typeof document !== 'undefined' && document.getElementById) {
     setTimeout(() => el.remove(), 1100);
   }
 
+  function popCounter(c) {
+    // ブルーチーム反撃＝こちらの被弾。やられ顔のキャラ＋画面シェイク＋効果音。
+    document.querySelectorAll('.banner').forEach(e => e.remove());
+    const id = G.hand[(G.turn + 1) % G.hand.length];
+    const el = document.createElement('div');
+    el.className = 'banner counter';
+    el.innerHTML =
+      '<div class="banner-spr hurt">' + SPRITES.mal(id, { expr: 'hurt', gen: (G.levels && G.levels[id]) || 0 }) + '</div>' +
+      '<div class="banner-name">🛡️ ブルーチーム反撃！</div>' +
+      '<div class="banner-en">' + c.label + '</div>';
+    $('app').appendChild(el);
+    const app = $('app'); app.classList.remove('shake'); void app.offsetWidth; app.classList.add('shake');
+    Sound.play('hit');
+    setTimeout(() => el.remove(), 1200);
+  }
+
   function afterAction() {
     if (G.banner) { popBanner(G.banner); G.banner = null; }
-    if (G.result) { Sound.play(G.result === 'win' ? 'win' : 'lose'); return renderResult(); }
+    const counter = G.counter; G.counter = null;
+    if (G.result) {
+      Sound.stopBgm();
+      Sound.play(G.result === 'win' ? 'win' : 'lose');
+      return renderResult();
+    }
     renderBattle();
+    if (counter) setTimeout(() => popCounter(counter), 720); // 行動バナーの後に被弾演出
   }
 
   function renderResult() {
@@ -394,7 +419,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
   function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
-  function startGame() { G = createGame(STAGE_ZENITH, equipped, levels); show('battle-screen'); renderBattle(); }
+  function startGame() { G = createGame(STAGE_ZENITH, equipped, levels); Sound.bgm(); show('battle-screen'); renderBattle(); }
 
   function evolve(id) {
     const L = levels[id] || 0;
@@ -476,8 +501,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
     tap('btn-codex', () => { Sound.play('select'); renderCodex(); show('codex-screen'); });
     tap('btn-codex-back', () => show('title-screen'));
     tap('btn-sortie', () => { Sound.play('select'); startGame(); });
-    tap('btn-retry', () => { Sound.play('select'); renderBriefing(); show('briefing-screen'); });
-    tap('btn-title', () => show('title-screen'));
+    tap('btn-retry', () => { Sound.play('select'); Sound.stopBgm(); renderBriefing(); show('briefing-screen'); });
+    tap('btn-title', () => { Sound.stopBgm(); show('title-screen'); });
     $('btn-mute').addEventListener('click', () => {
       Sound.unlock();
       const m = !Sound.isMuted();

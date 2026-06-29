@@ -68,6 +68,14 @@ const SPRITES = (() => {
       `<path d="M${r[0] + 8} ${r[1] - 8} l-13 5" stroke="#111" stroke-width="3.4" stroke-linecap="round" opacity=".8"/>` +
       `<text x="82" y="30" font-size="20" font-weight="900" fill="#ffd34a" stroke="#a8000a" stroke-width="0.6">!!</text>`;
   }
+  // 被弾表情の差分: X目＋汗＋衝撃マーク（やられ顔）
+  function hurtOverlay(eyes) {
+    const [l, r] = eyes;
+    const x = (c) => `<path d="M${c[0] - 4} ${c[1] - 4} l8 8 M${c[0] + 4} ${c[1] - 4} l-8 8" stroke="#11202a" stroke-width="2.6" stroke-linecap="round"/>`;
+    return x(l) + x(r) +
+      `<path d="M26 26 q5 7 0 12 q-5 -5 0 -12" fill="#7fd0ff" opacity=".9"/>` +
+      `<g stroke="#ff5252" stroke-width="2.4" stroke-linecap="round"><path d="M80 22 l8 -7 M82 30 l9 -2 M78 16 l3 -9"/></g>`;
+  }
   // 世代進化の差分: gen1=オーラ環 / gen2=きらめき星も追加
   function genOverlay(gen) {
     let s = '';
@@ -83,6 +91,7 @@ const SPRITES = (() => {
     const m = mal[id]; if (!m) return '';
     let inject = '';
     if (opt.expr === 'attack') inject += attackOverlay(m.eyes);
+    else if (opt.expr === 'hurt') inject += hurtOverlay(m.eyes);
     inject += genOverlay(opt.gen || 0);
     return `<svg viewBox="0 0 100 100">${m.body}${inject}</svg>`;
   }

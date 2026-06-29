@@ -97,6 +97,13 @@ body {
 .banner-crit { font-size: 20px; font-weight: 900; color: #ffd34a; text-shadow: 0 0 12px rgba(255,211,74,.9); margin-top: 2px; }
 .banner.ci .banner-name { background: linear-gradient(90deg, rgba(138,90,255,0) 0%, rgba(138,90,255,.85) 50%, rgba(138,90,255,0) 100%); text-shadow: 0 0 14px rgba(170,120,255,.9), 0 2px 0 #2a1060; }
 .banner.crit .banner-name { background: linear-gradient(90deg, rgba(255,170,40,0) 0%, rgba(255,170,40,.9) 50%, rgba(255,170,40,0) 100%); }
+.banner.counter .banner-name { font-size: 24px; background: linear-gradient(90deg, rgba(79,163,255,0) 0%, rgba(79,163,255,.85) 50%, rgba(79,163,255,0) 100%); text-shadow: 0 0 12px rgba(120,180,255,.9), 0 2px 0 #103a6a; }
+.banner-spr.hurt { animation: hurtShake .45s ease-in-out; }
+@keyframes hurtShake { 0%,100%{transform:translateX(0) rotate(0)} 20%{transform:translateX(-5px) rotate(-6deg)} 50%{transform:translateX(5px) rotate(6deg)} 80%{transform:translateX(-3px) rotate(-3deg)} }
+
+/* 画面シェイク（被弾） */
+#app.shake { animation: appShake .42s ease-in-out; }
+@keyframes appShake { 0%,100%{transform:translateX(0)} 15%{transform:translateX(-7px)} 35%{transform:translateX(6px)} 55%{transform:translateX(-5px)} 75%{transform:translateX(4px)} }
 @keyframes bannerPop {
   0%   { opacity: 0; transform: scale(.6); }
   18%  { opacity: 1; transform: scale(1.12); }
@@ -446,6 +453,14 @@ const SPRITES = (() => {
       `<path d="M${r[0] + 8} ${r[1] - 8} l-13 5" stroke="#111" stroke-width="3.4" stroke-linecap="round" opacity=".8"/>` +
       `<text x="82" y="30" font-size="20" font-weight="900" fill="#ffd34a" stroke="#a8000a" stroke-width="0.6">!!</text>`;
   }
+  // 被弾表情の差分: X目＋汗＋衝撃マーク（やられ顔）
+  function hurtOverlay(eyes) {
+    const [l, r] = eyes;
+    const x = (c) => `<path d="M${c[0] - 4} ${c[1] - 4} l8 8 M${c[0] + 4} ${c[1] - 4} l-8 8" stroke="#11202a" stroke-width="2.6" stroke-linecap="round"/>`;
+    return x(l) + x(r) +
+      `<path d="M26 26 q5 7 0 12 q-5 -5 0 -12" fill="#7fd0ff" opacity=".9"/>` +
+      `<g stroke="#ff5252" stroke-width="2.4" stroke-linecap="round"><path d="M80 22 l8 -7 M82 30 l9 -2 M78 16 l3 -9"/></g>`;
+  }
   // 世代進化の差分: gen1=オーラ環 / gen2=きらめき星も追加
   function genOverlay(gen) {
     let s = '';
@@ -461,6 +476,7 @@ const SPRITES = (() => {
     const m = mal[id]; if (!m) return '';
     let inject = '';
     if (opt.expr === 'attack') inject += attackOverlay(m.eyes);
+    else if (opt.expr === 'hurt') inject += hurtOverlay(m.eyes);
     inject += genOverlay(opt.gen || 0);
     return `<svg viewBox="0 0 100 100">${m.body}${inject}</svg>`;
   }
@@ -533,7 +549,8 @@ if (typeof globalThis !== 'undefined') globalThis.SPRITES = SPRITES;
    ・外部音源ファイル禁止。合成のみ。muted時/未対応時は no-op（ヘッドレス安全）。
    ・トップレベルで AudioContext を即生成しない。 */
 const Sound = (() => {
-  let ac = null, master = null, muted = false, unsupported = false;
+  let ac = null, master = null, bgmGain = null, muted = false, unsupported = false;
+  let bgmTimer = null, bstep = 0, btime = 0;
 
   function ctx() {
     if (ac) return ac;
@@ -546,6 +563,7 @@ const Sound = (() => {
       comp.threshold.value = -12; comp.knee.value = 16; comp.ratio.value = 14;
       comp.attack.value = 0.003; comp.release.value = 0.25; comp.connect(ac.destination);
       master = ac.createGain(); master.gain.value = 0.55; master.connect(comp);
+      bgmGain = ac.createGain(); bgmGain.gain.value = muted ? 0 : 0.42; bgmGain.connect(master);
     } catch (e) { unsupported = true; ac = null; return null; }
     return ac;
   }
@@ -594,8 +612,53 @@ const Sound = (() => {
     src.connect(g); g.connect(master); src.start(t0);
   }
 
+  /* ============ BGM（テクノ系・128BPM・16小節＝ちょうど30秒でループ）============ */
+  const BPM = 128, STEP = 60 / BPM / 4, STEPS = 16 * 16; // 16th音符 / 16小節
+  const roots = [45, 41, 48, 43];                         // コード根音 Am F C G（4小節ごと）
+  const chords = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
+  function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+  function bvoice(type, freq, t, dur, gain) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(bgmGain); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function bkick(t) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g); g.connect(bgmGain); o.start(t); o.stop(t + 0.2);
+  }
+  function bhat(t, gain) {
+    const n = Math.floor(ac.sampleRate * 0.03), buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
+    let s = 98765; for (let i = 0; i < n; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; d[i] = (s / 0x3fffffff - 1) * (1 - i / n); }
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+    const g = ac.createGain(); g.gain.value = gain;
+    src.connect(hp); hp.connect(g); g.connect(bgmGain); src.start(t);
+  }
+  function bgmSchedule() {
+    if (!ac) return;
+    const ahead = ac.currentTime + 0.12;
+    while (btime < ahead) {
+      if (!muted) {
+        const s = bstep % STEPS, bar = (s / 16) | 0, inBar = s % 16, ci = ((bar / 4) | 0) % 4;
+        if (inBar % 4 === 0) bkick(btime);                                   // 四つ打ちキック
+        if (inBar % 2 === 1) bhat(btime, inBar % 8 === 7 ? 0.18 : 0.10);     // オフビートのハット
+        if (inBar % 2 === 0) bvoice('sawtooth', mtof(roots[ci] + (inBar % 8 === 0 ? 0 : 12)), btime, STEP * 1.4, 0.30); // ベース
+        if (bar % 8 >= 4) bvoice('square', mtof(chords[ci][inBar % 3] + 12), btime, STEP * 0.8, 0.12); // 後半でアルペジオ
+        if (inBar === 0) chords[ci].forEach(m => bvoice('triangle', mtof(m), btime, STEP * 14, 0.045)); // 小節頭のパッド
+      }
+      btime += STEP; bstep++;
+    }
+  }
+
   const SFX = {
     select() { tone({ type: 'square', f0: 520, f1: 700, dur: 0.07, gain: 0.25 }); },
+    hit() { noise(0.10, 0.4); tone({ type: 'sine', f0: 120, f1: 48, dur: 0.16, gain: 0.4 }); }, // 被弾
     strike() { // 必殺技ヒット: 下降ズァッ＋ノイズの芯
       noise(0.12, 0.35);
       tone({ type: 'sawtooth', f0: 320, f1: 80, dur: 0.18, gain: 0.45 });
@@ -619,10 +682,19 @@ const Sound = (() => {
 
   function play(name) { try { (SFX[name] || (() => {}))(); } catch (e) {} }
 
+  function bgm() {
+    const a = ctx(); if (!a) return; resume(a);
+    if (bgmTimer) return;                 // 多重再生しない
+    bstep = 0; btime = a.currentTime + 0.1;
+    try { bgmSchedule(); bgmTimer = setInterval(bgmSchedule, 25); } catch (e) {}
+  }
+  function stopBgm() { if (bgmTimer) { clearInterval(bgmTimer); bgmTimer = null; } }
+
   return {
     unlock,
-    setMuted(b) { muted = !!b; }, isMuted() { return muted; },
-    play,
+    setMuted(b) { muted = !!b; if (bgmGain) bgmGain.gain.value = muted ? 0 : 0.42; },
+    isMuted() { return muted; },
+    play, bgm, stopBgm,
   };
 })();
 
@@ -785,6 +857,7 @@ function applyAction(g, actionId) {
   const valid = listActions(g).find(a => a.id === actionId && a.enabled);
   if (!valid) return { ok: false, msg: 'その行動は今できない' };
 
+  g.counter = null; // ブルー反撃（被弾）フラグ。endTurnで立つ
   let warn = 0, msg = '';
   if (actionId === 'recon') {
     g.reconDone = true; warn = 2;
@@ -845,12 +918,14 @@ function endTurn(g) {
   if (g.turn % g.stage.audit.every === 0) {
     g.db.baseH = Math.min(100, g.db.baseH + g.stage.audit.hardenUp);
     g.log.push('T' + g.turn + '  🔵 システム監査: ハードニング +' + g.stage.audit.hardenUp + '（→' + g.db.baseH + '）');
+    g.counter = { kind: 'audit', label: 'システム監査 H+' + g.stage.audit.hardenUp };
   }
   // ブルー: セキュリティ診断（警戒度が閾値超えで一度だけV↓）
   if (!g.diagDone && g.warning >= g.stage.diag.warnThreshold) {
     g.db.baseV = Math.max(0, g.db.baseV - g.stage.diag.vulnDown);
     g.diagDone = true;
     g.log.push('T' + g.turn + '  🔵 セキュリティ診断: 脆弱性 -' + g.stage.diag.vulnDown + '（→' + g.db.baseV + '）');
+    g.counter = { kind: 'diag', label: 'セキュリティ診断 V-' + g.stage.diag.vulnDown };
   }
 
   checkEnd(g);
@@ -993,10 +1068,32 @@ if (typeof document !== 'undefined' && document.getElementById) {
     setTimeout(() => el.remove(), 1100);
   }
 
+  function popCounter(c) {
+    // ブルーチーム反撃＝こちらの被弾。やられ顔のキャラ＋画面シェイク＋効果音。
+    document.querySelectorAll('.banner').forEach(e => e.remove());
+    const id = G.hand[(G.turn + 1) % G.hand.length];
+    const el = document.createElement('div');
+    el.className = 'banner counter';
+    el.innerHTML =
+      '<div class="banner-spr hurt">' + SPRITES.mal(id, { expr: 'hurt', gen: (G.levels && G.levels[id]) || 0 }) + '</div>' +
+      '<div class="banner-name">🛡️ ブルーチーム反撃！</div>' +
+      '<div class="banner-en">' + c.label + '</div>';
+    $('app').appendChild(el);
+    const app = $('app'); app.classList.remove('shake'); void app.offsetWidth; app.classList.add('shake');
+    Sound.play('hit');
+    setTimeout(() => el.remove(), 1200);
+  }
+
   function afterAction() {
     if (G.banner) { popBanner(G.banner); G.banner = null; }
-    if (G.result) { Sound.play(G.result === 'win' ? 'win' : 'lose'); return renderResult(); }
+    const counter = G.counter; G.counter = null;
+    if (G.result) {
+      Sound.stopBgm();
+      Sound.play(G.result === 'win' ? 'win' : 'lose');
+      return renderResult();
+    }
     renderBattle();
+    if (counter) setTimeout(() => popCounter(counter), 720); // 行動バナーの後に被弾演出
   }
 
   function renderResult() {
@@ -1026,7 +1123,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
   function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
-  function startGame() { G = createGame(STAGE_ZENITH, equipped, levels); show('battle-screen'); renderBattle(); }
+  function startGame() { G = createGame(STAGE_ZENITH, equipped, levels); Sound.bgm(); show('battle-screen'); renderBattle(); }
 
   function evolve(id) {
     const L = levels[id] || 0;
@@ -1108,8 +1205,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
     tap('btn-codex', () => { Sound.play('select'); renderCodex(); show('codex-screen'); });
     tap('btn-codex-back', () => show('title-screen'));
     tap('btn-sortie', () => { Sound.play('select'); startGame(); });
-    tap('btn-retry', () => { Sound.play('select'); renderBriefing(); show('briefing-screen'); });
-    tap('btn-title', () => show('title-screen'));
+    tap('btn-retry', () => { Sound.play('select'); Sound.stopBgm(); renderBriefing(); show('briefing-screen'); });
+    tap('btn-title', () => { Sound.stopBgm(); show('title-screen'); });
     $('btn-mute').addEventListener('click', () => {
       Sound.unlock();
       const m = !Sound.isMuted();

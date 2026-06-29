@@ -126,5 +126,21 @@ const cBase = base.db.C, cEvo = evo.db.C;
 M.applyAction(base, 'strike:zeus'); M.applyAction(evo, 'strike:zeus');
 assert((cEvo - evo.db.C) > (cBase - base.db.C) + 5, '改弐Zeusは素のZeusより本命を多く削る');
 
+// 12) 被弾: ブルー監査ターンで counter フラグが立ち、hurt表情が描ける
+console.log('シナリオ12: 被弾リアクション');
+assert(SP.mal('zeus', { expr: 'hurt' }) !== SP.mal('zeus', { expr: 'normal' }), '被弾(hurt)表情は通常と差分がある');
+M.setRng(() => 0.99);
+const gc = M.createGame(M.STAGE, [], {});
+// 監査周期(4T)に当たるターンで counter が立つ
+['recon', 'breach', 'fw_evade', 'pivot'].forEach(a => M.applyAction(gc, a)); // T4=pivotでシステム監査
+assert(gc.counter && gc.counter.kind === 'audit', '監査ターンにブルー反撃(被弾)フラグが立つ');
+
+// 13) BGM API（ヘッドレスでは no-op で例外なし）
+console.log('シナリオ13: BGM API');
+assert(sandbox.Sound && typeof sandbox.Sound.bgm === 'function' && typeof sandbox.Sound.stopBgm === 'function',
+       'Sound.bgm/stopBgm が公開されている');
+let threw = false; try { sandbox.Sound.bgm(); sandbox.Sound.stopBgm(); } catch (e) { threw = true; }
+assert(!threw, 'ヘッドレスでBGM呼び出しが例外を投げない(no-op)');
+
 console.log(fails === 0 ? '\n✅ すべて通過' : `\n❌ ${fails}件 失敗`);
 process.exit(fails === 0 ? 0 : 1);

@@ -6,7 +6,8 @@
    ・外部音源ファイル禁止。合成のみ。muted時/未対応時は no-op（ヘッドレス安全）。
    ・トップレベルで AudioContext を即生成しない。 */
 const Sound = (() => {
-  let ac = null, master = null, muted = false, unsupported = false;
+  let ac = null, master = null, bgmGain = null, muted = false, unsupported = false;
+  let bgmTimer = null, bstep = 0, btime = 0;
 
   function ctx() {
     if (ac) return ac;
@@ -19,6 +20,7 @@ const Sound = (() => {
       comp.threshold.value = -12; comp.knee.value = 16; comp.ratio.value = 14;
       comp.attack.value = 0.003; comp.release.value = 0.25; comp.connect(ac.destination);
       master = ac.createGain(); master.gain.value = 0.55; master.connect(comp);
+      bgmGain = ac.createGain(); bgmGain.gain.value = muted ? 0 : 0.42; bgmGain.connect(master);
     } catch (e) { unsupported = true; ac = null; return null; }
     return ac;
   }
@@ -67,8 +69,53 @@ const Sound = (() => {
     src.connect(g); g.connect(master); src.start(t0);
   }
 
+  /* ============ BGM（テクノ系・128BPM・16小節＝ちょうど30秒でループ）============ */
+  const BPM = 128, STEP = 60 / BPM / 4, STEPS = 16 * 16; // 16th音符 / 16小節
+  const roots = [45, 41, 48, 43];                         // コード根音 Am F C G（4小節ごと）
+  const chords = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
+  function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+  function bvoice(type, freq, t, dur, gain) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(bgmGain); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function bkick(t) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g); g.connect(bgmGain); o.start(t); o.stop(t + 0.2);
+  }
+  function bhat(t, gain) {
+    const n = Math.floor(ac.sampleRate * 0.03), buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
+    let s = 98765; for (let i = 0; i < n; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; d[i] = (s / 0x3fffffff - 1) * (1 - i / n); }
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+    const g = ac.createGain(); g.gain.value = gain;
+    src.connect(hp); hp.connect(g); g.connect(bgmGain); src.start(t);
+  }
+  function bgmSchedule() {
+    if (!ac) return;
+    const ahead = ac.currentTime + 0.12;
+    while (btime < ahead) {
+      if (!muted) {
+        const s = bstep % STEPS, bar = (s / 16) | 0, inBar = s % 16, ci = ((bar / 4) | 0) % 4;
+        if (inBar % 4 === 0) bkick(btime);                                   // 四つ打ちキック
+        if (inBar % 2 === 1) bhat(btime, inBar % 8 === 7 ? 0.18 : 0.10);     // オフビートのハット
+        if (inBar % 2 === 0) bvoice('sawtooth', mtof(roots[ci] + (inBar % 8 === 0 ? 0 : 12)), btime, STEP * 1.4, 0.30); // ベース
+        if (bar % 8 >= 4) bvoice('square', mtof(chords[ci][inBar % 3] + 12), btime, STEP * 0.8, 0.12); // 後半でアルペジオ
+        if (inBar === 0) chords[ci].forEach(m => bvoice('triangle', mtof(m), btime, STEP * 14, 0.045)); // 小節頭のパッド
+      }
+      btime += STEP; bstep++;
+    }
+  }
+
   const SFX = {
     select() { tone({ type: 'square', f0: 520, f1: 700, dur: 0.07, gain: 0.25 }); },
+    hit() { noise(0.10, 0.4); tone({ type: 'sine', f0: 120, f1: 48, dur: 0.16, gain: 0.4 }); }, // 被弾
     strike() { // 必殺技ヒット: 下降ズァッ＋ノイズの芯
       noise(0.12, 0.35);
       tone({ type: 'sawtooth', f0: 320, f1: 80, dur: 0.18, gain: 0.45 });
@@ -92,10 +139,19 @@ const Sound = (() => {
 
   function play(name) { try { (SFX[name] || (() => {}))(); } catch (e) {} }
 
+  function bgm() {
+    const a = ctx(); if (!a) return; resume(a);
+    if (bgmTimer) return;                 // 多重再生しない
+    bstep = 0; btime = a.currentTime + 0.1;
+    try { bgmSchedule(); bgmTimer = setInterval(bgmSchedule, 25); } catch (e) {}
+  }
+  function stopBgm() { if (bgmTimer) { clearInterval(bgmTimer); bgmTimer = null; } }
+
   return {
     unlock,
-    setMuted(b) { muted = !!b; }, isMuted() { return muted; },
-    play,
+    setMuted(b) { muted = !!b; if (bgmGain) bgmGain.gain.value = muted ? 0 : 0.42; },
+    isMuted() { return muted; },
+    play, bgm, stopBgm,
   };
 })();
 
