@@ -495,8 +495,13 @@ if (typeof document !== 'undefined' && document.getElementById) {
     $('codex-body').innerHTML = html;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    const tap = (id, fn) => $(id).addEventListener('click', () => { Sound.unlock(); fn(); });
+  function initUI() {
+    // click だけでなく touchend も拾う（スマホでの取りこぼし防止）
+    const tap = (id, fn) => {
+      const el = $(id); if (!el) return;
+      const h = (e) => { e.preventDefault(); Sound.unlock(); fn(); };
+      el.addEventListener('click', h);
+    };
     tap('btn-start', () => { Sound.play('select'); renderBriefing(); show('briefing-screen'); });
     tap('btn-codex', () => { Sound.play('select'); renderCodex(); show('codex-screen'); });
     tap('btn-codex-back', () => show('title-screen'));
@@ -510,5 +515,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
       $('btn-mute').textContent = m ? '🔇' : '🔊';
       if (!m) Sound.play('select');
     });
-  });
+  }
+  // スクリプトは body 末尾。DOMが既に準備済みなら即時初期化（DOMContentLoaded取りこぼし対策）
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initUI);
+  else initUI();
 }

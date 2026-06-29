@@ -1,5 +1,6 @@
 /* styles.css — マルこれ MVP（ターミナル/サイバー基調・スマホ縦想定） */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+button { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 html, body { margin: 0; height: 100%; }
 body {
   background: radial-gradient(120% 80% at 50% 0%, #0e161b 0%, #070a0d 70%);
