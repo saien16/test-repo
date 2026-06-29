@@ -256,12 +256,19 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const hops = g.stage.path.map((n, i) => {
       const reached = n === 'outside' ? true : g.footholds[n];
       const nm = n === 'outside' ? '外部' : g.stage.nodes[n].name.split('（')[0];
-      const hop = '<span class="hop ' + (reached ? 'on' : '') + '">' + nm + '</span>';
+      const hop = '<span class="hop ' + (reached ? 'on' : '') + '">' +
+        '<span class="nodespr">' + SPRITES.node(n === 'outside' ? 'outside' : n) + '</span>' +
+        '<small>' + nm + '</small></span>';
       if (i === g.stage.path.length - 1) return hop;
-      // pc → db の間だけ境界FW（開通=─▶ / 閉鎖=🚧▶）
       const next = g.stage.path[i + 1];
-      const arrow = (next === 'db') ? (g.fwOpen ? '─▶' : '🚧▶') : '─▶';
-      return hop + '<span class="hop-arrow">' + arrow + '</span>';
+      // pc → db の間に境界FW装置（開通=通路 / 閉鎖=FWアイコン）
+      if (next === 'db') {
+        const dev = g.fwOpen
+          ? '<span class="hop-arrow open">▶</span>'
+          : '<span class="hop fw"><span class="nodespr sm">' + SPRITES.node('fw') + '</span><small>境界FW</small></span>';
+        return hop + dev;
+      }
+      return hop + '<span class="hop-arrow">▶</span>';
     }).join('');
     const pathHtml = hops;
 
@@ -271,9 +278,10 @@ if (typeof document !== 'undefined' && document.getElementById) {
 
     const acts = listActions(g).map(a => {
       const kind = a.id.startsWith('card:') ? ' card' : (a.id.startsWith('strike:') ? ' strike' : '');
+      const spr = a.id.startsWith('strike:') ? '<span class="actspr">' + SPRITES.mal(a.id.slice(7)) + '</span>' : '';
       return '<button class="act' + kind + ' ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
         (a.enabled ? '' : 'disabled title="' + a.reason + '"') + '>' +
-        '<b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></button>';
+        spr + '<span class="act-txt"><b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></span></button>';
     }).join('');
 
     $('battle-root').innerHTML =
@@ -286,8 +294,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
       bar('🚨 警戒度', g.warning, 100, 'warn') +
       '<div class="path">' + pathHtml + '</div>' +
       '<div class="boss">' +
-        '<div class="boss-head">★ ' + g.stage.nodes.db.name +
-          ' <span class="hv">H ' + effH(g) + ' / V ' + effV(g) + '</span> ' + cutBadges + '</div>' +
+        '<div class="boss-head"><span class="bossspr">' + SPRITES.node('db') + '</span>' +
+          '<span class="boss-title">★ ' + g.stage.nodes.db.name +
+          '<span class="hv">H ' + effH(g) + ' / V ' + effV(g) + ' ' + cutBadges + '</span></span></div>' +
         bar('🔵 機密性', d.C, 160, 'c') +
         bar('🟢 完全性', d.I, 100, 'i') +
         bar('🟡 可用性', d.A, 100, 'a') +
@@ -345,7 +354,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function renderBriefing() {
     const handHtml = ['zeus', 'iloveyou', 'mydoom', 'blaster'].map(id => {
       const m = malById(id);
-      return '<div class="card"><div class="card-top"><b>' + m.name + '</b><span>' + m.year + '</span></div>' +
+      return '<div class="card"><div class="card-top">' +
+        '<span class="malspr">' + SPRITES.mal(id) + '</span>' +
+        '<span class="card-name"><b>' + m.name + '</b><span>' + m.year + '</span></span></div>' +
         '<div class="card-cia">🔵' + m.C + ' 🟢' + m.I + ' 🟡' + m.A + '</div>' +
         '<div class="card-role">' + m.role + ' / ' + m.sub + '</div>' +
         (m.waza ? '<div class="card-waza">⚡ ' + m.waza.name + '</div>' : '') +

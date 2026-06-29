@@ -48,9 +48,19 @@ body {
 .hint { color: #9fd9bb; font-size: 13px; background: #0c1512; border-radius: 10px; padding: 10px; }
 .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
 .card { background: #0f1620; border: 1px solid #243447; border-radius: 10px; padding: 10px; }
-.card-top { display: flex; justify-content: space-between; align-items: baseline; }
+.card-top { display: flex; align-items: center; gap: 8px; }
+.card-name { display: flex; flex-direction: column; }
 .card-top b { color: #ff8a8a; }
-.card-top span { font-size: 11px; color: #6f8597; }
+.card-name span { font-size: 11px; color: #6f8597; }
+
+/* スプライト共通 */
+.malspr, .nodespr, .bossspr, .actspr { display: inline-block; flex: none; }
+.malspr svg, .nodespr svg, .bossspr svg, .actspr svg { width: 100%; height: 100%; display: block; }
+.malspr { width: 46px; height: 46px; }
+.actspr { width: 30px; height: 30px; }
+.nodespr { width: 48px; height: 48px; }
+.nodespr.sm { width: 34px; height: 34px; }
+.bossspr { width: 52px; height: 52px; }
 .card-cia { font-size: 13px; margin: 4px 0; }
 .card-role { font-size: 11px; color: #7fd0ff; }
 .card-waza { font-size: 12px; font-weight: 800; color: #ffd34a; margin: 4px 0 2px; text-shadow: 0 0 8px rgba(255,211,74,.4); }
@@ -95,14 +105,20 @@ body {
 .bar-num { width: 34px; text-align: right; flex: none; color: #b9d6c7; }
 
 /* 経路 */
-.path { display: flex; align-items: center; gap: 4px; justify-content: center; margin: 10px 0; flex-wrap: wrap; }
-.hop { font-size: 12px; padding: 4px 8px; border-radius: 8px; background: #101a16; border: 1px solid #243; color: #6c8a7b; }
-.hop.on { background: #16352a; border-color: #2f9e63; color: #aef0c9; }
-.hop-arrow { color: #5e7d6e; font-size: 12px; }
+.path { display: flex; align-items: flex-start; gap: 2px; justify-content: center; margin: 10px 0; flex-wrap: wrap; }
+.hop { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 6px; border-radius: 10px; border: 1px solid transparent; }
+.hop small { font-size: 10px; color: #6c8a7b; white-space: nowrap; }
+.hop.on { background: #12241c; border-color: #2f9e63; }
+.hop.on small { color: #aef0c9; }
+.hop:not(.on) .nodespr { filter: grayscale(.7) brightness(.7); }
+.hop.fw small { color: #e08a7a; }
+.hop-arrow { color: #5e7d6e; font-size: 16px; align-self: center; padding-top: 14px; }
+.hop-arrow.open { color: #2f9e63; }
 
 /* ボス */
 .boss { background: #0e1620; border: 1px solid #2a3b50; border-radius: 12px; padding: 12px; margin: 8px 0; }
-.boss-head { font-weight: 800; color: #ff9d9d; margin-bottom: 8px; }
+.boss-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.boss-title { font-weight: 800; color: #ff9d9d; display: flex; flex-direction: column; }
 .boss-head .hv { font-size: 11px; color: #9fb3c2; font-weight: 400; }
 .badge { font-size: 10px; padding: 2px 6px; border-radius: 6px; margin-left: 4px; }
 .badge.ci { background: #2a1b3a; color: #e0b3ff; border: 1px solid #6a4a8a; }
@@ -110,7 +126,8 @@ body {
 
 /* 行動ボタン */
 .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
-.act { text-align: left; padding: 8px 10px; border-radius: 10px; background: #122019; border: 1px solid #2a4a3a; color: #d6f0e0; cursor: pointer; }
+.act { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px; border-radius: 10px; background: #122019; border: 1px solid #2a4a3a; color: #d6f0e0; cursor: pointer; }
+.act .act-txt { display: flex; flex-direction: column; }
 .act b { display: block; font-size: 13px; }
 .act small { display: block; font-size: 10px; color: #8fb6a3; margin-top: 2px; }
 .act:active { transform: translateY(1px); }
@@ -340,6 +357,108 @@ const STAGE_ZENITH = {
 };
 
 if (typeof globalThis !== 'undefined') { globalThis.STAGE_ZENITH = STAGE_ZENITH; }
+
+
+/* ===== src/data/sprites.js ===== */
+/* data/sprites.js — マルこれ キャラ＆ノードのSVGスプライト（インライン・外部アセット不使用）
+   ・SPRITES.mal(id)   マルウェアのファンシーなキャラ（艦これ的擬人化）
+   ・SPRITES.node(kind) 敵のサーバ/PC/本命/防御装置のアイコン
+   むしとりバトルの data/bugs.js（SVGスプライト方式）に倣う。 */
+const SPRITES = (() => {
+  // ---- マルウェア・キャラ（ゆるかわ路線） ----
+  const mal = {
+    // Zeus: 怪盗トロイ（マスク＋¥コイン）
+    zeus: `<svg viewBox="0 0 100 100">
+      <ellipse cx="50" cy="92" rx="26" ry="6" fill="#0006"/>
+      <rect x="22" y="36" width="56" height="50" rx="22" fill="#3fae6a" stroke="#2c8c52" stroke-width="2"/>
+      <path d="M26 42 Q50 18 74 42 Z" fill="#23303a"/>
+      <rect x="24" y="40" width="52" height="7" rx="3" fill="#1a2630"/>
+      <rect x="30" y="51" width="40" height="13" rx="6" fill="#1a2630"/>
+      <circle cx="42" cy="57" r="5" fill="#fff"/><circle cx="43" cy="58" r="2.5" fill="#11202a"/>
+      <circle cx="58" cy="57" r="5" fill="#fff"/><circle cx="59" cy="58" r="2.5" fill="#11202a"/>
+      <path d="M40 71 Q50 79 60 71" stroke="#1c5a36" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <circle cx="50" cy="80" r="7" fill="#ffd34a" stroke="#caa01f" stroke-width="2"/>
+      <text x="50" y="84" font-size="9" text-anchor="middle" fill="#8a6a10">¥</text></svg>`,
+    // ILOVEYOU: ラブレター・ワーム（ハート＋封筒）
+    iloveyou: `<svg viewBox="0 0 100 100">
+      <ellipse cx="50" cy="92" rx="24" ry="5" fill="#0006"/>
+      <path d="M50 87 C16 63 22 34 40 34 C49 34 50 43 50 46 C50 43 51 34 60 34 C78 34 84 63 50 87 Z" fill="#ff8fb3" stroke="#e06a93" stroke-width="2"/>
+      <circle cx="42" cy="54" r="4.5" fill="#fff"/><circle cx="43" cy="55" r="2.3" fill="#5a2336"/>
+      <circle cx="58" cy="54" r="4.5" fill="#fff"/><circle cx="59" cy="55" r="2.3" fill="#5a2336"/>
+      <circle cx="35" cy="62" r="3" fill="#ff5e8a" opacity=".6"/>
+      <circle cx="65" cy="62" r="3" fill="#ff5e8a" opacity=".6"/>
+      <path d="M44 64 Q50 70 56 64" stroke="#b03a60" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <rect x="40" y="71" width="20" height="14" rx="2" fill="#fff" stroke="#e06a93" stroke-width="1.5"/>
+      <path d="M40 72 L50 79 L60 72" stroke="#e06a93" stroke-width="1.5" fill="none"/></svg>`,
+    // MyDoom: ボット・スウォーム（ロボ＋子分ボット）
+    mydoom: `<svg viewBox="0 0 100 100">
+      <ellipse cx="50" cy="92" rx="24" ry="5" fill="#0006"/>
+      <line x1="50" y1="34" x2="50" y2="22" stroke="#7a52cc" stroke-width="3"/>
+      <circle cx="50" cy="20" r="4" fill="#c8a8ff"/>
+      <rect x="26" y="34" width="48" height="46" rx="12" fill="#9b6bff" stroke="#7a52cc" stroke-width="2"/>
+      <rect x="36" y="48" width="11" height="9" rx="2" fill="#0d1020"/>
+      <rect x="53" y="48" width="11" height="9" rx="2" fill="#0d1020"/>
+      <rect x="38" y="50" width="4" height="4" fill="#5cf0ff"/>
+      <rect x="55" y="50" width="4" height="4" fill="#5cf0ff"/>
+      <rect x="38" y="64" width="24" height="8" rx="2" fill="#0d1020"/>
+      <line x1="44" y1="64" x2="44" y2="72" stroke="#9b6bff" stroke-width="1.5"/>
+      <line x1="50" y1="64" x2="50" y2="72" stroke="#9b6bff" stroke-width="1.5"/>
+      <line x1="56" y1="64" x2="56" y2="72" stroke="#9b6bff" stroke-width="1.5"/>
+      <circle cx="22" cy="74" r="6" fill="#c8a8ff" stroke="#7a52cc" stroke-width="1.5"/>
+      <circle cx="78" cy="74" r="6" fill="#c8a8ff" stroke="#7a52cc" stroke-width="1.5"/></svg>`,
+    // Blaster: 爆裂ワーム（導火線つき爆弾）
+    blaster: `<svg viewBox="0 0 100 100">
+      <ellipse cx="48" cy="92" rx="24" ry="5" fill="#0006"/>
+      <path d="M62 34 q8 -6 10 -14" stroke="#caa01f" stroke-width="2" fill="none"/>
+      <circle cx="74" cy="16" r="4" fill="#fff3b0"/><circle cx="74" cy="16" r="2" fill="#ffae3a"/>
+      <circle cx="48" cy="58" r="26" fill="#ff8a3a" stroke="#d96a1f" stroke-width="2"/>
+      <path d="M36 51 l10 4" stroke="#7a2e00" stroke-width="3" stroke-linecap="round"/>
+      <path d="M60 51 l-10 4" stroke="#7a2e00" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="41" cy="59" r="4" fill="#fff"/><circle cx="42" cy="60" r="2" fill="#3a1500"/>
+      <circle cx="55" cy="59" r="4" fill="#fff"/><circle cx="56" cy="60" r="2" fill="#3a1500"/>
+      <path d="M40 69 l4 4 4 -4 4 4 4 -4" stroke="#7a2e00" stroke-width="2.5" fill="none" stroke-linejoin="round"/></svg>`,
+  };
+
+  // ---- 敵ノード（サーバ/PC/本命/装置） ----
+  const node = {
+    // 外部（インターネット雲）
+    outside: `<svg viewBox="0 0 100 100">
+      <g fill="#5b7a92" stroke="#3f5970" stroke-width="2">
+        <rect x="32" y="50" width="42" height="18" rx="9"/>
+        <circle cx="40" cy="50" r="13"/><circle cx="58" cy="46" r="16"/><circle cx="70" cy="54" r="11"/>
+      </g></svg>`,
+    // 社員PC（顔つきモニタ）
+    pc: `<svg viewBox="0 0 100 100">
+      <rect x="20" y="28" width="60" height="42" rx="6" fill="#2b3a48" stroke="#1c2731" stroke-width="2"/>
+      <rect x="26" y="34" width="48" height="30" rx="3" fill="#7fd0ff"/>
+      <circle cx="42" cy="46" r="3" fill="#11202a"/><circle cx="58" cy="46" r="3" fill="#11202a"/>
+      <path d="M44 54 q6 4 12 0" stroke="#11202a" stroke-width="2" fill="none"/>
+      <rect x="44" y="70" width="12" height="8" fill="#1c2731"/>
+      <rect x="32" y="78" width="36" height="5" rx="2" fill="#1c2731"/></svg>`,
+    // 本命：勘定系DB（王冠つきデータベース＝銀行）
+    db: `<svg viewBox="0 0 100 100">
+      <path d="M32 24 l6 9 12 -11 12 11 6 -9 -2 16 -32 0 Z" fill="#ffd34a" stroke="#caa01f" stroke-width="1.5"/>
+      <rect x="26" y="44" width="48" height="36" fill="#4a6b8a" stroke="#33506a" stroke-width="2"/>
+      <ellipse cx="50" cy="80" rx="24" ry="8" fill="#4a6b8a" stroke="#33506a" stroke-width="2"/>
+      <ellipse cx="50" cy="44" rx="24" ry="8" fill="#5e84a8" stroke="#33506a" stroke-width="2"/>
+      <path d="M26 58 a24 8 0 0 0 48 0" fill="none" stroke="#33506a" stroke-width="2"/>
+      <path d="M26 70 a24 8 0 0 0 48 0" fill="none" stroke="#33506a" stroke-width="2"/>
+      <text x="50" y="64" font-size="15" text-anchor="middle" fill="#dcefff">¥</text></svg>`,
+    // 境界FW（レンガ＋シールド）
+    fw: `<svg viewBox="0 0 100 100">
+      <rect x="24" y="42" width="52" height="38" rx="2" fill="#b6553a" stroke="#8a3c26" stroke-width="1.5"/>
+      <g stroke="#8a3c26" stroke-width="1.5">
+        <line x1="24" y1="55" x2="76" y2="55"/><line x1="24" y1="68" x2="76" y2="68"/>
+        <line x1="42" y1="42" x2="42" y2="55"/><line x1="60" y1="55" x2="60" y2="68"/>
+        <line x1="42" y1="68" x2="42" y2="80"/></g>
+      <path d="M50 28 l15 5 v10 c0 11 -8 17 -15 21 c-7 -4 -15 -10 -15 -21 v-10 Z" fill="#e0564a" stroke="#a83228" stroke-width="2"/>
+      <path d="M44 47 l5 6 9 -10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/></svg>`,
+  };
+
+  return { mal: (id) => mal[id] || '', node: (k) => node[k] || '' };
+})();
+
+if (typeof globalThis !== 'undefined') globalThis.SPRITES = SPRITES;
 
 
 /* ===== src/audio/sound.js ===== */
@@ -706,12 +825,19 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const hops = g.stage.path.map((n, i) => {
       const reached = n === 'outside' ? true : g.footholds[n];
       const nm = n === 'outside' ? '外部' : g.stage.nodes[n].name.split('（')[0];
-      const hop = '<span class="hop ' + (reached ? 'on' : '') + '">' + nm + '</span>';
+      const hop = '<span class="hop ' + (reached ? 'on' : '') + '">' +
+        '<span class="nodespr">' + SPRITES.node(n === 'outside' ? 'outside' : n) + '</span>' +
+        '<small>' + nm + '</small></span>';
       if (i === g.stage.path.length - 1) return hop;
-      // pc → db の間だけ境界FW（開通=─▶ / 閉鎖=🚧▶）
       const next = g.stage.path[i + 1];
-      const arrow = (next === 'db') ? (g.fwOpen ? '─▶' : '🚧▶') : '─▶';
-      return hop + '<span class="hop-arrow">' + arrow + '</span>';
+      // pc → db の間に境界FW装置（開通=通路 / 閉鎖=FWアイコン）
+      if (next === 'db') {
+        const dev = g.fwOpen
+          ? '<span class="hop-arrow open">▶</span>'
+          : '<span class="hop fw"><span class="nodespr sm">' + SPRITES.node('fw') + '</span><small>境界FW</small></span>';
+        return hop + dev;
+      }
+      return hop + '<span class="hop-arrow">▶</span>';
     }).join('');
     const pathHtml = hops;
 
@@ -721,9 +847,10 @@ if (typeof document !== 'undefined' && document.getElementById) {
 
     const acts = listActions(g).map(a => {
       const kind = a.id.startsWith('card:') ? ' card' : (a.id.startsWith('strike:') ? ' strike' : '');
+      const spr = a.id.startsWith('strike:') ? '<span class="actspr">' + SPRITES.mal(a.id.slice(7)) + '</span>' : '';
       return '<button class="act' + kind + ' ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
         (a.enabled ? '' : 'disabled title="' + a.reason + '"') + '>' +
-        '<b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></button>';
+        spr + '<span class="act-txt"><b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></span></button>';
     }).join('');
 
     $('battle-root').innerHTML =
@@ -736,8 +863,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
       bar('🚨 警戒度', g.warning, 100, 'warn') +
       '<div class="path">' + pathHtml + '</div>' +
       '<div class="boss">' +
-        '<div class="boss-head">★ ' + g.stage.nodes.db.name +
-          ' <span class="hv">H ' + effH(g) + ' / V ' + effV(g) + '</span> ' + cutBadges + '</div>' +
+        '<div class="boss-head"><span class="bossspr">' + SPRITES.node('db') + '</span>' +
+          '<span class="boss-title">★ ' + g.stage.nodes.db.name +
+          '<span class="hv">H ' + effH(g) + ' / V ' + effV(g) + ' ' + cutBadges + '</span></span></div>' +
         bar('🔵 機密性', d.C, 160, 'c') +
         bar('🟢 完全性', d.I, 100, 'i') +
         bar('🟡 可用性', d.A, 100, 'a') +
@@ -795,7 +923,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function renderBriefing() {
     const handHtml = ['zeus', 'iloveyou', 'mydoom', 'blaster'].map(id => {
       const m = malById(id);
-      return '<div class="card"><div class="card-top"><b>' + m.name + '</b><span>' + m.year + '</span></div>' +
+      return '<div class="card"><div class="card-top">' +
+        '<span class="malspr">' + SPRITES.mal(id) + '</span>' +
+        '<span class="card-name"><b>' + m.name + '</b><span>' + m.year + '</span></span></div>' +
         '<div class="card-cia">🔵' + m.C + ' 🟢' + m.I + ' 🟡' + m.A + '</div>' +
         '<div class="card-role">' + m.role + ' / ' + m.sub + '</div>' +
         (m.waza ? '<div class="card-waza">⚡ ' + m.waza.name + '</div>' : '') +

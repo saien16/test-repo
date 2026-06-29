@@ -13,6 +13,7 @@ const ORDER = [
   'src/data/malware.js',
   'src/data/cards.js',
   'src/data/enemies.js',
+  'src/data/sprites.js',
   'src/audio/sound.js',
   'src/game/core.js',
 ];

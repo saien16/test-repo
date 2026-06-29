@@ -98,5 +98,13 @@ const zDmg = cBeforeZ - gz.db.C;
 // 比較: 同じ威力80でハードニング有り(プロキシ緩和0.30×防御力倍率)の理論値より大きいはず
 assert(zDmg > 80 * (1 - 0.30) * (0.6 + 0.35 * 0.8) - 1, 'ゼロデイはハードニング無視で機密性を強く貫通（' + Math.round(zDmg) + '）');
 
+// 9) キャラ＆ノードのスプライトが揃っている
+console.log('シナリオ9: スプライト');
+const SP = sandbox.SPRITES;
+assert(SP && ['zeus', 'iloveyou', 'mydoom', 'blaster'].every(id => /^<svg/.test(SP.mal(id))),
+       '全マルウェアにキャラSVGがある');
+assert(['outside', 'pc', 'db', 'fw'].every(k => /^<svg/.test(SP.node(k))),
+       '全ノード(外部/PC/本命DB/境界FW)にSVGがある');
+
 console.log(fails === 0 ? '\n✅ すべて通過' : `\n❌ ${fails}件 失敗`);
 process.exit(fails === 0 ? 0 : 1);
