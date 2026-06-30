@@ -169,5 +169,21 @@ assert(intro0.some(x => /プロキシ|DLP/.test(x.name)) && intro0.some(x => /�
 ['breach', 'evade:fw', 'evade:dlp'].forEach(a => M.applyAction(gi, a));
 assert(M.defenseIntro(gi).length < intro0.length, '対策を剥がすと提示される防御カットインが減る');
 
+// 18) 移動/偵察系に技名（軽量フラッシュ）が付く＝撃破の全画面カットインと別系統
+console.log('シナリオ18: 移動/偵察の技名フラッシュ');
+const gf = newGame();
+M.applyAction(gf, 'recon');
+assert(gf.flash && /ポートスキャニング/.test(gf.flash.name) && !gf.banner, '偵察=ポートスキャニング(軽量flash・bannerではない)');
+M.applyAction(gf, 'breach');
+assert(gf.flash && /スピアフィッシング/.test(gf.flash.name), '初期侵害=スピアフィッシング');
+M.applyAction(gf, 'evade:fw'); M.applyAction(gf, 'pivot');
+assert(gf.flash && /ラテラルムーブメント/.test(gf.flash.name), '横展開=ラテラルムーブメント');
+assert(M.listActions(gf).length >= 0, 'listActions が機能');
+const labels = M.listActions(M.createGame(M.STAGE)).map(a => a.label).join(' ');
+assert(/ポートスキャニング/.test(labels) && /スピアフィッシング/.test(labels), '行動ボタンが技名表記になっている');
+// 撃破は依然として全画面カットイン(banner・スプライト付き)
+M.applyAction(gf, 'strike:zeus');
+assert(gf.banner && gf.banner.sprId && gf.banner.tone === 'strike', '撃破は全画面カットイン(banner+sprite)のまま');
+
 console.log(fails === 0 ? '\n✅ すべて通過' : `\n❌ ${fails}件 失敗`);
 process.exit(fails === 0 ? 0 : 1);

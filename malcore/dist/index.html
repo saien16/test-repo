@@ -100,6 +100,14 @@ body {
 .banner.crit .banner-name { background: linear-gradient(90deg, rgba(255,170,40,0) 0%, rgba(255,170,40,.9) 50%, rgba(255,170,40,0) 100%); }
 .banner.counter .banner-name { font-size: 24px; background: linear-gradient(90deg, rgba(79,163,255,0) 0%, rgba(79,163,255,.85) 50%, rgba(79,163,255,0) 100%); text-shadow: 0 0 12px rgba(120,180,255,.9), 0 2px 0 #103a6a; }
 .banner-head { font-size: 13px; color: #bfe0ff; letter-spacing: 2px; margin-bottom: 2px; }
+
+/* 移動/偵察系の軽量フラッシュ（撃破の全画面カットインと格差をつける小さな一瞬の提示） */
+.techflash { position: fixed; left: 50%; top: 16%; transform: translateX(-50%); z-index: 45; pointer-events: none;
+  background: rgba(20,40,34,.92); border: 1px solid #2f9e63; border-radius: 999px; padding: 6px 16px;
+  color: #aef0c9; font-size: 15px; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 12px rgba(0,0,0,.5);
+  animation: techflash .76s ease-out forwards; }
+.techflash span { font-size: 11px; color: #7fb89c; font-weight: 400; letter-spacing: 1px; }
+@keyframes techflash { 0% { opacity: 0; transform: translate(-50%, 8px) scale(.9); } 18% { opacity: 1; transform: translate(-50%, 0) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -6px); } }
 .banner.def .banner-name { font-size: 26px; background: linear-gradient(90deg, rgba(60,180,160,0) 0%, rgba(60,180,160,.85) 50%, rgba(60,180,160,0) 100%); text-shadow: 0 0 12px rgba(120,220,200,.9), 0 2px 0 #0c4a40; }
 .banner.def .banner-en { color: #bfeede; }
 .banner-spr.hurt { animation: hurtShake .45s ease-in-out; }
@@ -875,6 +883,16 @@ function gateOpen(g) {
 // その対策に有効な無効化手段が残っているか
 function activeDefenses(g) { return (g.defenses || []).filter(d => d.state === 'active'); }
 
+/* 移動/偵察系アクションの技名（実在の攻撃手法名。軽量フラッシュで提示） */
+const ACT_TECH = {
+  recon: { name: 'ポートスキャニング', en: 'Port Scanning' },
+  breach: { name: 'スピアフィッシング', en: 'Spearphishing' },
+  botnet: { name: 'ボットネット編入', en: 'Botnet Conscription' },
+  pivot: { name: 'ラテラルムーブメント', en: 'Lateral Movement / Pass-the-Hash' },
+  evade: { name: 'リビング・オフ・ザ・ランド', en: 'Living off the Land' },
+  brk: { name: 'サービス・クラッシュ', en: 'Service Crash / DoS' },
+};
+
 /* ===== 検知（警戒度）モデル ===== */
 const GAUGE_NOISE = { C: 0.5, I: 1.0, A: 1.5 }; // 機密性=静か / 可用性=派手
 function primGauge(cia) {
@@ -952,11 +970,11 @@ function listActions(g) {
   const f = g.footholds, A = [];
   const can = (id, label, ok, reason, hint) => A.push({ id, label, enabled: ok, reason, hint });
 
-  can('recon', '🔍 偵察（本命）', !g.reconDone, '偵察済み',
-      '本命の防御を開示。偵察カットインの前提。 W+2');
-  can('breach', '🚪 初期侵害（社員PC）', !f.pc, '侵害済み',
-      'フィッシングで踏み台に足場確立。 W+5');
-  can('botnet', '🏴 ボット化（社員PC）', f.pc && !g.botnet, f.pc ? '実施済み' : '踏み台が必要',
+  can('recon', '🔍 ポートスキャニング', !g.reconDone, '偵察済み',
+      '本命の防御を偵察で開示。CIカットインの前提。 W+2');
+  can('breach', '🚪 スピアフィッシング', !f.pc, '侵害済み',
+      '踏み台(社員PC)を初期侵害し足場確立。 W+5');
+  can('botnet', '🏴 ボットネット編入', f.pc && !g.botnet, f.pc ? '実施済み' : '踏み台が必要',
       '踏み台をボット化。可用性火力+10%。 W+5');
   // 対策の無効化（回避/破壊）。剥がすと防御力が一気に低下し、本体防御だけが残る。
   const hasBreaker = g.hand.some(id => (malById(id) || {}).breaker);
@@ -972,11 +990,11 @@ function listActions(g) {
           '装置破壊ロールで強行無効化。防御力↓だが W+25（派手）');
     }
   });
-  can('pivot', '↔️ 横展開 → 本命DB', f.pc && gateOpen(g) && !f.db, f.db ? '到達済み' : (gateOpen(g) ? '踏み台が必要' : '境界FWが閉'),
-      '本命へ到達。 W+5');
-  can('ci_recon', '🛠️ 偵察カットイン（H -20/3T）', g.reconDone && g.res.info >= 20, g.reconDone ? '情報20が必要' : '先に偵察が必要',
+  can('pivot', '↔️ ラテラルムーブメント', f.pc && gateOpen(g) && !f.db, f.db ? '到達済み' : (gateOpen(g) ? '踏み台が必要' : '境界FWが閉'),
+      'パス・ザ・ハッシュで本命へ横展開。 W+5');
+  can('ci_recon', '🛠️ アタックサーフェス・マッピング（H -20/3T）', g.reconDone && g.res.info >= 20, g.reconDone ? '情報20が必要' : '先に偵察が必要',
       'ハードニングを下げ通りやすくする。情報-20 / W+5');
-  can('ci_diag', '🧪 診断カットイン（V +25/3T）', g.res.tech >= 15, '技術15が必要',
+  can('ci_diag', '🧪 ヴァルネラビリティ・スキャン（V +25/3T）', g.res.tech >= 15, '技術15が必要',
       '脆弱性を露出させ命中・会心UP。技術-15 / W+5');
 
   // 撃破（本命に到達後、手持ちのマルウェア固有技ごと。世代進化を反映）
@@ -1010,30 +1028,34 @@ function applyAction(g, actionId) {
   if (!valid) return { ok: false, msg: 'その行動は今できない' };
 
   g.counter = null; // ブルー反撃（被弾）フラグ。endTurnで立つ
+  g.flash = null;   // 移動/偵察系の軽量技フラッシュ
   let warn = 0, msg = '';
   if (actionId === 'recon') {
-    g.reconDone = true; warn = 2;
-    msg = '偵察完了: 本命 H' + g.db.baseH + ' / V' + g.db.baseV + '（機密性が厚い）';
+    g.reconDone = true; warn = 2; g.flash = ACT_TECH.recon;
+    msg = '⚡ ' + ACT_TECH.recon.name + ': 本命 H' + g.db.baseH + ' / V' + g.db.baseV + '（機密性が厚い）';
   } else if (actionId === 'breach') {
-    g.footholds.pc = true; warn = 5; msg = 'フィッシング成功: 社員PCに足場を確立';
+    g.footholds.pc = true; warn = 5; g.flash = ACT_TECH.breach;
+    msg = '⚡ ' + ACT_TECH.breach.name + ': 社員PCに足場を確立';
   } else if (actionId === 'botnet') {
-    g.botnet = true; warn = 5; msg = '社員PCをボット化: 可用性火力 +10%';
+    g.botnet = true; warn = 5; g.flash = ACT_TECH.botnet;
+    msg = '⚡ ' + ACT_TECH.botnet.name + ': 可用性火力 +10%';
   } else if (actionId.startsWith('evade:')) {
     const d = g.defenses.find(x => x.id === actionId.slice(6));
-    payCost(g, d.evade); d.state = 'evaded'; warn = 2;
-    msg = d.name + 'を回避: 防御力が低下（本体防御のみ）。検知もしにくくなった';
+    payCost(g, d.evade); d.state = 'evaded'; warn = 2; g.flash = ACT_TECH.evade;
+    msg = '⚡ ' + ACT_TECH.evade.name + ': ' + d.name + 'を回避。防御力↓（本体のみ）＆検知↓';
   } else if (actionId.startsWith('break:')) {
     const d = g.defenses.find(x => x.id === actionId.slice(6));
-    d.state = 'destroyed'; warn = 25;
-    msg = d.name + 'を破壊: 防御力が一気に低下したが警戒度が跳ね上がった';
+    d.state = 'destroyed'; warn = 25; g.flash = ACT_TECH.brk;
+    msg = '⚡ ' + ACT_TECH.brk.name + ': ' + d.name + 'を破壊。防御力↓だが警戒度が跳ね上がった';
   } else if (actionId === 'pivot') {
-    g.footholds.db = true; warn = 5; msg = '横展開成功: 本命「勘定系DB」へ到達';
+    g.footholds.db = true; warn = 5; g.flash = ACT_TECH.pivot;
+    msg = '⚡ ' + ACT_TECH.pivot.name + ': 本命「勘定系DB」へ横展開';
   } else if (actionId === 'ci_recon') {
-    g.cut.hHack = 3; g.res.info -= 20; warn = 5; msg = '🛠️ 偵察カットイン発動! ハードニング -20（3T）';
-    g.banner = { name: 'ポート・スキャン！', en: 'Port Scan', tone: 'ci' };
+    g.cut.hHack = 3; g.res.info -= 20; warn = 5; msg = '🛠️ アタックサーフェス・マッピング発動! ハードニング -20（3T）';
+    g.banner = { name: 'アタックサーフェス・マッピング！', en: 'Attack Surface Mapping', tone: 'ci' };
   } else if (actionId === 'ci_diag') {
-    g.cut.vDiag = 3; g.res.tech -= 15; warn = 5; msg = '🧪 診断カットイン発動! 脆弱性 +25（3T）';
-    g.banner = { name: 'ヴァルナラビリティ・スキャン！', en: 'Vulnerability Scan', tone: 'ci' };
+    g.cut.vDiag = 3; g.res.tech -= 15; warn = 5; msg = '🧪 ヴァルネラビリティ・スキャン発動! 脆弱性 +25（3T）';
+    g.banner = { name: 'ヴァルネラビリティ・スキャン！', en: 'Vulnerability Scan', tone: 'ci' };
   } else if (actionId.startsWith('strike:')) {
     const id = actionId.slice(7);
     const m = malById(id);
@@ -1224,10 +1246,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
     $('battle-root').querySelectorAll('.act:not(.off)').forEach(b =>
       b.addEventListener('click', () => {
         Sound.unlock();
-        const act = b.dataset.act;
-        // 撃破/カード/カットインは banner 側で音が出る。移動系だけ select 音。
-        if (!/^(strike:|card:|ci_)/.test(act)) Sound.play('select');
-        applyAction(G, act); afterAction();
+        // 音は afterAction 側で出し分け（撃破=技カットイン / 移動=軽量フラッシュ）。
+        applyAction(G, b.dataset.act); afterAction();
       }));
   }
 
@@ -1262,8 +1282,19 @@ if (typeof document !== 'undefined' && document.getElementById) {
     setTimeout(() => el.remove(), 1200);
   }
 
+  // 移動/偵察系の軽量フラッシュ（小さく一瞬。撃破の全画面カットインとは格差をつける）
+  function popFlash(f) {
+    document.querySelectorAll('.techflash').forEach(e => e.remove());
+    const el = document.createElement('div');
+    el.className = 'techflash';
+    el.innerHTML = '⚡ ' + f.name + (f.en ? ' <span>' + f.en + '</span>' : '');
+    $('app').appendChild(el);
+    setTimeout(() => el.remove(), 760);
+  }
+
   function afterAction() {
     if (G.banner) { popBanner(G.banner); G.banner = null; }
+    else if (G.flash) { popFlash(G.flash); Sound.play('select'); G.flash = null; }
     const counter = G.counter; G.counter = null;
     if (G.result) {
       Sound.stopBgm();

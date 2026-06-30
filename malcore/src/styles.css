@@ -91,6 +91,14 @@ body {
 .banner.crit .banner-name { background: linear-gradient(90deg, rgba(255,170,40,0) 0%, rgba(255,170,40,.9) 50%, rgba(255,170,40,0) 100%); }
 .banner.counter .banner-name { font-size: 24px; background: linear-gradient(90deg, rgba(79,163,255,0) 0%, rgba(79,163,255,.85) 50%, rgba(79,163,255,0) 100%); text-shadow: 0 0 12px rgba(120,180,255,.9), 0 2px 0 #103a6a; }
 .banner-head { font-size: 13px; color: #bfe0ff; letter-spacing: 2px; margin-bottom: 2px; }
+
+/* 移動/偵察系の軽量フラッシュ（撃破の全画面カットインと格差をつける小さな一瞬の提示） */
+.techflash { position: fixed; left: 50%; top: 16%; transform: translateX(-50%); z-index: 45; pointer-events: none;
+  background: rgba(20,40,34,.92); border: 1px solid #2f9e63; border-radius: 999px; padding: 6px 16px;
+  color: #aef0c9; font-size: 15px; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 12px rgba(0,0,0,.5);
+  animation: techflash .76s ease-out forwards; }
+.techflash span { font-size: 11px; color: #7fb89c; font-weight: 400; letter-spacing: 1px; }
+@keyframes techflash { 0% { opacity: 0; transform: translate(-50%, 8px) scale(.9); } 18% { opacity: 1; transform: translate(-50%, 0) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -6px); } }
 .banner.def .banner-name { font-size: 26px; background: linear-gradient(90deg, rgba(60,180,160,0) 0%, rgba(60,180,160,.85) 50%, rgba(60,180,160,0) 100%); text-shadow: 0 0 12px rgba(120,220,200,.9), 0 2px 0 #0c4a40; }
 .banner.def .banner-en { color: #bfeede; }
 .banner-spr.hurt { animation: hurtShake .45s ease-in-out; }
