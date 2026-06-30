@@ -153,5 +153,21 @@ const wCdlpOn = M.strikeWarn(ge, 'C', 0);
 M.applyAction(ge, 'evade:dlp');
 assert(M.strikeWarn(ge, 'C', 0) < wCdlpOn, '監視対策(DLP)を回避すると機密性攻撃が検知されにくくなる（対策次第）');
 
+// 16) イカタコ上書きカードとキャラ
+console.log('シナリオ16: イカタコ上書き');
+const ika = (sandbox.CARDS || M.CARDS).find(c => c.id === 'ikatako');
+assert(ika && ika.gauge === 'I' && ika.cia.I >= 60, 'イカタコ上書きは完全性破壊カード');
+assert(/^<svg/.test(SP.card('ikatako')), 'イカタコのキャラSVGがある');
+
+// 17) 開幕の防御カットイン（対策が多いほど項目が多い＝手強い印象）
+console.log('シナリオ17: 防御カットイン');
+const gi = newGame();
+const intro0 = M.defenseIntro(gi);
+assert(intro0.length >= 3, '開幕でFW/DLP/ハードニング等の防御が複数提示される（' + intro0.length + '件）');
+assert(intro0.some(x => /プロキシ|DLP/.test(x.name)) && intro0.some(x => /ハードニング/.test(x.name)),
+       'プロキシ/DLP と ハードニング が含まれる');
+['breach', 'evade:fw', 'evade:dlp'].forEach(a => M.applyAction(gi, a));
+assert(M.defenseIntro(gi).length < intro0.length, '対策を剥がすと提示される防御カットインが減る');
+
 console.log(fails === 0 ? '\n✅ すべて通過' : `\n❌ ${fails}件 失敗`);
 process.exit(fails === 0 ? 0 : 1);

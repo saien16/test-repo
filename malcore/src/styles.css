@@ -90,6 +90,9 @@ body {
 .banner.ci .banner-name { background: linear-gradient(90deg, rgba(138,90,255,0) 0%, rgba(138,90,255,.85) 50%, rgba(138,90,255,0) 100%); text-shadow: 0 0 14px rgba(170,120,255,.9), 0 2px 0 #2a1060; }
 .banner.crit .banner-name { background: linear-gradient(90deg, rgba(255,170,40,0) 0%, rgba(255,170,40,.9) 50%, rgba(255,170,40,0) 100%); }
 .banner.counter .banner-name { font-size: 24px; background: linear-gradient(90deg, rgba(79,163,255,0) 0%, rgba(79,163,255,.85) 50%, rgba(79,163,255,0) 100%); text-shadow: 0 0 12px rgba(120,180,255,.9), 0 2px 0 #103a6a; }
+.banner-head { font-size: 13px; color: #bfe0ff; letter-spacing: 2px; margin-bottom: 2px; }
+.banner.def .banner-name { font-size: 26px; background: linear-gradient(90deg, rgba(60,180,160,0) 0%, rgba(60,180,160,.85) 50%, rgba(60,180,160,0) 100%); text-shadow: 0 0 12px rgba(120,220,200,.9), 0 2px 0 #0c4a40; }
+.banner.def .banner-en { color: #bfeede; }
 .banner-spr.hurt { animation: hurtShake .45s ease-in-out; }
 @keyframes hurtShake { 0%,100%{transform:translateX(0) rotate(0)} 20%{transform:translateX(-5px) rotate(-6deg)} 50%{transform:translateX(5px) rotate(6deg)} 80%{transform:translateX(-3px) rotate(-3deg)} }
 
@@ -185,7 +188,9 @@ body {
 /* 図鑑 */
 .codex-card { background: #0f1620; border: 1px solid #243447; border-radius: 10px; padding: 10px; margin-bottom: 8px; }
 .cc-top { display: flex; justify-content: space-between; align-items: baseline; }
-.cc-top b { color: #ffd34a; font-size: 14px; }
+.cc-top b { color: #ffd34a; font-size: 14px; display: inline-flex; align-items: center; gap: 4px; }
+.cc-spr { display: inline-block; width: 26px; height: 26px; }
+.cc-spr svg { width: 100%; height: 100%; display: block; }
 .cc-gen { font-size: 11px; color: #8fb6a3; }
 .cc-en { font-size: 11px; color: #7fd0ff; margin: 3px 0; }
 .cc-desc { font-size: 12px; color: #cfe9d8; }

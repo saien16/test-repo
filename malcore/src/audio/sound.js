@@ -116,6 +116,10 @@ const Sound = (() => {
   const SFX = {
     select() { tone({ type: 'square', f0: 520, f1: 700, dur: 0.07, gain: 0.25 }); },
     hit() { noise(0.10, 0.4); tone({ type: 'sine', f0: 120, f1: 48, dur: 0.16, gain: 0.4 }); }, // 被弾
+    shield() { // 敵防御の提示（重く低い二音）
+      tone({ type: 'square', f0: 330, dur: 0.10, gain: 0.22 });
+      tone({ type: 'square', f0: 247, dur: 0.18, gain: 0.26, delay: 0.09 });
+    },
     strike() { // 必殺技ヒット: 下降ズァッ＋ノイズの芯
       noise(0.12, 0.35);
       tone({ type: 'sawtooth', f0: 320, f1: 80, dur: 0.18, gain: 0.45 });

@@ -99,6 +99,9 @@ body {
 .banner.ci .banner-name { background: linear-gradient(90deg, rgba(138,90,255,0) 0%, rgba(138,90,255,.85) 50%, rgba(138,90,255,0) 100%); text-shadow: 0 0 14px rgba(170,120,255,.9), 0 2px 0 #2a1060; }
 .banner.crit .banner-name { background: linear-gradient(90deg, rgba(255,170,40,0) 0%, rgba(255,170,40,.9) 50%, rgba(255,170,40,0) 100%); }
 .banner.counter .banner-name { font-size: 24px; background: linear-gradient(90deg, rgba(79,163,255,0) 0%, rgba(79,163,255,.85) 50%, rgba(79,163,255,0) 100%); text-shadow: 0 0 12px rgba(120,180,255,.9), 0 2px 0 #103a6a; }
+.banner-head { font-size: 13px; color: #bfe0ff; letter-spacing: 2px; margin-bottom: 2px; }
+.banner.def .banner-name { font-size: 26px; background: linear-gradient(90deg, rgba(60,180,160,0) 0%, rgba(60,180,160,.85) 50%, rgba(60,180,160,0) 100%); text-shadow: 0 0 12px rgba(120,220,200,.9), 0 2px 0 #0c4a40; }
+.banner.def .banner-en { color: #bfeede; }
 .banner-spr.hurt { animation: hurtShake .45s ease-in-out; }
 @keyframes hurtShake { 0%,100%{transform:translateX(0) rotate(0)} 20%{transform:translateX(-5px) rotate(-6deg)} 50%{transform:translateX(5px) rotate(6deg)} 80%{transform:translateX(-3px) rotate(-3deg)} }
 
@@ -194,7 +197,9 @@ body {
 /* 図鑑 */
 .codex-card { background: #0f1620; border: 1px solid #243447; border-radius: 10px; padding: 10px; margin-bottom: 8px; }
 .cc-top { display: flex; justify-content: space-between; align-items: baseline; }
-.cc-top b { color: #ffd34a; font-size: 14px; }
+.cc-top b { color: #ffd34a; font-size: 14px; display: inline-flex; align-items: center; gap: 4px; }
+.cc-spr { display: inline-block; width: 26px; height: 26px; }
+.cc-spr svg { width: 100%; height: 100%; display: block; }
 .cc-gen { font-size: 11px; color: #8fb6a3; }
 .cc-en { font-size: 11px; color: #7fd0ff; margin: 3px 0; }
 .cc-desc { font-size: 12px; color: #cfe9d8; }
@@ -350,6 +355,10 @@ const CARDS = [
     cia: { I: 50, C: 20 }, type: '改ざん', tactic: 'ATT&CK Persistence', gen: 1, cost: { tech: 5, info: 5 }, special: null,
     desc: '改ざん拠点を植え付け、遠隔から操作する。',
     defense: 'WAFと整合性監視、書き込み権限の最小化。' },
+  { id: 'ikatako', name: 'イカタコ上書き', en: 'File-Overwrite Wiper (Ika-Tako/Harada, 2007–10)', gauge: 'I',
+    cia: { I: 70, C: 10 }, type: '破壊', tactic: 'ATT&CK Impact (Data Destruction)', gen: 1, cost: { res: 5 }, special: null, icon: 'ikatako',
+    desc: 'ファイルをイカ・タコの画像で上書きし、完全性を破壊する（日本の上書き型ウイルス）。暗号化ではなく“塗りつぶし”。',
+    defense: 'バックアップと実行制限、Winny等の経路遮断。' },
   // 🟡 可用性(A)
   { id: 'slowloris', name: 'スローロリス', en: 'Slowloris', gauge: 'A',
     cia: { A: 65 }, type: '過負荷', tactic: 'DoS', gen: 1, cost: { res: 5 }, special: null,
@@ -576,7 +585,28 @@ const SPRITES = (() => {
     return `<svg viewBox="0 0 100 100">${inner}</svg>`;
   }
 
-  return { mal: malSprite, node: nodeSprite };
+  // ---- カード固有のキャラ（イカタコ など） ----
+  const card = {
+    ikatako: `<svg viewBox="0 0 100 100">
+      <ellipse cx="50" cy="93" rx="20" ry="4" fill="#0006"/>
+      <path d="M33 30 Q23 26 30 41 Z" fill="#ff7aa6"/>
+      <path d="M67 30 Q77 26 70 41 Z" fill="#ff7aa6"/>
+      <path d="M50 16 Q68 28 66 52 Q66 60 50 60 Q34 60 34 52 Q32 28 50 16 Z" fill="#ff8fb3" stroke="#e06a93" stroke-width="2"/>
+      <circle cx="43" cy="44" r="5.5" fill="#fff"/><circle cx="44" cy="45" r="2.6" fill="#3a1020"/>
+      <circle cx="57" cy="44" r="5.5" fill="#fff"/><circle cx="58" cy="45" r="2.6" fill="#3a1020"/>
+      <circle cx="38" cy="51" r="2.4" fill="#ff5e8a" opacity=".6"/><circle cx="62" cy="51" r="2.4" fill="#ff5e8a" opacity=".6"/>
+      <path d="M45 53 q5 4 10 0" stroke="#b03a60" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <g stroke="#ff8fb3" stroke-width="5" fill="none" stroke-linecap="round">
+        <path d="M40 60 q-4 11 -9 15"/><path d="M47 62 q-2 12 -3 19"/>
+        <path d="M53 62 q2 12 3 19"/><path d="M60 60 q4 11 9 15"/>
+      </g>
+      <g stroke="#e06a93" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".6">
+        <path d="M40 60 q-4 11 -9 15"/><path d="M60 60 q4 11 9 15"/>
+      </g></svg>`,
+  };
+  function cardSprite(id) { return card[id] || ''; }
+
+  return { mal: malSprite, node: nodeSprite, card: cardSprite };
 })();
 
 if (typeof globalThis !== 'undefined') globalThis.SPRITES = SPRITES;
@@ -701,6 +731,10 @@ const Sound = (() => {
   const SFX = {
     select() { tone({ type: 'square', f0: 520, f1: 700, dur: 0.07, gain: 0.25 }); },
     hit() { noise(0.10, 0.4); tone({ type: 'sine', f0: 120, f1: 48, dur: 0.16, gain: 0.4 }); }, // 被弾
+    shield() { // 敵防御の提示（重く低い二音）
+      tone({ type: 'square', f0: 330, dur: 0.10, gain: 0.22 });
+      tone({ type: 'square', f0: 247, dur: 0.18, gain: 0.26, delay: 0.09 });
+    },
     strike() { // 必殺技ヒット: 下降ズァッ＋ノイズの芯
       noise(0.12, 0.35);
       tone({ type: 'sawtooth', f0: 320, f1: 80, dur: 0.18, gain: 0.45 });
@@ -842,6 +876,15 @@ function detectMul(g, gauge, level) {
 }
 function strikeWarn(g, gauge, level, base) {
   return Math.max(1, Math.round((base || 10) * (GAUGE_NOISE[gauge] || 1) * detectMul(g, gauge, level)));
+}
+
+/* ステージ開始時に提示する敵の防御（プロキシ/DLP/ハードニング等）。多いほど手強い印象。 */
+function defenseIntro(g) {
+  const items = [];
+  activeDefenses(g).forEach(d => items.push({ name: d.name, sub: d.gate ? '展開' : '監視中' }));
+  if (g.db.baseH >= 50) items.push({ name: 'ハードニング', sub: '堅牢 H' + g.db.baseH });
+  if (g.stage.edr) items.push({ name: 'EDR / 振る舞い検知', sub: '稼働' });
+  return items;
 }
 
 /* ===== ダメージ計算（1ゲージ分） ===== */
@@ -1054,7 +1097,7 @@ const MALCORE = {
   createGame, listActions, applyAction, endTurn, checkEnd,
   effH, effV, gaugeDamage, resolveStrike, canAfford, debrief, setRng,
   malStats, wazaName, evoCost, evoMul, EVO_MAX,
-  gaugeMit, gaugeDefRaw, gateOpen, strikeWarn, primGauge,
+  gaugeMit, gaugeDefRaw, gateOpen, strikeWarn, primGauge, defenseIntro,
   STAGE: (typeof STAGE_ZENITH !== 'undefined') ? STAGE_ZENITH : null,
   CARDS: (typeof CARDS !== 'undefined') ? CARDS : [],
 };
@@ -1126,8 +1169,13 @@ if (typeof document !== 'undefined' && document.getElementById) {
 
     const acts = listActions(g).map(a => {
       const kind = a.id.startsWith('card:') ? ' card' : (a.id.startsWith('strike:') ? ' strike' : '');
-      const spr = a.id.startsWith('strike:')
-        ? '<span class="actspr">' + SPRITES.mal(a.id.slice(7), { gen: (g.levels && g.levels[a.id.slice(7)]) || 0 }) + '</span>' : '';
+      let spr = '';
+      if (a.id.startsWith('strike:')) {
+        spr = '<span class="actspr">' + SPRITES.mal(a.id.slice(7), { gen: (g.levels && g.levels[a.id.slice(7)]) || 0 }) + '</span>';
+      } else if (a.id.startsWith('card:')) {
+        const c = cardById(a.id.slice(5));
+        if (c && c.icon && SPRITES.card(c.icon)) spr = '<span class="actspr">' + SPRITES.card(c.icon) + '</span>';
+      }
       return '<button class="act' + kind + ' ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
         (a.enabled ? '' : 'disabled title="' + a.reason + '"') + '>' +
         spr + '<span class="act-txt"><b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></span></button>';
@@ -1254,7 +1302,29 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
   function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
-  function startGame() { G = createGame(STAGE_ZENITH, equipped, levels); Sound.bgm(); show('battle-screen'); renderBattle(); }
+  function startGame() {
+    G = createGame(STAGE_ZENITH, equipped, levels);
+    Sound.bgm(); show('battle-screen'); renderBattle();
+    playDefenseIntro(defenseIntro(G)); // 敵の防御を開幕カットインで提示（多いほど手強い印象）
+  }
+
+  // 開幕の防御カットイン（プロキシ/DLP/ハードニング等を1つずつ提示）
+  function popDefBanner(it, total, idx) {
+    document.querySelectorAll('.banner').forEach(e => e.remove());
+    const el = document.createElement('div');
+    el.className = 'banner def';
+    el.innerHTML =
+      '<div class="banner-head">🛡️ 敵防御 ' + (idx + 1) + '/' + total + '</div>' +
+      '<div class="banner-name">' + it.name + '</div>' +
+      '<div class="banner-en">' + it.sub + '</div>';
+    $('app').appendChild(el);
+    Sound.play('shield');
+    setTimeout(() => el.remove(), 880);
+  }
+  function playDefenseIntro(items) {
+    if (!items || !items.length) return;
+    items.forEach((it, i) => setTimeout(() => popDefBanner(it, items.length, i), 450 + i * 820));
+  }
 
   function evolve(id) {
     const L = levels[id] || 0;
@@ -1319,7 +1389,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const groups = [['C', '🔵 機密性'], ['I', '🟢 完全性'], ['A', '🟡 可用性']];
     const html = groups.map(([g, title]) => {
       const items = CARDS.filter(c => c.gauge === g).map(c =>
-        '<div class="codex-card"><div class="cc-top"><b>⚡ ' + c.name + '</b>' +
+        '<div class="codex-card"><div class="cc-top"><b>' +
+        (c.icon && SPRITES.card(c.icon) ? '<span class="cc-spr">' + SPRITES.card(c.icon) + '</span>' : '⚡ ') + c.name + '</b>' +
         '<span class="cc-gen">世代' + c.gen + '</span></div>' +
         '<div class="cc-en">' + c.en + ' ・ ' + c.type + ' ・ ' + c.tactic + '</div>' +
         '<div class="cc-desc">' + c.desc + '</div>' +

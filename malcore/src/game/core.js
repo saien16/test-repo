@@ -98,6 +98,15 @@ function strikeWarn(g, gauge, level, base) {
   return Math.max(1, Math.round((base || 10) * (GAUGE_NOISE[gauge] || 1) * detectMul(g, gauge, level)));
 }
 
+/* ステージ開始時に提示する敵の防御（プロキシ/DLP/ハードニング等）。多いほど手強い印象。 */
+function defenseIntro(g) {
+  const items = [];
+  activeDefenses(g).forEach(d => items.push({ name: d.name, sub: d.gate ? '展開' : '監視中' }));
+  if (g.db.baseH >= 50) items.push({ name: 'ハードニング', sub: '堅牢 H' + g.db.baseH });
+  if (g.stage.edr) items.push({ name: 'EDR / 振る舞い検知', sub: '稼働' });
+  return items;
+}
+
 /* ===== ダメージ計算（1ゲージ分） ===== */
 function gaugeDamage(g, base, gauge, opt) {
   opt = opt || {};
@@ -308,7 +317,7 @@ const MALCORE = {
   createGame, listActions, applyAction, endTurn, checkEnd,
   effH, effV, gaugeDamage, resolveStrike, canAfford, debrief, setRng,
   malStats, wazaName, evoCost, evoMul, EVO_MAX,
-  gaugeMit, gaugeDefRaw, gateOpen, strikeWarn, primGauge,
+  gaugeMit, gaugeDefRaw, gateOpen, strikeWarn, primGauge, defenseIntro,
   STAGE: (typeof STAGE_ZENITH !== 'undefined') ? STAGE_ZENITH : null,
   CARDS: (typeof CARDS !== 'undefined') ? CARDS : [],
 };
@@ -380,8 +389,13 @@ if (typeof document !== 'undefined' && document.getElementById) {
 
     const acts = listActions(g).map(a => {
       const kind = a.id.startsWith('card:') ? ' card' : (a.id.startsWith('strike:') ? ' strike' : '');
-      const spr = a.id.startsWith('strike:')
-        ? '<span class="actspr">' + SPRITES.mal(a.id.slice(7), { gen: (g.levels && g.levels[a.id.slice(7)]) || 0 }) + '</span>' : '';
+      let spr = '';
+      if (a.id.startsWith('strike:')) {
+        spr = '<span class="actspr">' + SPRITES.mal(a.id.slice(7), { gen: (g.levels && g.levels[a.id.slice(7)]) || 0 }) + '</span>';
+      } else if (a.id.startsWith('card:')) {
+        const c = cardById(a.id.slice(5));
+        if (c && c.icon && SPRITES.card(c.icon)) spr = '<span class="actspr">' + SPRITES.card(c.icon) + '</span>';
+      }
       return '<button class="act' + kind + ' ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
         (a.enabled ? '' : 'disabled title="' + a.reason + '"') + '>' +
         spr + '<span class="act-txt"><b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></span></button>';
@@ -508,7 +522,29 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
   function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
-  function startGame() { G = createGame(STAGE_ZENITH, equipped, levels); Sound.bgm(); show('battle-screen'); renderBattle(); }
+  function startGame() {
+    G = createGame(STAGE_ZENITH, equipped, levels);
+    Sound.bgm(); show('battle-screen'); renderBattle();
+    playDefenseIntro(defenseIntro(G)); // 敵の防御を開幕カットインで提示（多いほど手強い印象）
+  }
+
+  // 開幕の防御カットイン（プロキシ/DLP/ハードニング等を1つずつ提示）
+  function popDefBanner(it, total, idx) {
+    document.querySelectorAll('.banner').forEach(e => e.remove());
+    const el = document.createElement('div');
+    el.className = 'banner def';
+    el.innerHTML =
+      '<div class="banner-head">🛡️ 敵防御 ' + (idx + 1) + '/' + total + '</div>' +
+      '<div class="banner-name">' + it.name + '</div>' +
+      '<div class="banner-en">' + it.sub + '</div>';
+    $('app').appendChild(el);
+    Sound.play('shield');
+    setTimeout(() => el.remove(), 880);
+  }
+  function playDefenseIntro(items) {
+    if (!items || !items.length) return;
+    items.forEach((it, i) => setTimeout(() => popDefBanner(it, items.length, i), 450 + i * 820));
+  }
 
   function evolve(id) {
     const L = levels[id] || 0;
@@ -573,7 +609,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const groups = [['C', '🔵 機密性'], ['I', '🟢 完全性'], ['A', '🟡 可用性']];
     const html = groups.map(([g, title]) => {
       const items = CARDS.filter(c => c.gauge === g).map(c =>
-        '<div class="codex-card"><div class="cc-top"><b>⚡ ' + c.name + '</b>' +
+        '<div class="codex-card"><div class="cc-top"><b>' +
+        (c.icon && SPRITES.card(c.icon) ? '<span class="cc-spr">' + SPRITES.card(c.icon) + '</span>' : '⚡ ') + c.name + '</b>' +
         '<span class="cc-gen">世代' + c.gen + '</span></div>' +
         '<div class="cc-en">' + c.en + ' ・ ' + c.type + ' ・ ' + c.tactic + '</div>' +
         '<div class="cc-desc">' + c.desc + '</div>' +

@@ -37,6 +37,10 @@ const CARDS = [
     cia: { I: 50, C: 20 }, type: '改ざん', tactic: 'ATT&CK Persistence', gen: 1, cost: { tech: 5, info: 5 }, special: null,
     desc: '改ざん拠点を植え付け、遠隔から操作する。',
     defense: 'WAFと整合性監視、書き込み権限の最小化。' },
+  { id: 'ikatako', name: 'イカタコ上書き', en: 'File-Overwrite Wiper (Ika-Tako/Harada, 2007–10)', gauge: 'I',
+    cia: { I: 70, C: 10 }, type: '破壊', tactic: 'ATT&CK Impact (Data Destruction)', gen: 1, cost: { res: 5 }, special: null, icon: 'ikatako',
+    desc: 'ファイルをイカ・タコの画像で上書きし、完全性を破壊する（日本の上書き型ウイルス）。暗号化ではなく“塗りつぶし”。',
+    defense: 'バックアップと実行制限、Winny等の経路遮断。' },
   // 🟡 可用性(A)
   { id: 'slowloris', name: 'スローロリス', en: 'Slowloris', gauge: 'A',
     cia: { A: 65 }, type: '過負荷', tactic: 'DoS', gen: 1, cost: { res: 5 }, special: null,

@@ -149,7 +149,28 @@ const SPRITES = (() => {
     return `<svg viewBox="0 0 100 100">${inner}</svg>`;
   }
 
-  return { mal: malSprite, node: nodeSprite };
+  // ---- カード固有のキャラ（イカタコ など） ----
+  const card = {
+    ikatako: `<svg viewBox="0 0 100 100">
+      <ellipse cx="50" cy="93" rx="20" ry="4" fill="#0006"/>
+      <path d="M33 30 Q23 26 30 41 Z" fill="#ff7aa6"/>
+      <path d="M67 30 Q77 26 70 41 Z" fill="#ff7aa6"/>
+      <path d="M50 16 Q68 28 66 52 Q66 60 50 60 Q34 60 34 52 Q32 28 50 16 Z" fill="#ff8fb3" stroke="#e06a93" stroke-width="2"/>
+      <circle cx="43" cy="44" r="5.5" fill="#fff"/><circle cx="44" cy="45" r="2.6" fill="#3a1020"/>
+      <circle cx="57" cy="44" r="5.5" fill="#fff"/><circle cx="58" cy="45" r="2.6" fill="#3a1020"/>
+      <circle cx="38" cy="51" r="2.4" fill="#ff5e8a" opacity=".6"/><circle cx="62" cy="51" r="2.4" fill="#ff5e8a" opacity=".6"/>
+      <path d="M45 53 q5 4 10 0" stroke="#b03a60" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <g stroke="#ff8fb3" stroke-width="5" fill="none" stroke-linecap="round">
+        <path d="M40 60 q-4 11 -9 15"/><path d="M47 62 q-2 12 -3 19"/>
+        <path d="M53 62 q2 12 3 19"/><path d="M60 60 q4 11 9 15"/>
+      </g>
+      <g stroke="#e06a93" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".6">
+        <path d="M40 60 q-4 11 -9 15"/><path d="M60 60 q4 11 9 15"/>
+      </g></svg>`,
+  };
+  function cardSprite(id) { return card[id] || ''; }
+
+  return { mal: malSprite, node: nodeSprite, card: cardSprite };
 })();
 
 if (typeof globalThis !== 'undefined') globalThis.SPRITES = SPRITES;
