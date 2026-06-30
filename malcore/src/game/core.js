@@ -474,7 +474,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     $('app').appendChild(el);
     const app = $('app'); app.classList.remove('shake'); void app.offsetWidth; app.classList.add('shake');
     Sound.play('hit');
-    setTimeout(() => el.remove(), 1200);
+    setTimeout(() => el.remove(), 2400); // 反撃は2秒以上しっかり見せる
   }
 
   // 移動/偵察系の軽量フラッシュ（小さく一瞬。撃破の全画面カットインとは格差をつける）
