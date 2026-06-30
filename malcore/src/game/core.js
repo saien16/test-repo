@@ -86,7 +86,7 @@ function primGauge(cia) {
   return g;
 }
 function detectMul(g, gauge, level) {
-  let m = 1 + 0.2 * (level || 0);          // 世代が進むほど検知されやすい
+  let m = 1 + 0.35 * (level || 0);         // 世代が進むほど検知されやすい（進化＝火力↑だが目立つ）
   if (g.stage.edr) m += 0.3;               // EDR/振る舞い検知
   activeDefenses(g).forEach(d => {
     if (d.detect && d.detect[gauge]) m += d.detect[gauge]; // 監視対策が有効ならそのゲージは検知UP
@@ -95,7 +95,7 @@ function detectMul(g, gauge, level) {
   return m;
 }
 function strikeWarn(g, gauge, level, base) {
-  return Math.max(1, Math.round((base || 10) * (GAUGE_NOISE[gauge] || 1) * detectMul(g, gauge, level)));
+  return Math.max(1, Math.round((base || 13) * (GAUGE_NOISE[gauge] || 1) * detectMul(g, gauge, level)));
 }
 
 /* ステージ開始時に提示する敵の防御（プロキシ/DLP/ハードニング等）。多いほど手強い印象。 */
@@ -198,7 +198,7 @@ function listActions(g) {
     const ok = f.db && canAfford(g, c.cost);
     const reason = !f.db ? '本命未到達' : '資源不足(' + costLabel(c.cost) + ')';
     const cia = c.cia || {};
-    const w = strikeWarn(g, c.gauge || primGauge(cia), 0, 8);
+    const w = strikeWarn(g, c.gauge || primGauge(cia), 0, 10);
     can('card:' + id, '🃏 ' + c.name, ok, reason,
         'C' + (cia.C || 0) + '/I' + (cia.I || 0) + '/A' + (cia.A || 0) +
         (c.special === 'ignoreH' ? ' 貫通' : '') + ' ' + costLabel(c.cost) + ' W+' + w);
@@ -255,7 +255,7 @@ function applyAction(g, actionId) {
     const c = cardById(actionId.slice(5));
     payCost(g, c.cost);
     const r = resolveStrike(g, c.cia || {}, { botnet: g.botnet, ignoreH: c.special === 'ignoreH' });
-    warn = strikeWarn(g, c.gauge || primGauge(c.cia || {}), 0, 8);
+    warn = strikeWarn(g, c.gauge || primGauge(c.cia || {}), 0, 10);
     g.banner = { name: c.name + '！', en: c.en, tone: 'strike', gauge: c.gauge, crit: r.crit, defense: c.defense };
     msg = '🃏 ' + c.name + (r.crit ? ' 会心!' : '') + ' 🔵-' + Math.round(r.rc.dmg) +
           ' 🟢-' + Math.round(r.ri.dmg) + ' 🟡-' + Math.round(r.ra.dmg);
@@ -347,7 +347,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const pct = (gauge) => Math.round(gaugeMit(g, gauge) * 100);
     const act = activeDefenses(g);
     const list = act.length
-      ? act.map(d => '<span class="def-chip">🛡 ' + d.name + '</span>').join('')
+      ? act.map(d => '<span class="def-chip">🛡️ ' + d.name + '</span>').join('')
       : '<span class="def-chip none">本体防御のみ</span>';
     return '<div class="defrow">' +
       '<span class="def-title">防御力</span>' +
@@ -414,12 +414,12 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<div class="boss-head"><span class="bossspr ' + dbState + '">' + SPRITES.node('db', { state: dbState }) + '</span>' +
           '<span class="boss-title">★ ' + g.stage.nodes.db.name +
           '<span class="hv">H ' + effH(g) + ' / V ' + effV(g) + ' ' + cutBadges + '</span></span></div>' +
-        bar('🔵 機密性', d.C, 160, 'c') +
-        bar('🟢 完全性', d.I, 100, 'i') +
-        bar('🟡 可用性', d.A, 100, 'a') +
+        '<div class="goal-chip">🎯 勝利まで CIA合計 ' + Math.round(d.C + d.I + d.A) +
+          ' → <b>' + Math.round(d.initTotal * g.stage.win.ratio) + '以下</b></div>' +
+        bar('🔵 機密性 C', d.C, 160, 'c') +
+        bar('🟢 完全性 I', d.I, 100, 'i') +
+        bar('🟡 可用性 A', d.A, 100, 'a') +
         defensePanel(g) +
-        '<div class="boss-foot">勝利: CIA合計を ' + Math.round(d.initTotal * g.stage.win.ratio) +
-          ' 以下に（現在 ' + Math.round(d.C + d.I + d.A) + '）</div>' +
       '</div>' +
       '<div class="acts">' + acts + '</div>' +
       '<div class="logbox">' + g.log.slice(-6).reverse().map(l => '<div>' + l + '</div>').join('') + '</div>';
@@ -499,9 +499,23 @@ if (typeof document !== 'undefined' && document.getElementById) {
     show('result-screen');
     const win = G.result === 'win';
     let reward = '';
-    if (win) { // 勝利で開発P獲得（次の進化資金）
-      devP += 3; saveJSON('malcore.devP', devP);
-      reward = '<div class="reward">🛠️ 開発P +3（所持 ' + devP + '）— ブリーフィングで世代進化に使える</div>';
+    if (win) {
+      // 戦利品（余剰の情報/技術/資源）を開発Pに変換＝「攻略→進化資金」を1本につなぐ
+      const surplus = Math.floor((G.res.info + G.res.tech + G.res.res) / 20);
+      const gain = 3 + surplus;
+      devP += gain; saveJSON('malcore.devP', devP);
+      reward = '<div class="reward">🛠️ 開発P +' + gain + '（基本3＋戦利品' + surplus + ' / 所持 ' + devP + '）— 世代進化に使える</div>';
+      // 未入手の技カードを1枚アンロック＝収集ループ
+      const locked = CARDS.filter(c => !isUnlocked(c.id));
+      if (locked.length) {
+        const nc = locked[Math.floor(_rng() * locked.length) % locked.length];
+        unlockedCards.push(nc.id); saveJSON('malcore.cards', unlockedCards);
+        Sound.play('cutin');
+        reward += '<div class="reward unlock">🃏 新カード入手！「' + nc.name + '」（図鑑 ' +
+          unlockedCards.length + '/' + CARDS.length + '）</div>';
+      } else {
+        reward += '<div class="reward">🃏 技図鑑コンプリート（' + CARDS.length + '/' + CARDS.length + '）</div>';
+      }
     }
     $('result-body').innerHTML =
       '<div class="verdict ' + (win ? 'win' : 'lose') + '">' +
@@ -517,6 +531,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
   // 世代進化の永続状態（localStorage、無ければデモ用に開発P=4で開始）
   let levels = loadJSON('malcore.levels', {});
   let devP = loadJSON('malcore.devP', 4);
+  // 入手済み技カード（初期は基本3枚。勝利で増える＝収集ループ）
+  let unlockedCards = loadJSON('malcore.cards', ['sqli', 'slowloris', 'csrf']);
+  function isUnlocked(id) { return unlockedCards.indexOf(id) >= 0; }
   function loadJSON(key, def) {
     try { const v = localStorage.getItem(key); return v == null ? def : JSON.parse(v); } catch (e) { return def; }
   }
@@ -543,7 +560,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
   function playDefenseIntro(items) {
     if (!items || !items.length) return;
-    items.forEach((it, i) => setTimeout(() => popDefBanner(it, items.length, i), 450 + i * 820));
+    // テンポ重視: 先頭2件だけバナー化（残りは防御パネルのチップで常時可視）
+    const show = items.slice(0, 2);
+    show.forEach((it, i) => setTimeout(() => popDefBanner(it, items.length, i), 350 + i * 500));
   }
 
   function evolve(id) {
@@ -575,19 +594,24 @@ if (typeof document !== 'undefined' && document.getElementById) {
         (m.waza ? '<div class="card-waza">⚡ ' + MALCORE.wazaName(m, L) + '</div>' : '') +
         evoBtn + '</div>';
     }).join('');
-    // 装備技カードの選択（最大3）
-    const equipHtml = CARDS.map(c =>
-      '<button class="equip ' + (equipped.includes(c.id) ? 'on' : '') + '" data-card="' + c.id + '">' +
-      '<b>🃏 ' + c.name + '</b><small>' + gaugeMark(c) + ' ' + costLabel(c.cost) +
-      (c.special === 'ignoreH' ? ' / 貫通' : '') + '</small></button>'
-    ).join('');
+    // 装備技カードの選択（入手済みのみ装備可。未入手は🔒）
+    equipped = equipped.filter(isUnlocked); // 念のため未所持を除外
+    const ownIcon = (c) => (c.icon && SPRITES.card(c.icon)) ? '<span class="equip-spr">' + SPRITES.card(c.icon) + '</span>' : '🃏 ';
+    const equipHtml = CARDS.map(c => {
+      if (!isUnlocked(c.id)) {
+        return '<button class="equip locked" disabled><b>🔒 ' + c.name + '</b><small>未入手（勝利で入手）</small></button>';
+      }
+      return '<button class="equip ' + (equipped.includes(c.id) ? 'on' : '') + '" data-card="' + c.id + '">' +
+        '<b>' + ownIcon(c) + c.name + '</b><small>' + gaugeMark(c) + ' ' + costLabel(c.cost) +
+        (c.special === 'ignoreH' ? ' / 貫通' : '') + '</small></button>';
+    }).join('');
     $('briefing-body').innerHTML =
       '<p class="intro">' + STAGE_ZENITH.intro + '</p>' +
       '<h2 class="sub">編成（固有技）<small>🛠️ 開発P ' + devP + '</small></h2>' +
       '<div class="cards">' + handHtml + '</div>' +
-      '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3</small></h2>' +
+      '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3 ・ 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</small></h2>' +
       '<div class="equips">' + equipHtml + '</div>';
-    $('briefing-body').querySelectorAll('.equip').forEach(b =>
+    $('briefing-body').querySelectorAll('.equip:not(.locked)').forEach(b =>
       b.addEventListener('click', () => { toggleEquip(b.dataset.card); renderBriefing(); }));
     $('briefing-body').querySelectorAll('.evo-btn').forEach(b =>
       b.addEventListener('click', () => { Sound.unlock(); evolve(b.dataset.evo); }));
@@ -611,7 +635,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       const items = CARDS.filter(c => c.gauge === g).map(c =>
         '<div class="codex-card"><div class="cc-top"><b>' +
         (c.icon && SPRITES.card(c.icon) ? '<span class="cc-spr">' + SPRITES.card(c.icon) + '</span>' : '⚡ ') + c.name + '</b>' +
-        '<span class="cc-gen">世代' + c.gen + '</span></div>' +
+        '<span class="cc-gen">' + (isUnlocked(c.id) ? '<span class="cc-own">✓所持</span> ' : '<span class="cc-lock">🔒未入手</span> ') + '世代' + c.gen + '</span></div>' +
         '<div class="cc-en">' + c.en + ' ・ ' + c.type + ' ・ ' + c.tactic + '</div>' +
         '<div class="cc-desc">' + c.desc + '</div>' +
         '<div class="cc-def">🛡️ ' + c.defense + '</div></div>'

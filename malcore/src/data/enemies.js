@@ -18,7 +18,7 @@ const STAGE_ZENITH = {
     db: {
       name: '勘定系DB（本命）', kind: '本命',
       C: 160, I: 100, A: 100, H: 55, V: 35,
-      baseDef: { C: 0.10, I: 0.08, A: 0.08 }, // サーバ自身の防御力（対策を剥がしても残る）
+      baseDef: { C: 0.14, I: 0.12, A: 0.12 }, // サーバ自身の防御力（対策を剥がしても残る）
       desc: '本命。機密性が厚く、ハードニング高め・脆弱性低めで通りにくい。対策を剥がして本体防御だけにしてから抜け。',
     },
   },
@@ -40,7 +40,7 @@ const STAGE_ZENITH = {
   audit: { every: 4, hardenUp: 15 },         // システム監査: 一定ターン毎にH↑
   diag: { warnThreshold: 60, vulnDown: 15 }, // セキュリティ診断: 警戒度が閾値超えでV↓
   edr: false,                                // 振る舞い検知(EDR)。世代が上がると true（検知係数+）
-  win: { ratio: 0.30 },                      // 本命CIA合計が初期の30%以下で勝利
+  win: { ratio: 0.20 },                      // 本命CIA合計が初期の20%以下で勝利
 };
 
 if (typeof globalThis !== 'undefined') { globalThis.STAGE_ZENITH = STAGE_ZENITH; }
