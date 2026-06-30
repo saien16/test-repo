@@ -19,32 +19,55 @@ if (!M) throw new Error('MALCORE が見つからない（連結/エクスポー�
 
 let fails = 0;
 const assert = (cond, msg) => { if (!cond) { console.error('  ✗ ' + msg); fails++; } else { console.log('  ✓ ' + msg); } };
-const newGame = (eq, lv) => { M.setRng(() => 0.99); return M.createGame(M.STAGE, eq, lv); }; // 会心なし=最悪ケース
+const newGame = (eq, lv, party) => { M.setRng(() => 0.99); return M.createGame(M.STAGE, eq, lv, party); }; // 会心なし=最悪ケース
 const playAll = (g, acts) => acts.forEach(a => { if (!g.result) M.applyAction(g, a); });
 const tot = (g) => Math.round(g.db.C + g.db.I + g.db.A);
+// 対策idがゲート(FW/WAF)か
+const isGate = (g, actId) => { const id = actId.split(':')[1]; const d = (g.stage.defenses || []).find(x => x.id === id); return !!(d && d.gate); };
+// 本命まで到達（区間ゲートは回避で突破。監視系は触らない）
+function toBoss(g) {
+  M.applyAction(g, 'breach');
+  for (let k = 0; k < 16 && !M.reachedBoss(g) && !g.result; k++) {
+    const acts = M.listActions(g);
+    const piv = acts.find(a => a.id === 'pivot' && a.enabled);
+    if (piv) { M.applyAction(g, 'pivot'); continue; }
+    const gate = acts.find(a => (a.id.startsWith('evade:') || a.id.startsWith('break:')) && a.enabled && isGate(g, a.id));
+    if (gate) { M.applyAction(g, gate.id); continue; }
+    break;
+  }
+  return g;
+}
+// 監視系(非ゲート)対策を全部回避
+function evadeMonitors(g) {
+  M.listActions(g).filter(a => a.id.startsWith('evade:') && a.enabled && !isGate(g, a.id)).forEach(a => { if (!g.result) M.applyAction(g, a.id); });
+}
+// 撃破を決着まで繰り返す
+function strikeUntilEnd(g, id, max) { for (let i = 0; i < (max || 6) && !g.result; i++) { const a = M.listActions(g).find(x => x.id === 'strike:' + id); if (!a || !a.enabled) break; M.applyAction(g, 'strike:' + id); } }
 
-// 1) 王道ルート（偵察→侵害→FW回避→横展開→DLP回避→撃破×3 = 8T）で勝てる
-//    対策を剥がして本体防御だけにしてから抜く、が新モデルの王道。
-console.log('シナリオ1: 王道ルート（対策を剥がして撃破・8T）');
+// 1) 王道ルート（侵害→各層を横展開→対策を剥がす→撃破）で勝てる
+console.log('シナリオ1: 王道ルート（多段を抜けて撃破）');
 const g1 = newGame();
-playAll(g1, ['recon', 'breach', 'evade:fw', 'pivot', 'evade:dlp', 'strike:zeus', 'strike:zeus', 'strike:zeus']);
+toBoss(g1); evadeMonitors(g1); strikeUntilEnd(g1, 'zeus', 5);
 console.log('  結果', g1.result, '/ T' + g1.turn + ' / 警戒' + g1.warning + ' / 残CIA合計' + tot(g1) +
             '（閾値' + Math.round(g1.db.initTotal * g1.stage.win.ratio) + '）');
 assert(g1.result === 'win', '会心なしでも王道ルートで勝利できる（バランス成立）');
-assert(g1.warning < 100, '警戒度は上限未満（静かに通せる）');
 
-// 2) 撃破は本命到達前は選べない／境界FWが閉なら横展開不可（経路ゲート）
+// 2) 撃破は本命到達前は選べない／ゲートが閉なら横展開不可（経路ゲート）
 console.log('シナリオ2: 経路ゲート');
 const g2 = newGame();
 assert(!(M.listActions(g2).find(a => a.id === 'strike:zeus') || {}).enabled, '本命未到達では撃破が無効');
 M.applyAction(g2, 'breach');
-assert(!(M.listActions(g2).find(a => a.id === 'pivot') || {}).enabled, '境界FW開通前は横展開が無効');
-assert(!M.gateOpen(g2), '境界FWが有効な間はゲートが閉じている');
+while (!M.reachedBoss(g2)) { // 本命直前(ゲート手前)まで横展開
+  const piv = M.listActions(g2).find(a => a.id === 'pivot' && a.enabled);
+  if (!piv) break; if (M.nextNodeId(g2) === M.bossId(g2)) break; M.applyAction(g2, 'pivot');
+}
+assert(!M.reachedBoss(g2), '本命の手前で止まる');
+assert(!M.gateOpen(g2), '本命直前のゲートが閉じている間は横展開できない');
 
 // 3) 厚いゲージに合わない武器（Blasterは🔵が弱い）だと制限ターン内に落とせず敗北
 console.log('シナリオ3: 武器選択ミス（Blasterで機密性厚の本命）');
 const g3 = newGame();
-playAll(g3, ['recon', 'breach', 'evade:fw', 'pivot', 'strike:blaster', 'strike:blaster', 'strike:blaster', 'strike:blaster']);
+toBoss(g3); evadeMonitors(g3); strikeUntilEnd(g3, 'blaster', 6);
 console.log('  結果', g3.result, '/ T' + g3.turn + ' / 残CIA合計' + tot(g3));
 assert(g3.result && g3.result !== 'win', '相性の悪い編成は制限ターン内に攻略できず敗北');
 
@@ -52,15 +75,17 @@ assert(g3.result && g3.result !== 'win', '相性の悪い編成は制限ター�
 console.log('シナリオ4: 破壊ルートの警戒度');
 const g4 = newGame();
 M.applyAction(g4, 'breach');
+while (M.gateOpen(g4) && !M.reachedBoss(g4)) { const p = M.listActions(g4).find(a => a.id === 'pivot' && a.enabled); if (!p) break; M.applyAction(g4, 'pivot'); } // ゲート手前へ
+const brk = M.listActions(g4).find(a => a.id.startsWith('break:') && a.enabled && isGate(g4, a.id));
 const wBefore = g4.warning;
-M.applyAction(g4, 'break:fw');
-assert(g4.warning - wBefore >= 25, '境界FW破壊で警戒度が大きく上昇（+25）');
+M.applyAction(g4, brk.id);
+assert(g4.warning - wBefore >= 25, 'ゲート破壊で警戒度が大きく上昇（+25）');
 assert(M.gateOpen(g4), '破壊でゲートが開く');
 
 // 5) 撃破で技名カットイン（banner）が立つ／全マルウェアが固有技を持つ
 console.log('シナリオ5: 技名カットイン');
 const g5 = newGame();
-playAll(g5, ['breach', 'evade:fw', 'pivot', 'strike:zeus']);
+toBoss(g5); M.applyAction(g5, 'strike:zeus');
 assert(g5.banner && g5.banner.name && g5.banner.name.indexOf('マン・イン・ザ・ブラウザ') === 0,
        '撃破時に固有技名のカットインが立つ（Zeus=マン・イン・ザ・ブラウザ）');
 assert(sandbox.MAL.every(m => m.waza && m.waza.name && m.waza.en && m.waza.defense),
@@ -76,7 +101,7 @@ assert(cards.every(c => c.name && c.en && c.type && c.tactic !== undefined && c.
 // 7) 装備技カードで撃破でき、資源不足ならゲートされ、技名カットインが立つ
 console.log('シナリオ7: 装備技カードの撃破');
 const g7 = newGame(['sqli']);
-['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(g7, a));
+toBoss(g7);
 assert((M.listActions(g7).find(a => a.id === 'card:sqli') || {}).enabled, '装備したSQLiが本命到達後に撃てる');
 g7.res.info = 5;
 assert(!(M.listActions(g7).find(a => a.id === 'card:sqli') || {}).enabled, '資源不足ならカードはゲートされる');
@@ -87,7 +112,7 @@ assert(g7.banner && g7.banner.name.indexOf('SQL・インジェクション') ===
 // 8) ゼロデイはハードニング無視で機密性を強く貫通
 console.log('シナリオ8: ゼロデイ貫通');
 const gz = newGame(['zeroday']);
-['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gz, a));
+toBoss(gz);
 const cBeforeZ = gz.db.C;
 gz.res.info = 99; gz.res.tech = 99;
 M.applyAction(gz, 'card:zeroday');
@@ -113,7 +138,7 @@ const zeus = sandbox.MAL.find(m => m.id === 'zeus');
 assert(M.malStats(zeus, 2).C === Math.round(zeus.C * 1.5), '改弐(Lv2)で機密性攻撃が1.5倍');
 assert(/改弐/.test(M.wazaName(zeus, 2)), '改弐の技名に「改弐」が付く');
 const base = newGame([], { zeus: 0 }), evo = newGame([], { zeus: 2 });
-['breach', 'evade:fw', 'pivot'].forEach(a => { M.applyAction(base, a); M.applyAction(evo, a); });
+toBoss(base); toBoss(evo);
 const cBase = base.db.C, cEvo = evo.db.C;
 M.applyAction(base, 'strike:zeus'); M.applyAction(evo, 'strike:zeus');
 assert((cEvo - evo.db.C) > (cBase - base.db.C) + 5, '改弐Zeusは素のZeusより本命を多く削る');
@@ -122,7 +147,7 @@ assert((cEvo - evo.db.C) > (cBase - base.db.C) + 5, '改弐Zeusは素のZeusよ�
 console.log('シナリオ12: 被弾リアクション');
 assert(SP.mal('zeus', { expr: 'hurt' }) !== SP.mal('zeus', { expr: 'normal' }), '被弾(hurt)表情は通常と差分がある');
 const gco = newGame();
-['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gco, a));
+toBoss(gco);
 gco.warning = 90; // 危険域＝ブルーが頻繁に介入
 M.applyAction(gco, 'strike:zeus');
 assert(gco.counter && gco.counter.kind === 'audit', '高発覚度ではブルーチームが介入する(被弾)');
@@ -136,7 +161,7 @@ assert(!threw, 'ヘッドレスでBGM呼び出しが例外を投げない(no-op)
 // 14) 防御力モデル: 対策を剥がすと防御力が低下し、本体防御のみ残る
 console.log('シナリオ14: 防御力（本体+対策）');
 const gd = newGame();
-['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gd, a)); // DLPはまだ有効
+toBoss(gd); // DLPはまだ有効
 const cMitBefore = M.gaugeMit(gd, 'C');
 M.applyAction(gd, 'evade:dlp');
 const cMitAfter = M.gaugeMit(gd, 'C');
@@ -147,7 +172,7 @@ assert(Math.abs(M.gaugeDefRaw(gd, 'C') - (M.STAGE.nodes.db.baseDef.C)) < 1e-9, '
 // 15) 検知モデル: ゲージ別ノイズ＋世代/対策依存
 console.log('シナリオ15: 検知モデル');
 const ge = newGame();
-['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(ge, a)); // DLP(C監視)はまだ有効
+toBoss(ge); // DLP(C監視)はまだ有効
 const wC = M.strikeWarn(ge, 'C', 0), wA = M.strikeWarn(ge, 'A', 0);
 assert(wA > wC, '可用性(🟡)攻撃は機密性(🔵)攻撃より検知されやすい（' + wC + ' vs ' + wA + '）');
 assert(M.strikeWarn(ge, 'C', 2) > M.strikeWarn(ge, 'C', 0), '世代が進むと検知されやすくなる（EDR/振る舞い）');
@@ -168,7 +193,7 @@ const intro0 = M.defenseIntro(gi);
 assert(intro0.length >= 3, '開幕でFW/DLP/ハードニング等の防御が複数提示される（' + intro0.length + '件）');
 assert(intro0.some(x => /プロキシ|DLP/.test(x.name)) && intro0.some(x => /ハードニング/.test(x.name)),
        'プロキシ/DLP と ハードニング が含まれる');
-['breach', 'evade:fw', 'evade:dlp'].forEach(a => M.applyAction(gi, a));
+toBoss(gi); evadeMonitors(gi);
 assert(M.defenseIntro(gi).length < intro0.length, '対策を剥がすと提示される防御カットインが減る');
 
 // 18) 移動/偵察系に技名（軽量フラッシュ）が付く＝撃破の全画面カットインと別系統
@@ -178,7 +203,7 @@ M.applyAction(gf, 'recon');
 assert(gf.flash && /ポートスキャニング/.test(gf.flash.name) && !gf.banner, '偵察=ポートスキャニング(軽量flash・bannerではない)');
 M.applyAction(gf, 'breach');
 assert(gf.flash && /スピアフィッシング/.test(gf.flash.name), '初期侵害=スピアフィッシング');
-M.applyAction(gf, 'evade:fw'); M.applyAction(gf, 'pivot');
+while(!M.reachedBoss(gf)){const p=M.listActions(gf).find(a=>a.id==='pivot'&&a.enabled);const e=M.listActions(gf).find(a=>a.id.startsWith('evade:')&&a.enabled&&isGate(gf,a.id));if(p)M.applyAction(gf,'pivot');else if(e)M.applyAction(gf,e.id);else break;}
 assert(gf.flash && /ラテラルムーブメント/.test(gf.flash.name), '横展開=ラテラルムーブメント');
 assert(M.listActions(gf).length >= 0, 'listActions が機能');
 const labels = M.listActions(M.createGame(M.STAGE)).map(a => a.label).join(' ');
@@ -188,22 +213,26 @@ M.applyAction(gf, 'strike:zeus');
 assert(gf.banner && gf.banner.sprId && gf.banner.tone === 'strike', '撃破は全画面カットイン(banner+sprite)のまま');
 
 // 19) 5ステージ: 構造が揃い、入門ステージは素直に勝てる、本命CIAがバー最大値に入る
-console.log('シナリオ19: 5ステージ');
+console.log('シナリオ19: 7ステージ＋可変段数');
 const STG = M.STAGES;
-assert(STG.length === 5, 'ステージが5つある');
-assert(STG.every(s => s.nodes.db && s.defenses.length >= 1 && s.turnLimit >= 5 && s.win), '全ステージに本命/対策/制限ターン/勝利条件がある');
+assert(STG.length === 7, 'ステージが7つある');
+assert(STG.every(s => s.nodes.db && s.defenses.length >= 1 && s.turnLimit >= 5 && s.win && s.path.length >= 4), '全ステージに本命/対策/制限ターン/勝利条件と3段以上の経路がある');
+// 段数: 1-3=3段(path4) / 4-6=4段(path5) / 7=5段(path6)
+assert(STG[0].path.length === 4 && STG[2].path.length === 4, 'ステージ1-3は3段構成');
+assert(STG[3].path.length === 5 && STG[5].path.length === 5, 'ステージ4-6は4段構成');
+assert(STG[6].path.length === 6, 'ステージ7は5段構成');
 const gm = M.createGame(STG[0]); // マチ町工業
 assert(gm.db.initC === STG[0].nodes.db.C, 'バー最大値=本命CIA初期値(ステージ別)');
 M.setRng(() => 0.99);
 const gmw = M.createGame(STG[0], [], {}, ['zeus', 'iloveyou', 'mydoom']);
-['breach', 'evade:fw', 'pivot', 'strike:zeus', 'strike:zeus', 'strike:zeus'].forEach(a => M.applyAction(gmw, a));
+toBoss(gmw); evadeMonitors(gmw); strikeUntilEnd(gmw, 'zeus', 5);
 assert(gmw.result === 'win', '入門ステージ(マチ町)は素直な編成で勝てる');
 
 // 20) キャラ入替(編成): party に応じて hand/撃破選択肢が変わる
 console.log('シナリオ20: 編成(party)');
 const gp = M.createGame(M.STAGE, [], {}, ['zeus']);
 assert(gp.hand.length === 1 && gp.hand[0] === 'zeus', 'partyでhandが変わる(Zeusのみ)');
-['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gp, a));
+toBoss(gp);
 const ids = M.listActions(gp).map(a => a.id);
 assert(ids.includes('strike:zeus') && !ids.includes('strike:blaster'), '編成外(Blaster)の撃破は出ない');
 assert(!ids.some(x => x.startsWith('break:')), 'Blaster未編成なら装置破壊が出ない');
@@ -211,7 +240,7 @@ assert(!ids.some(x => x.startsWith('break:')), 'Blaster未編成なら装置破�
 // 21) 反撃で発覚度(警戒度)が上がり、効果が明示される
 console.log('シナリオ21: 反撃の明確化');
 const gco2 = M.createGame(M.STAGE, [], {});
-['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gco2, a));
+toBoss(gco2);
 gco2.warning = 85;
 const wPre = gco2.warning;
 M.applyAction(gco2, 'strike:zeus'); // 高発覚度→ブルー介入
@@ -225,10 +254,10 @@ const gHi = M.createGame(M.STAGE); gHi.warning = 90;
 const gMid = M.createGame(M.STAGE); gMid.warning = 50;
 assert(M.blueInterval(gHi) <= M.blueInterval(gMid), '発覚度が高いほどブルーの介入間隔が短い');
 M.setRng(() => 0.99);
-const gStl = M.createGame(M.STAGE); ['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gStl, a));
+const gStl = M.createGame(M.STAGE); toBoss(gStl);
 assert(M.isStealth(gStl), '対策を剥がして本命到達時はまだ潜伏中(奇襲ボーナス)');
 const cS = gStl.db.C; M.applyAction(gStl, 'strike:zeus'); const dS = cS - gStl.db.C;
-const gNo = M.createGame(M.STAGE); ['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gNo, a));
+const gNo = M.createGame(M.STAGE); toBoss(gNo);
 gNo.warning = 35; // 潜伏圏外(だがalert42未満なのでブルーは不動・条件をH等揃える)
 const cN = gNo.db.C; M.applyAction(gNo, 'strike:zeus'); const dN = cN - gNo.db.C;
 assert(dS > dN + 5, '潜伏中の撃破は非潜伏より大きい（奇襲ボーナス ' + Math.round(dS) + ' vs ' + Math.round(dN) + '）');

@@ -107,6 +107,13 @@ const SPRITES = (() => {
         <path d="M44 54 q6 4 12 0" stroke="#11202a" stroke-width="2" fill="none"/>
         <rect x="44" y="70" width="12" height="8" fill="#1c2731"/>
         <rect x="32" y="78" width="36" height="5" rx="2" fill="#1c2731"/>`,
+    // 汎用サーバ（DMZ/内部/認証サーバ等の中間ノード）
+    server: `<rect x="28" y="22" width="44" height="58" rx="4" fill="#2b3a48" stroke="#1c2731" stroke-width="2"/>
+        <g fill="#3a4d5e"><rect x="33" y="28" width="34" height="11" rx="2"/><rect x="33" y="43" width="34" height="11" rx="2"/><rect x="33" y="58" width="34" height="11" rx="2"/></g>
+        <g fill="#7CFFB2"><circle cx="38" cy="33.5" r="2"/><circle cx="38" cy="48.5" r="2"/><circle cx="38" cy="63.5" r="2"/></g>`,
+    // WAF（Web境界ゲート）
+    waf: `<path d="M50 22 l20 7 v11 c0 16 -11 24 -20 28 c-9 -4 -20 -12 -20 -28 v-11 Z" fill="#3a6a9a" stroke="#264a6a" stroke-width="2"/>
+        <text x="50" y="56" font-size="17" font-weight="900" text-anchor="middle" fill="#dcefff">W</text>`,
     fw: `<rect x="24" y="42" width="52" height="38" rx="2" fill="#b6553a" stroke="#8a3c26" stroke-width="1.5"/>
         <g stroke="#8a3c26" stroke-width="1.5">
         <line x1="24" y1="55" x2="76" y2="55"/><line x1="24" y1="68" x2="76" y2="68"/>

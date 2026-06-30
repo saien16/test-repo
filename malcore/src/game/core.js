@@ -10,6 +10,8 @@ function setRng(fn) { _rng = fn; }
 /* ===== ゲーム状態生成 ===== */
 function createGame(stage, equipped, levels, party) {
   const db = stage.nodes.db;
+  const footholds = {};
+  stage.path.forEach((n, i) => { footholds[n] = (i === 0); }); // 外部のみ最初から到達
   return {
     stage,
     turn: 1,
@@ -19,7 +21,7 @@ function createGame(stage, equipped, levels, party) {
     hand: (party && party.length ? party.slice(0, 3) : ['zeus', 'iloveyou', 'mydoom', 'blaster']),
     levels: levels || {},               // 世代進化レベル（id→0..2）
     equipped: (equipped || []).slice(0, 3), // 装備した攻撃手法カード（最大3）
-    footholds: { outside: true, pc: false, db: false },
+    footholds: footholds,
     botnet: false,    // 踏み台をボット化したか（A火力+10%）
     reconDone: false, // 本命を偵察したか
     diagDone: false,  // ブルーのセキュリティ診断が発動済みか
@@ -72,13 +74,31 @@ function gaugeMit(g, gauge, ignoreH) {
   const H = ignoreH ? 0 : effH(g);
   return Math.min(0.80, gaugeDefRaw(g, gauge) * (0.5 + H / 100));
 }
-// 経路ゲート（境界FW等）が開いているか
-function gateOpen(g) {
-  const gate = (g.defenses || []).find(d => d.gate);
-  return !gate || gate.state !== 'active';
+// ===== 経路（可変段数） =====
+function bossId(g) { return g.stage.path[g.stage.path.length - 1]; }
+function reachedBoss(g) { return !!g.footholds[bossId(g)]; }
+// 到達済みの最深インデックス
+function reachedIdx(g) {
+  let idx = 0;
+  for (let i = 0; i < g.stage.path.length; i++) if (g.footholds[g.stage.path[i]]) idx = i;
+  return idx;
+}
+function currentNodeId(g) { return g.stage.path[reachedIdx(g)]; }
+function nextNodeId(g) { const i = reachedIdx(g); return g.stage.path[i + 1]; } // 次の未到達ノード（無ければundefined）
+// 区間 a→b を塞ぐゲート（境界FW/WAF）
+function gateBetween(g, aId, bId) {
+  return (g.defenses || []).find(d => d.gate && d.state === 'active' && d.between && d.between[0] === aId && d.between[1] === bId);
+}
+function segmentOpen(g, aId, bId) { return !gateBetween(g, aId, bId); }
+// 対策を無効化する行動が今できるか（ゲートは手前ノード到達後／監視は内部到達後）
+function defActionable(g, d) {
+  if (d.gate && d.between) return !!g.footholds[d.between[0]];
+  return reachedIdx(g) >= 1; // 監視系は侵入後
 }
 // その対策に有効な無効化手段が残っているか
 function activeDefenses(g) { return (g.defenses || []).filter(d => d.state === 'active'); }
+// 互換: 「本命に直接横展開できる状態か」≒ 次の区間が開いているか
+function gateOpen(g) { const n = nextNodeId(g); return n ? segmentOpen(g, currentNodeId(g), n) : true; }
 
 /* 移動/偵察系アクションの技名（実在の攻撃手法名。軽量フラッシュで提示） */
 const ACT_TECH = {
@@ -198,31 +218,41 @@ function resolveStrike(g, cia, opt) {
 /* ===== 行動一覧（状態に応じて可否を返す） ===== */
 function listActions(g) {
   if (g.result) return [];
-  const f = g.footholds, A = [];
+  const A = [];
+  const nodeName = (id) => (g.stage.nodes[id] || {}).name || id;
+  const inside = reachedIdx(g) >= 1;     // 最初の内部ノードに到達済みか
+  const atBoss = reachedBoss(g);
   const can = (id, label, ok, reason, hint) => A.push({ id, label, enabled: ok, reason, hint });
 
   can('recon', '🔍 ポートスキャニング' + perfSuffix(g, 'recon'), !g.reconDone, '偵察済み',
-      '本命の防御を偵察で開示。CIカットインの前提。 W+2');
-  can('breach', '🚪 スピアフィッシング' + perfSuffix(g, 'breach'), !f.pc, '侵害済み',
-      '踏み台(社員PC)を初期侵害し足場確立。 W+5');
-  can('botnet', '🏴 ボットネット編入' + perfSuffix(g, 'botnet'), f.pc && !g.botnet, f.pc ? '実施済み' : '踏み台が必要',
-      '踏み台をボット化。可用性火力+10%。 W+5');
-  // 対策の無効化（回避/破壊）。剥がすと防御力が一気に低下し、本体防御だけが残る。
+      '本命の防御を偵察で開示。CIカットインの前提。 W+3');
+  // 初期侵害: 外部 → 最初の内部ノード
+  can('breach', '🚪 スピアフィッシング' + perfSuffix(g, 'breach'), !inside, '侵害済み',
+      nodeName(g.stage.path[1]) + 'を初期侵害し足場確立。 W+3');
+  can('botnet', '🏴 ボットネット編入' + perfSuffix(g, 'botnet'), inside && !g.botnet, inside ? '実施済み' : '踏み台が必要',
+      '踏み台をボット化。可用性火力+10%。 W+4');
+  // 対策の無効化（回避/破壊）。剥がすと防御力が一気に低下＝本体防御だけが残る。
   const hasBreaker = g.hand.some(id => (malById(id) || {}).breaker);
   activeDefenses(g).forEach(d => {
+    const act = defActionable(g, d);
     if (d.evade) {
-      can('evade:' + d.id, '🌫️ ' + d.name + 'を回避', f.pc && canAfford(g, d.evade),
-          f.pc ? '資源不足(' + costLabel(d.evade) + ')' : '踏み台が必要',
+      can('evade:' + d.id, '🌫️ ' + d.name + 'を回避', act && canAfford(g, d.evade),
+          act ? '資源不足(' + costLabel(d.evade) + ')' : '手前に到達が必要',
           '正規に偽装し無効化。防御力↓＆検知↓。' + costLabel(d.evade) + ' / W+2');
     }
     if (d.breakable) {
-      can('break:' + d.id, '💥 ' + d.name + 'を破壊' + perfSuffix(g, 'brk'), f.pc && hasBreaker,
-          f.pc ? '装置破壊ロールが必要' : '踏み台が必要',
+      can('break:' + d.id, '💥 ' + d.name + 'を破壊' + perfSuffix(g, 'brk'), act && hasBreaker,
+          act ? '装置破壊ロールが必要' : '手前に到達が必要',
           '装置破壊ロールで強行無効化。防御力↓だが W+25（派手）');
     }
   });
-  can('pivot', '↔️ ラテラルムーブメント', f.pc && gateOpen(g) && !f.db, f.db ? '到達済み' : (gateOpen(g) ? '踏み台が必要' : '境界FWが閉'),
-      'パス・ザ・ハッシュで本命へ横展開。 W+5');
+  // 横展開: 現在ノード → 次のノード（区間にゲートがあれば開通が必要）
+  const nxt = nextNodeId(g);
+  if (inside && nxt) {
+    const open = segmentOpen(g, currentNodeId(g), nxt);
+    can('pivot', '↔️ ラテラルムーブメント → ' + nodeName(nxt), open, open ? '踏み台が必要' : 'FW/WAFが閉',
+        'パス・ザ・ハッシュで ' + nodeName(nxt) + ' へ横展開。 W+3');
+  }
   can('ci_recon', '🛠️ アタックサーフェス・マッピング（H -20/3T）', g.reconDone && g.res.info >= 20, g.reconDone ? '情報20が必要' : '先に偵察が必要',
       'ハードニングを下げ通りやすくする。情報-20 / W+5');
   can('ci_diag', '🧪 ヴァルネラビリティ・スキャン（V +25/3T）', g.res.tech >= 15, '技術15が必要',
@@ -235,14 +265,14 @@ function listActions(g) {
     const s = malStats(m, L);
     const tag = L > 0 ? EVO_SUFFIX[L].replace('・', '') + ' ' : '';
     const w = strikeWarn(g, primGauge(s), L);
-    can('strike:' + id, '⚔️ ' + tag + (m.waza ? m.waza.name.replace(/！+$/, '') : m.name), f.db, '本命未到達',
+    can('strike:' + id, '⚔️ ' + tag + (m.waza ? m.waza.name.replace(/！+$/, '') : m.name), atBoss, '本命未到達',
         'C' + s.C + '/I' + s.I + '/A' + s.A + ' で攻撃。 W+' + w);
   });
   // 装備技カード（本命到達後・資源を満たすとき）
   (g.equipped || []).forEach(id => {
     const c = cardById(id); if (!c) return;
-    const ok = f.db && canAfford(g, c.cost);
-    const reason = !f.db ? '本命未到達' : '資源不足(' + costLabel(c.cost) + ')';
+    const ok = atBoss && canAfford(g, c.cost);
+    const reason = !atBoss ? '本命未到達' : '資源不足(' + costLabel(c.cost) + ')';
     const cia = c.cia || {};
     const w = strikeWarn(g, c.gauge || primGauge(cia), 0, 5);
     can('card:' + id, '🃏 ' + c.name, ok, reason,
@@ -262,13 +292,14 @@ function applyAction(g, actionId) {
   g.flash = null;   // 移動/偵察系の軽量技フラッシュ
   let warn = 0, msg = '';
   if (actionId === 'recon') {
-    g.reconDone = true; warn = 2; g.flash = flashWith(g, ACT_TECH.recon, 'recon');
+    g.reconDone = true; warn = 3; g.flash = flashWith(g, ACT_TECH.recon, 'recon');
     msg = '⚡ ' + flashMsg(g.flash) + ': 本命 H' + g.db.baseH + ' / V' + g.db.baseV + 'を偵察';
   } else if (actionId === 'breach') {
-    g.footholds.pc = true; warn = 5; g.flash = flashWith(g, ACT_TECH.breach, 'breach');
-    msg = '⚡ ' + flashMsg(g.flash) + ': 社員PCに足場を確立';
+    const first = g.stage.path[1]; g.footholds[first] = true; warn = 3;
+    g.flash = flashWith(g, ACT_TECH.breach, 'breach');
+    msg = '⚡ ' + flashMsg(g.flash) + ': ' + (g.stage.nodes[first].name) + 'に足場を確立';
   } else if (actionId === 'botnet') {
-    g.botnet = true; warn = 5; g.flash = flashWith(g, ACT_TECH.botnet, 'botnet');
+    g.botnet = true; warn = 4; g.flash = flashWith(g, ACT_TECH.botnet, 'botnet');
     msg = '⚡ ' + flashMsg(g.flash) + ': 可用性火力 +10%';
   } else if (actionId.startsWith('evade:')) {
     const d = g.defenses.find(x => x.id === actionId.slice(6));
@@ -279,8 +310,8 @@ function applyAction(g, actionId) {
     d.state = 'destroyed'; warn = 25; g.flash = flashWith(g, ACT_TECH.brk, 'brk');
     msg = '⚡ ' + flashMsg(g.flash) + ': ' + d.name + 'を破壊。防御力↓だが発覚度が跳ね上がった';
   } else if (actionId === 'pivot') {
-    g.footholds.db = true; warn = 5; g.flash = ACT_TECH.pivot;
-    msg = '⚡ ' + ACT_TECH.pivot.name + ': 本命へ横展開';
+    const nxt = nextNodeId(g); g.footholds[nxt] = true; warn = 2; g.flash = ACT_TECH.pivot;
+    msg = '⚡ ' + ACT_TECH.pivot.name + ': ' + g.stage.nodes[nxt].name + 'へ横展開';
   } else if (actionId === 'ci_recon') {
     g.cut.hHack = 3; g.res.info -= 20; warn = 5; msg = '🛠️ アタックサーフェス・マッピング発動! ハードニング -20（3T）';
     g.banner = { name: 'アタックサーフェス・マッピング！', en: 'Attack Surface Mapping', tone: 'ci' };
@@ -379,6 +410,7 @@ const MALCORE = {
   malStats, wazaName, evoCost, evoMul, EVO_MAX,
   gaugeMit, gaugeDefRaw, gateOpen, strikeWarn, primGauge, defenseIntro,
   isStealth, blueInterval, STEALTH_MAX, STEALTH_MUL,
+  reachedBoss, bossId, reachedIdx, currentNodeId, nextNodeId, segmentOpen,
   STAGE: (typeof STAGE_ZENITH !== 'undefined') ? STAGE_ZENITH : null,
   STAGES: (typeof STAGES !== 'undefined') ? STAGES : [],
   CARDS: (typeof CARDS !== 'undefined') ? CARDS : [],
@@ -425,21 +457,31 @@ if (typeof document !== 'undefined' && document.getElementById) {
       const r = (d.C + d.I + d.A) / d.initTotal;
       return r > 0.66 ? 'ok' : (r > 0.33 ? 'hurt' : 'crit');
     })();
+    // ノードid → スプライト種別（pc/db以外の中間ノードは汎用サーバ）
+    const sprKind = (n) => {
+      if (n === 'outside') return 'outside';
+      const k = (g.stage.nodes[n] || {}).kind;
+      return k === 'pc' ? 'pc' : k === 'db' ? 'db' : 'server';
+    };
+    const lastI = g.stage.path.length - 1;
     const hops = g.stage.path.map((n, i) => {
       const reached = n === 'outside' ? true : g.footholds[n];
       const nm = n === 'outside' ? '外部' : g.stage.nodes[n].name.split('（')[0];
-      const sprOpt = n === 'db' ? { state: dbState } : undefined;
+      const sprOpt = n === bossId(g) ? { state: dbState } : undefined;
       const hop = '<span class="hop ' + (reached ? 'on' : '') + '">' +
-        '<span class="nodespr">' + SPRITES.node(n === 'outside' ? 'outside' : n, sprOpt) + '</span>' +
+        '<span class="nodespr">' + SPRITES.node(sprKind(n), sprOpt) + '</span>' +
         '<small>' + nm + '</small></span>';
-      if (i === g.stage.path.length - 1) return hop;
+      if (i === lastI) return hop;
       const next = g.stage.path[i + 1];
-      // pc → db の間に境界FW装置（開通=通路 / 閉鎖=FWアイコン）
-      if (next === 'db') {
-        const dev = gateOpen(g)
-          ? '<span class="hop-arrow open">▶</span>'
-          : '<span class="hop fw"><span class="nodespr sm">' + SPRITES.node('fw') + '</span><small>境界FW</small></span>';
-        return hop + dev;
+      // 区間にゲート(FW/WAF)があるか（剥がす前=閉/剥がした後=開通）
+      const stGate = (g.stage.defenses || []).find(x => x.gate && x.between && x.between[0] === n && x.between[1] === next);
+      if (stGate) {
+        const live = gateBetween(g, n, next); // active のみ返る
+        if (live) {
+          const ico = /waf/.test(live.id) ? 'waf' : 'fw';
+          return hop + '<span class="hop gate"><span class="nodespr sm">' + SPRITES.node(ico) + '</span><small>' + live.name + '</small></span>';
+        }
+        return hop + '<span class="hop-arrow open">▶</span>'; // ゲート突破済み
       }
       return hop + '<span class="hop-arrow">▶</span>';
     }).join('');
