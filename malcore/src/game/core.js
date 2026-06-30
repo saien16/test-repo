@@ -8,7 +8,7 @@ let _rng = Math.random;
 function setRng(fn) { _rng = fn; }
 
 /* ===== ゲーム状態生成 ===== */
-function createGame(stage, equipped, levels) {
+function createGame(stage, equipped, levels, party) {
   const db = stage.nodes.db;
   return {
     stage,
@@ -16,7 +16,7 @@ function createGame(stage, equipped, levels) {
     maxTurn: stage.turnLimit,
     warning: 0,
     res: { info: 40, tech: 20, res: 20 }, // 初期資源
-    hand: ['zeus', 'iloveyou', 'mydoom', 'blaster'],
+    hand: (party && party.length ? party.slice(0, 3) : ['zeus', 'iloveyou', 'mydoom', 'blaster']),
     levels: levels || {},               // 世代進化レベル（id→0..2）
     equipped: (equipped || []).slice(0, 3), // 装備した攻撃手法カード（最大3）
     footholds: { outside: true, pc: false, db: false },
@@ -28,6 +28,7 @@ function createGame(stage, equipped, levels) {
     db: {
       C: db.C, I: db.I, A: db.A,
       baseH: db.H, baseV: db.V, baseDef: db.baseDef || {},
+      initC: db.C, initI: db.I, initA: db.A,
       initTotal: db.C + db.I + db.A,
     },
     log: ['◆ 出撃: ' + stage.name + '（制限 ' + stage.turnLimit + 'T）'],
@@ -87,6 +88,26 @@ const ACT_TECH = {
   evade: { name: 'リビング・オフ・ザ・ランド', en: 'Living off the Land' },
   brk: { name: 'サービス・クラッシュ', en: 'Service Crash / DoS' },
 };
+
+/* 経路アクションの役割親和性。編成にこの役割のマルウェアが居れば、その子が実行（進化名つき）。 */
+const PATH_AFFINITY = { recon: '偵察', breach: '侵入', botnet: '足場', brk: '装置破壊' };
+function pathPerformer(g, actKey) {
+  const key = PATH_AFFINITY[actKey]; if (!key) return null;
+  for (let i = 0; i < (g.hand || []).length; i++) {
+    const m = malById(g.hand[i]); if (!m) continue;
+    if (((m.role || '') + '/' + (m.sub || '')).indexOf(key) >= 0) {
+      const L = (g.levels && g.levels[g.hand[i]]) || 0;
+      return { id: g.hand[i], name: m.name + (['', '改', '改弐'][L] || '') };
+    }
+  }
+  return null;
+}
+function perfSuffix(g, actKey) { const p = pathPerformer(g, actKey); return p ? '（' + p.name + '）' : ''; }
+function flashWith(g, tech, actKey) {
+  const p = pathPerformer(g, actKey);
+  return { name: tech.name, en: tech.en, by: p ? p.name : null };
+}
+function flashMsg(f) { return (f.by ? f.by + 'の' : '') + f.name; }
 
 /* ===== 検知（警戒度）モデル ===== */
 const GAUGE_NOISE = { C: 0.5, I: 1.0, A: 1.5 }; // 機密性=静か / 可用性=派手
@@ -165,11 +186,11 @@ function listActions(g) {
   const f = g.footholds, A = [];
   const can = (id, label, ok, reason, hint) => A.push({ id, label, enabled: ok, reason, hint });
 
-  can('recon', '🔍 ポートスキャニング', !g.reconDone, '偵察済み',
+  can('recon', '🔍 ポートスキャニング' + perfSuffix(g, 'recon'), !g.reconDone, '偵察済み',
       '本命の防御を偵察で開示。CIカットインの前提。 W+2');
-  can('breach', '🚪 スピアフィッシング', !f.pc, '侵害済み',
+  can('breach', '🚪 スピアフィッシング' + perfSuffix(g, 'breach'), !f.pc, '侵害済み',
       '踏み台(社員PC)を初期侵害し足場確立。 W+5');
-  can('botnet', '🏴 ボットネット編入', f.pc && !g.botnet, f.pc ? '実施済み' : '踏み台が必要',
+  can('botnet', '🏴 ボットネット編入' + perfSuffix(g, 'botnet'), f.pc && !g.botnet, f.pc ? '実施済み' : '踏み台が必要',
       '踏み台をボット化。可用性火力+10%。 W+5');
   // 対策の無効化（回避/破壊）。剥がすと防御力が一気に低下し、本体防御だけが残る。
   const hasBreaker = g.hand.some(id => (malById(id) || {}).breaker);
@@ -180,7 +201,7 @@ function listActions(g) {
           '正規に偽装し無効化。防御力↓＆検知↓。' + costLabel(d.evade) + ' / W+2');
     }
     if (d.breakable) {
-      can('break:' + d.id, '💥 ' + d.name + 'を破壊', f.pc && hasBreaker,
+      can('break:' + d.id, '💥 ' + d.name + 'を破壊' + perfSuffix(g, 'brk'), f.pc && hasBreaker,
           f.pc ? '装置破壊ロールが必要' : '踏み台が必要',
           '装置破壊ロールで強行無効化。防御力↓だが W+25（派手）');
     }
@@ -226,25 +247,25 @@ function applyAction(g, actionId) {
   g.flash = null;   // 移動/偵察系の軽量技フラッシュ
   let warn = 0, msg = '';
   if (actionId === 'recon') {
-    g.reconDone = true; warn = 2; g.flash = ACT_TECH.recon;
-    msg = '⚡ ' + ACT_TECH.recon.name + ': 本命 H' + g.db.baseH + ' / V' + g.db.baseV + '（機密性が厚い）';
+    g.reconDone = true; warn = 2; g.flash = flashWith(g, ACT_TECH.recon, 'recon');
+    msg = '⚡ ' + flashMsg(g.flash) + ': 本命 H' + g.db.baseH + ' / V' + g.db.baseV + 'を偵察';
   } else if (actionId === 'breach') {
-    g.footholds.pc = true; warn = 5; g.flash = ACT_TECH.breach;
-    msg = '⚡ ' + ACT_TECH.breach.name + ': 社員PCに足場を確立';
+    g.footholds.pc = true; warn = 5; g.flash = flashWith(g, ACT_TECH.breach, 'breach');
+    msg = '⚡ ' + flashMsg(g.flash) + ': 社員PCに足場を確立';
   } else if (actionId === 'botnet') {
-    g.botnet = true; warn = 5; g.flash = ACT_TECH.botnet;
-    msg = '⚡ ' + ACT_TECH.botnet.name + ': 可用性火力 +10%';
+    g.botnet = true; warn = 5; g.flash = flashWith(g, ACT_TECH.botnet, 'botnet');
+    msg = '⚡ ' + flashMsg(g.flash) + ': 可用性火力 +10%';
   } else if (actionId.startsWith('evade:')) {
     const d = g.defenses.find(x => x.id === actionId.slice(6));
     payCost(g, d.evade); d.state = 'evaded'; warn = 2; g.flash = ACT_TECH.evade;
     msg = '⚡ ' + ACT_TECH.evade.name + ': ' + d.name + 'を回避。防御力↓（本体のみ）＆検知↓';
   } else if (actionId.startsWith('break:')) {
     const d = g.defenses.find(x => x.id === actionId.slice(6));
-    d.state = 'destroyed'; warn = 25; g.flash = ACT_TECH.brk;
-    msg = '⚡ ' + ACT_TECH.brk.name + ': ' + d.name + 'を破壊。防御力↓だが警戒度が跳ね上がった';
+    d.state = 'destroyed'; warn = 25; g.flash = flashWith(g, ACT_TECH.brk, 'brk');
+    msg = '⚡ ' + flashMsg(g.flash) + ': ' + d.name + 'を破壊。防御力↓だが発覚度が跳ね上がった';
   } else if (actionId === 'pivot') {
     g.footholds.db = true; warn = 5; g.flash = ACT_TECH.pivot;
-    msg = '⚡ ' + ACT_TECH.pivot.name + ': 本命「勘定系DB」へ横展開';
+    msg = '⚡ ' + ACT_TECH.pivot.name + ': 本命へ横展開';
   } else if (actionId === 'ci_recon') {
     g.cut.hHack = 3; g.res.info -= 20; warn = 5; msg = '🛠️ アタックサーフェス・マッピング発動! ハードニング -20（3T）';
     g.banner = { name: 'アタックサーフェス・マッピング！', en: 'Attack Surface Mapping', tone: 'ci' };
@@ -290,15 +311,19 @@ function endTurn(g) {
   // ブルー: システム監査（一定ターン毎にH↑）
   if (g.turn % g.stage.audit.every === 0) {
     g.db.baseH = Math.min(100, g.db.baseH + g.stage.audit.hardenUp);
-    g.log.push('T' + g.turn + '  🔵 システム監査: ハードニング +' + g.stage.audit.hardenUp + '（→' + g.db.baseH + '）');
-    g.counter = { kind: 'audit', label: 'システム監査 H+' + g.stage.audit.hardenUp };
+    g.warning = Math.min(100, g.warning + 5); // 反撃でこちらの発覚度が上がる＝駆除に近づく
+    g.log.push('T' + g.turn + '  🔵 システム監査: 敵ハードニング+' + g.stage.audit.hardenUp + '（→' + g.db.baseH + '） / 発覚度+5');
+    g.counter = { kind: 'audit', label: 'システム監査',
+      effect: '敵ハードニング+' + g.stage.audit.hardenUp + '（あなたの攻撃が通りにくく）', warn: 5 };
   }
   // ブルー: セキュリティ診断（警戒度が閾値超えで一度だけV↓）
   if (!g.diagDone && g.warning >= g.stage.diag.warnThreshold) {
     g.db.baseV = Math.max(0, g.db.baseV - g.stage.diag.vulnDown);
+    g.warning = Math.min(100, g.warning + 5);
     g.diagDone = true;
-    g.log.push('T' + g.turn + '  🔵 セキュリティ診断: 脆弱性 -' + g.stage.diag.vulnDown + '（→' + g.db.baseV + '）');
-    g.counter = { kind: 'diag', label: 'セキュリティ診断 V-' + g.stage.diag.vulnDown };
+    g.log.push('T' + g.turn + '  🔵 セキュリティ診断: 敵脆弱性-' + g.stage.diag.vulnDown + '（→' + g.db.baseV + '） / 発覚度+5');
+    g.counter = { kind: 'diag', label: 'セキュリティ診断',
+      effect: '敵脆弱性-' + g.stage.diag.vulnDown + '（命中・会心が下がる）', warn: 5 };
   }
 
   checkEnd(g);
@@ -333,6 +358,7 @@ const MALCORE = {
   malStats, wazaName, evoCost, evoMul, EVO_MAX,
   gaugeMit, gaugeDefRaw, gateOpen, strikeWarn, primGauge, defenseIntro,
   STAGE: (typeof STAGE_ZENITH !== 'undefined') ? STAGE_ZENITH : null,
+  STAGES: (typeof STAGES !== 'undefined') ? STAGES : [],
   CARDS: (typeof CARDS !== 'undefined') ? CARDS : [],
 };
 if (typeof globalThis !== 'undefined') globalThis.MALCORE = MALCORE;
@@ -422,7 +448,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<span class="pill tech">🧬 技術 ' + g.res.tech + '</span>' +
         '<span class="pill resr">⚙️ 資源 ' + g.res.res + '</span>' +
       '</div>' +
-      bar('🚨 警戒度', g.warning, 100, 'warn') +
+      bar('🚨 発覚度', g.warning, 100, 'warn') +
+      '<div class="warn-note">発覚度100で足場を駆除され敗北（＝こちらの生存ゲージ）</div>' +
       '<div class="path">' + pathHtml + '</div>' +
       '<div class="boss">' +
         '<div class="boss-head"><span class="bossspr ' + dbState + '">' + SPRITES.node('db', { state: dbState }) + '</span>' +
@@ -430,9 +457,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
           '<span class="hv">H ' + effH(g) + ' / V ' + effV(g) + ' ' + cutBadges + '</span></span></div>' +
         '<div class="goal-chip">🎯 勝利まで CIA合計 ' + Math.round(d.C + d.I + d.A) +
           ' → <b>' + Math.round(d.initTotal * g.stage.win.ratio) + '以下</b></div>' +
-        bar('🔵 機密性 C', d.C, 160, 'c') +
-        bar('🟢 完全性 I', d.I, 100, 'i') +
-        bar('🟡 可用性 A', d.A, 100, 'a') +
+        bar('🔵 機密性 C', d.C, d.initC, 'c') +
+        bar('🟢 完全性 I', d.I, d.initI, 'i') +
+        bar('🟡 可用性 A', d.A, d.initA, 'a') +
         defensePanel(g) +
       '</div>' +
       '<div class="acts">' + acts + '</div>' +
@@ -470,7 +497,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
     el.innerHTML =
       '<div class="banner-spr hurt">' + SPRITES.mal(id, { expr: 'hurt', gen: (G.levels && G.levels[id]) || 0 }) + '</div>' +
       '<div class="banner-name">🛡️ ブルーチーム反撃！</div>' +
-      '<div class="banner-en">' + c.label + '</div>';
+      '<div class="banner-en">' + c.label + '</div>' +
+      '<div class="counter-eff">' + (c.effect || '') + '</div>' +
+      (c.warn ? '<div class="counter-cost">🚨 こちらの発覚度 +' + c.warn + '（駆除に近づく）</div>' : '');
     $('app').appendChild(el);
     const app = $('app'); app.classList.remove('shake'); void app.offsetWidth; app.classList.add('shake');
     Sound.play('hit');
@@ -482,7 +511,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     document.querySelectorAll('.techflash').forEach(e => e.remove());
     const el = document.createElement('div');
     el.className = 'techflash';
-    el.innerHTML = '⚡ ' + f.name + (f.en ? ' <span>' + f.en + '</span>' : '');
+    el.innerHTML = '⚡ ' + (f.by ? '<i>' + f.by + '</i> ' : '') + f.name + (f.en ? ' <span>' + f.en + '</span>' : '');
     $('app').appendChild(el);
     setTimeout(() => el.remove(), 760);
   }
@@ -509,8 +538,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
     if (win) document.querySelectorAll('.bossspr').forEach(b => b.classList.add('shatter')); // 本命DBが砕ける
     else { const a = $('app'); a.classList.remove('shake'); void a.offsetWidth; a.classList.add('shake'); }
     const title = win ? '🏆 制圧成功！' : (res === 'lose_turn' ? '⏳ タイムオーバー' : '🚨 駆除された');
-    const sub = win ? '本命「勘定系DB」を掌握した'
-      : (res === 'lose_turn' ? 'ブルーチームの封じ込めが間に合った' : '警戒度MAX — 足場を一斉駆除された');
+    const sub = win ? '本命「' + G.stage.nodes.db.name.replace('（本命）', '') + '」を掌握した'
+      : (res === 'lose_turn' ? 'ブルーチームの封じ込めが間に合った' : '発覚度MAX — 足場を一斉駆除された');
     const el = document.createElement('div');
     el.className = 'finish ' + (win ? 'win' : 'lose');
     el.innerHTML = '<div class="finish-big">' + title + '</div><div class="finish-sub">' + sub + '</div>';
@@ -523,6 +552,12 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const win = G.result === 'win';
     let reward = '';
     if (win) {
+      // 次ステージ解放（攻略進行）
+      if (selectedStage + 1 < STAGES.length && selectedStage + 2 > unlockedStages) {
+        unlockedStages = Math.min(STAGES.length, selectedStage + 2);
+        saveJSON('malcore.unlocked', unlockedStages);
+        reward += '<div class="reward unlock">🗺️ 新ステージ解放！「' + STAGES[selectedStage + 1].name + '」</div>';
+      }
       // 戦利品（余剰の情報/技術/資源）を開発Pに変換＝「攻略→進化資金」を1本につなぐ
       const surplus = Math.floor((G.res.info + G.res.tech + G.res.res) / 20);
       const gain = 3 + surplus;
@@ -550,6 +585,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
 
   let equipped = []; // 装備中の攻撃手法カード（最大3）
+  let party = ['zeus', 'iloveyou', 'mydoom']; // 出撃マルウェア（最大3）
+  let selectedStage = 0;
 
   // 世代進化の永続状態（localStorage、無ければデモ用に開発P=4で開始）
   let levels = loadJSON('malcore.levels', {});
@@ -557,13 +594,42 @@ if (typeof document !== 'undefined' && document.getElementById) {
   // 入手済み技カード（初期は基本3枚。勝利で増える＝収集ループ）
   let unlockedCards = loadJSON('malcore.cards', ['sqli', 'slowloris', 'csrf']);
   function isUnlocked(id) { return unlockedCards.indexOf(id) >= 0; }
+  // 解放済みステージ数（初期1。勝利で次が解放）
+  let unlockedStages = loadJSON('malcore.unlocked', 1);
+  const ROSTER = ['zeus', 'iloveyou', 'mydoom', 'blaster'];
+
+  function renderStageSelect() {
+    const html = STAGES.map((s, i) => {
+      const open = i < unlockedStages;
+      const cleared = i < unlockedStages - 1;
+      const thick = ['C', 'I', 'A'].filter(k => (s.nodes.db.baseDef[k] || 0) >= 0.15)
+        .map(k => ({ C: '🔵', I: '🟢', A: '🟡' }[k])).join('') || '—';
+      return '<button class="stage-card ' + (open ? '' : 'locked') + '" ' + (open ? 'data-stage="' + i + '"' : 'disabled') + '>' +
+        '<div class="st-top"><b>' + (open ? '' : '🔒 ') + (i + 1) + '. ' + s.name + '</b>' +
+        '<span class="st-gen">世代' + s.gen + ' / ' + s.turnLimit + 'T</span></div>' +
+        (open
+          ? '<div class="st-meta">本命CIA ' + s.nodes.db.C + '/' + s.nodes.db.I + '/' + s.nodes.db.A +
+            ' ・ 厚い ' + thick + (s.edr ? ' ・ EDR' : '') + ' ・ 対策' + s.defenses.length + '</div>' +
+            '<div class="st-intro">' + s.intro + '</div>' +
+            (cleared ? '<div class="st-clear">✓ 攻略済</div>' : '')
+          : '<div class="st-meta">前のステージを攻略すると解放</div>') +
+        '</button>';
+    }).join('');
+    $('stage-body').innerHTML = '<div class="stages">' + html + '</div>';
+    $('stage-body').querySelectorAll('.stage-card:not(.locked)').forEach(b =>
+      b.addEventListener('click', () => {
+        Sound.unlock(); Sound.play('select');
+        selectedStage = parseInt(b.dataset.stage, 10);
+        renderBriefing(); show('briefing-screen');
+      }));
+  }
   function loadJSON(key, def) {
     try { const v = localStorage.getItem(key); return v == null ? def : JSON.parse(v); } catch (e) { return def; }
   }
   function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
   function startGame() {
-    G = createGame(STAGE_ZENITH, equipped, levels);
+    G = createGame(STAGES[selectedStage], equipped, levels, party);
     Sound.bgm(); show('battle-screen'); renderBattle();
     playDefenseIntro(defenseIntro(G)); // 敵の防御を開幕カットインで提示（多いほど手強い印象）
   }
@@ -599,23 +665,34 @@ if (typeof document !== 'undefined' && document.getElementById) {
     renderBriefing();
   }
 
+  function toggleParty(id) {
+    const i = party.indexOf(id);
+    if (i >= 0) { if (party.length > 1) party.splice(i, 1); }     // 最低1体
+    else if (party.length < 3) party.push(id);                    // 最大3体
+  }
+
   function renderBriefing() {
-    const handHtml = ['zeus', 'iloveyou', 'mydoom', 'blaster'].map(id => {
+    const stage = STAGES[selectedStage];
+    $('briefing-title').textContent = '作戦: ' + stage.name;
+    const handHtml = ROSTER.map(id => {
       const m = malById(id);
       const L = levels[id] || 0;
       const s = MALCORE.malStats(m, L);
+      const inParty = party.includes(id);
       const badge = L > 0 ? '<span class="evo-badge">' + ['', '改', '改弐'][L] + '</span>' : '';
       const maxed = L >= EVO_MAX;
       const cost = evoCost(L);
       const evoBtn = '<button class="evo-btn" data-evo="' + id + '" ' + (maxed || devP < cost ? 'disabled' : '') + '>' +
         (maxed ? '進化MAX' : '⬆ 進化（開発P ' + cost + '）') + '</button>';
-      return '<div class="card"><div class="card-top">' +
+      const partyBtn = '<button class="party-btn ' + (inParty ? 'on' : '') + '" data-party="' + id + '">' +
+        (inParty ? '✅ 出撃' : '出撃する') + '</button>';
+      return '<div class="card' + (inParty ? ' inparty' : '') + '"><div class="card-top">' +
         '<span class="malspr evo' + L + '">' + SPRITES.mal(id, { gen: L }) + '</span>' +
         '<span class="card-name"><b>' + m.name + badge + '</b><span>' + m.year + ' / 世代Lv' + L + '</span></span></div>' +
         '<div class="card-cia">🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</div>' +
         '<div class="card-role">' + m.role + ' / ' + m.sub + '</div>' +
         (m.waza ? '<div class="card-waza">⚡ ' + MALCORE.wazaName(m, L) + '</div>' : '') +
-        evoBtn + '</div>';
+        partyBtn + evoBtn + '</div>';
     }).join('');
     // 装備技カードの選択（入手済みのみ装備可。未入手は🔒）
     equipped = equipped.filter(isUnlocked); // 念のため未所持を除外
@@ -629,11 +706,13 @@ if (typeof document !== 'undefined' && document.getElementById) {
         (c.special === 'ignoreH' ? ' / 貫通' : '') + '</small></button>';
     }).join('');
     $('briefing-body').innerHTML =
-      '<p class="intro">' + STAGE_ZENITH.intro + '</p>' +
-      '<h2 class="sub">編成（固有技）<small>🛠️ 開発P ' + devP + '</small></h2>' +
+      '<p class="intro">' + stage.intro + '</p>' +
+      '<h2 class="sub">編成（出撃 ' + party.length + '/3）<small>🛠️ 開発P ' + devP + '</small></h2>' +
       '<div class="cards">' + handHtml + '</div>' +
       '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3 ・ 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</small></h2>' +
       '<div class="equips">' + equipHtml + '</div>';
+    $('briefing-body').querySelectorAll('.party-btn').forEach(b =>
+      b.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); toggleParty(b.dataset.party); renderBriefing(); }));
     $('briefing-body').querySelectorAll('.equip:not(.locked)').forEach(b =>
       b.addEventListener('click', () => { toggleEquip(b.dataset.card); renderBriefing(); }));
     $('briefing-body').querySelectorAll('.evo-btn').forEach(b =>
@@ -675,7 +754,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
       const h = (e) => { e.preventDefault(); Sound.unlock(); fn(); };
       el.addEventListener('click', h);
     };
-    tap('btn-start', () => { Sound.play('select'); renderBriefing(); show('briefing-screen'); });
+    tap('btn-start', () => { Sound.play('select'); renderStageSelect(); show('stage-screen'); });
+    tap('btn-stage-back', () => show('title-screen'));
+    tap('btn-brief-back', () => { renderStageSelect(); show('stage-screen'); });
     tap('btn-codex', () => { Sound.play('select'); renderCodex(); show('codex-screen'); });
     tap('btn-codex-back', () => show('title-screen'));
     tap('btn-sortie', () => { Sound.play('select'); startGame(); });

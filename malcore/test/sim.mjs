@@ -185,5 +185,41 @@ assert(/ポートスキャニング/.test(labels) && /スピアフィッシン�
 M.applyAction(gf, 'strike:zeus');
 assert(gf.banner && gf.banner.sprId && gf.banner.tone === 'strike', '撃破は全画面カットイン(banner+sprite)のまま');
 
+// 19) 5ステージ: 構造が揃い、入門ステージは素直に勝てる、本命CIAがバー最大値に入る
+console.log('シナリオ19: 5ステージ');
+const STG = M.STAGES;
+assert(STG.length === 5, 'ステージが5つある');
+assert(STG.every(s => s.nodes.db && s.defenses.length >= 1 && s.turnLimit >= 5 && s.win), '全ステージに本命/対策/制限ターン/勝利条件がある');
+const gm = M.createGame(STG[0]); // マチ町工業
+assert(gm.db.initC === STG[0].nodes.db.C, 'バー最大値=本命CIA初期値(ステージ別)');
+M.setRng(() => 0.99);
+const gmw = M.createGame(STG[0], [], {}, ['zeus', 'iloveyou', 'mydoom']);
+['breach', 'evade:fw', 'pivot', 'strike:zeus', 'strike:zeus', 'strike:zeus'].forEach(a => M.applyAction(gmw, a));
+assert(gmw.result === 'win', '入門ステージ(マチ町)は素直な編成で勝てる');
+
+// 20) キャラ入替(編成): party に応じて hand/撃破選択肢が変わる
+console.log('シナリオ20: 編成(party)');
+const gp = M.createGame(M.STAGE, [], {}, ['zeus']);
+assert(gp.hand.length === 1 && gp.hand[0] === 'zeus', 'partyでhandが変わる(Zeusのみ)');
+['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gp, a));
+const ids = M.listActions(gp).map(a => a.id);
+assert(ids.includes('strike:zeus') && !ids.includes('strike:blaster'), '編成外(Blaster)の撃破は出ない');
+assert(!ids.some(x => x.startsWith('break:')), 'Blaster未編成なら装置破壊が出ない');
+
+// 21) 反撃で発覚度(警戒度)が上がり、効果が明示される
+console.log('シナリオ21: 反撃の明確化');
+const gco2 = M.createGame(M.STAGE, [], {});
+['recon', 'breach', 'evade:fw'].forEach(a => M.applyAction(gco2, a));
+const wPre = gco2.warning;
+M.applyAction(gco2, 'pivot'); // T4=システム監査
+assert(gco2.counter && gco2.counter.warn >= 1 && gco2.counter.effect, '反撃に発覚度コストと効果説明がある');
+assert(gco2.warning >= wPre + 5, '反撃でこちらの発覚度(警戒度)が上がる');
+
+// 22) 経路技が編成マルウェアの進化名で表示される
+console.log('シナリオ22: 経路技の編成反映');
+const gpe = M.createGame(M.STAGE, [], { iloveyou: 1 }, ['zeus', 'iloveyou', 'mydoom']);
+const breachLabel = M.listActions(gpe).find(a => a.id === 'breach').label;
+assert(/ILOVEYOU改/.test(breachLabel), '初期侵害に侵入ロールのILOVEYOU改が反映される（' + breachLabel + '）');
+
 console.log(fails === 0 ? '\n✅ すべて通過' : `\n❌ ${fails}件 失敗`);
 process.exit(fails === 0 ? 0 : 1);
