@@ -55,7 +55,11 @@ body {
 .party-btn.on { background: #16352a; border-color: #2f9e63; color: #aef0c9; }
 
 /* 発覚度の注記 / 反撃の効果 */
-.warn-note { font-size: 10px; color: #c98a6a; margin: -2px 0 6px; }
+.warn-note { font-size: 11px; margin: -2px 0 6px; font-weight: 700; }
+.warn-note.stealth { color: #7CFFB2; }
+.warn-note.calm { color: #8fd0a8; }
+.warn-note.alert { color: #ffd34a; }
+.warn-note.danger { color: #ff6b6b; }
 .counter-eff { font-size: 13px; color: #ffd9d9; margin-top: 4px; }
 .counter-cost { font-size: 14px; color: #ffcaca; font-weight: 800; margin-top: 4px; text-shadow: 0 0 8px rgba(255,90,90,.6); }
 .techflash i { color: #ffd34a; font-style: normal; }

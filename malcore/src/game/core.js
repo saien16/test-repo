@@ -24,6 +24,7 @@ function createGame(stage, equipped, levels, party) {
     reconDone: false, // 本命を偵察したか
     diagDone: false,  // ブルーのセキュリティ診断が発動済みか
     cut: { hHack: 0, vDiag: 0 }, // カットイン残ターン
+    sinceBlue: 0,    // ブルーチームが動いてからの経過ターン
     defenses: (stage.defenses || []).map(d => ({ ...d, state: 'active' })), // 対策の状態
     db: {
       C: db.C, I: db.I, A: db.A,
@@ -125,8 +126,9 @@ function detectMul(g, gauge, level) {
   });
   return m;
 }
+// 撃破=高火力だが騒がしい(既定14)、装備カード=低火力だが静か(base 5)。隠密と一気呵成の使い分け。
 function strikeWarn(g, gauge, level, base) {
-  return Math.max(1, Math.round((base || 13) * (GAUGE_NOISE[gauge] || 1) * detectMul(g, gauge, level)));
+  return Math.max(1, Math.round((base || 14) * (GAUGE_NOISE[gauge] || 1) * detectMul(g, gauge, level)));
 }
 
 /* ステージ開始時に提示する敵の防御（プロキシ/DLP/ハードニング等）。多いほど手強い印象。 */
@@ -138,6 +140,18 @@ function defenseIntro(g) {
   return items;
 }
 
+/* ===== 隠密（低発覚度の報酬）＆ ブルーチーム活動 ===== */
+const STEALTH_MAX = 30;   // 発覚度がこれ未満なら「潜伏中」＝奇襲ボーナス
+const STEALTH_MUL = 1.30; // 潜伏中の攻撃は刺さる（見つかっていない＝防御が身構えていない）
+function isStealth(g) { return g.warning < STEALTH_MAX; }
+// ブルーチームが動く間隔。発覚度がalert未満なら動かない（潜伏が報われる）。高いほど頻繁。
+function blueInterval(g) {
+  const b = g.stage.blue || { alert: 40, react: 1.0 };
+  if (g.warning < b.alert) return Infinity;          // 潜伏中は動かない
+  // alert直後は約5T間隔（稀）、発覚度が上がるほど短く、危険域(90+)では毎ターン介入
+  return Math.max(1, Math.ceil((5 - (g.warning - b.alert) / 10) / b.react));
+}
+
 /* ===== ダメージ計算（1ゲージ分） ===== */
 function gaugeDamage(g, base, gauge, opt) {
   opt = opt || {};
@@ -145,7 +159,8 @@ function gaugeDamage(g, base, gauge, opt) {
   const mit = gaugeMit(g, gauge, opt.ignoreH); // ゼロデイ等はハードニング無視
   const hit = 0.6 + (V / 100) * 0.8;
   const crit = _rng() < V / 100 ? 1.5 : 1.0;
-  return { dmg: base * (1 - mit) * hit * crit, crit: crit > 1 };
+  const stealth = isStealth(g) ? STEALTH_MUL : 1.0; // 潜伏中の奇襲ボーナス
+  return { dmg: base * (1 - mit) * hit * crit * stealth, crit: crit > 1 };
 }
 
 /* ===== 世代進化 ===== */
@@ -229,7 +244,7 @@ function listActions(g) {
     const ok = f.db && canAfford(g, c.cost);
     const reason = !f.db ? '本命未到達' : '資源不足(' + costLabel(c.cost) + ')';
     const cia = c.cia || {};
-    const w = strikeWarn(g, c.gauge || primGauge(cia), 0, 10);
+    const w = strikeWarn(g, c.gauge || primGauge(cia), 0, 5);
     can('card:' + id, '🃏 ' + c.name, ok, reason,
         'C' + (cia.C || 0) + '/I' + (cia.I || 0) + '/A' + (cia.A || 0) +
         (c.special === 'ignoreH' ? ' 貫通' : '') + ' ' + costLabel(c.cost) + ' W+' + w);
@@ -290,7 +305,7 @@ function applyAction(g, actionId) {
     const c = cardById(actionId.slice(5));
     payCost(g, c.cost);
     const r = resolveStrike(g, c.cia || {}, { botnet: g.botnet, ignoreH: c.special === 'ignoreH' });
-    warn = strikeWarn(g, c.gauge || primGauge(c.cia || {}), 0, 10);
+    warn = strikeWarn(g, c.gauge || primGauge(c.cia || {}), 0, 5);
     g.banner = { name: c.name + '！', en: c.en, tone: 'strike', gauge: c.gauge, crit: r.crit, defense: c.defense };
     msg = '🃏 ' + c.name + (r.crit ? ' 会心!' : '') + ' 🔵-' + Math.round(r.rc.dmg) +
           ' 🟢-' + Math.round(r.ri.dmg) + ' 🟡-' + Math.round(r.ra.dmg);
@@ -309,21 +324,27 @@ function endTurn(g) {
   if (g.cut.vDiag > 0) g.cut.vDiag--;
 
   // ブルー: システム監査（一定ターン毎にH↑）
-  if (g.turn % g.stage.audit.every === 0) {
-    g.db.baseH = Math.min(100, g.db.baseH + g.stage.audit.hardenUp);
-    g.warning = Math.min(100, g.warning + 5); // 反撃でこちらの発覚度が上がる＝駆除に近づく
-    g.log.push('T' + g.turn + '  🔵 システム監査: 敵ハードニング+' + g.stage.audit.hardenUp + '（→' + g.db.baseH + '） / 発覚度+5');
-    g.counter = { kind: 'audit', label: 'システム監査',
-      effect: '敵ハードニング+' + g.stage.audit.hardenUp + '（あなたの攻撃が通りにくく）', warn: 5 };
-  }
-  // ブルー: セキュリティ診断（警戒度が閾値超えで一度だけV↓）
-  if (!g.diagDone && g.warning >= g.stage.diag.warnThreshold) {
-    g.db.baseV = Math.max(0, g.db.baseV - g.stage.diag.vulnDown);
-    g.warning = Math.min(100, g.warning + 5);
-    g.diagDone = true;
-    g.log.push('T' + g.turn + '  🔵 セキュリティ診断: 敵脆弱性-' + g.stage.diag.vulnDown + '（→' + g.db.baseV + '） / 発覚度+5');
-    g.counter = { kind: 'diag', label: 'セキュリティ診断',
-      effect: '敵脆弱性-' + g.stage.diag.vulnDown + '（命中・会心が下がる）', warn: 5 };
+  // ブルーチーム活動: 発覚度がalert未満なら動かない（潜伏が報われる）。
+  // alert超えで動き始め、発覚度が高いほど頻繁に介入する（＝ブルーが本格始動）。
+  const b = g.stage.blue || { alert: 40, react: 1.0 };
+  if (g.warning >= b.alert) {
+    g.sinceBlue++;
+    if (g.sinceBlue >= blueInterval(g)) {
+      g.sinceBlue = 0;
+      g.db.baseH = Math.min(100, g.db.baseH + g.stage.audit.hardenUp);
+      g.warning = Math.min(100, g.warning + 5);
+      let eff = '敵ハードニング+' + g.stage.audit.hardenUp + '（あなたの攻撃が通りにくく）';
+      // 高発覚度ではセキュリティ診断(V↓)も併発
+      if (g.warning >= g.stage.diag.warnThreshold && !g.diagDone) {
+        g.db.baseV = Math.max(0, g.db.baseV - g.stage.diag.vulnDown);
+        g.diagDone = true;
+        eff += ' / 敵脆弱性-' + g.stage.diag.vulnDown + '（命中・会心↓）';
+      }
+      g.log.push('T' + g.turn + '  🔵 ブルーチーム介入: ' + eff + ' / 発覚度+5');
+      g.counter = { kind: 'audit', label: 'ブルーチーム介入', effect: eff, warn: 5 };
+    }
+  } else {
+    g.sinceBlue = 0; // 潜伏に戻れば落ち着く
   }
 
   checkEnd(g);
@@ -357,6 +378,7 @@ const MALCORE = {
   effH, effV, gaugeDamage, resolveStrike, canAfford, debrief, setRng,
   malStats, wazaName, evoCost, evoMul, EVO_MAX,
   gaugeMit, gaugeDefRaw, gateOpen, strikeWarn, primGauge, defenseIntro,
+  isStealth, blueInterval, STEALTH_MAX, STEALTH_MUL,
   STAGE: (typeof STAGE_ZENITH !== 'undefined') ? STAGE_ZENITH : null,
   STAGES: (typeof STAGES !== 'undefined') ? STAGES : [],
   CARDS: (typeof CARDS !== 'undefined') ? CARDS : [],
@@ -449,7 +471,15 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<span class="pill resr">⚙️ 資源 ' + g.res.res + '</span>' +
       '</div>' +
       bar('🚨 発覚度', g.warning, 100, 'warn') +
-      '<div class="warn-note">発覚度100で足場を駆除され敗北（＝こちらの生存ゲージ）</div>' +
+      (function () {
+        const alert = (g.stage.blue || {}).alert || 40;
+        let cls, txt;
+        if (isStealth(g)) { cls = 'stealth'; txt = '🥷 潜伏中: 攻撃+' + Math.round((STEALTH_MUL - 1) * 100) + '%・ブルーは動かない'; }
+        else if (g.warning < alert) { cls = 'calm'; txt = '🟢 未察知: ブルーはまだ動いていない'; }
+        else if (g.warning < g.stage.diag.warnThreshold) { cls = 'alert'; txt = '🟡 警戒: ブルーチームが動き始めた（介入が増える）'; }
+        else { cls = 'danger'; txt = '🔴 危険: ブルーが頻繁に介入（100で駆除）'; }
+        return '<div class="warn-note ' + cls + '">' + txt + '</div>';
+      })() +
       '<div class="path">' + pathHtml + '</div>' +
       '<div class="boss">' +
         '<div class="boss-head"><span class="bossspr ' + dbState + '">' + SPRITES.node('db', { state: dbState }) + '</span>' +

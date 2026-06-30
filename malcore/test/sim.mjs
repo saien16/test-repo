@@ -118,12 +118,14 @@ const cBase = base.db.C, cEvo = evo.db.C;
 M.applyAction(base, 'strike:zeus'); M.applyAction(evo, 'strike:zeus');
 assert((cEvo - evo.db.C) > (cBase - base.db.C) + 5, '改弐Zeusは素のZeusより本命を多く削る');
 
-// 12) 被弾: ブルー監査ターンで counter フラグが立ち、hurt表情が描ける
+// 12) 被弾: 高発覚度でブルーが介入し counter フラグが立つ
 console.log('シナリオ12: 被弾リアクション');
 assert(SP.mal('zeus', { expr: 'hurt' }) !== SP.mal('zeus', { expr: 'normal' }), '被弾(hurt)表情は通常と差分がある');
 const gco = newGame();
-['recon', 'breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gco, a)); // T4=pivotでシステム監査
-assert(gco.counter && gco.counter.kind === 'audit', '監査ターンにブルー反撃(被弾)フラグが立つ');
+['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gco, a));
+gco.warning = 90; // 危険域＝ブルーが頻繁に介入
+M.applyAction(gco, 'strike:zeus');
+assert(gco.counter && gco.counter.kind === 'audit', '高発覚度ではブルーチームが介入する(被弾)');
 
 // 13) BGM API（ヘッドレスでは no-op で例外なし）
 console.log('シナリオ13: BGM API');
@@ -209,11 +211,27 @@ assert(!ids.some(x => x.startsWith('break:')), 'Blaster未編成なら装置破�
 // 21) 反撃で発覚度(警戒度)が上がり、効果が明示される
 console.log('シナリオ21: 反撃の明確化');
 const gco2 = M.createGame(M.STAGE, [], {});
-['recon', 'breach', 'evade:fw'].forEach(a => M.applyAction(gco2, a));
+['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gco2, a));
+gco2.warning = 85;
 const wPre = gco2.warning;
-M.applyAction(gco2, 'pivot'); // T4=システム監査
+M.applyAction(gco2, 'strike:zeus'); // 高発覚度→ブルー介入
 assert(gco2.counter && gco2.counter.warn >= 1 && gco2.counter.effect, '反撃に発覚度コストと効果説明がある');
-assert(gco2.warning >= wPre + 5, '反撃でこちらの発覚度(警戒度)が上がる');
+assert(gco2.warning > wPre, '反撃でこちらの発覚度(警戒度)が上がる');
+
+// 21b) 隠密: 低発覚度で潜伏ボーナス＆ブルー不動。高発覚度でブルーの介入が頻繁に
+console.log('シナリオ21b: 隠密と発覚度連動のブルー活動');
+assert(M.blueInterval(M.createGame(M.STAGE)) === Infinity, '潜伏中(低発覚度)はブルーが動かない');
+const gHi = M.createGame(M.STAGE); gHi.warning = 90;
+const gMid = M.createGame(M.STAGE); gMid.warning = 50;
+assert(M.blueInterval(gHi) <= M.blueInterval(gMid), '発覚度が高いほどブルーの介入間隔が短い');
+M.setRng(() => 0.99);
+const gStl = M.createGame(M.STAGE); ['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gStl, a));
+assert(M.isStealth(gStl), '対策を剥がして本命到達時はまだ潜伏中(奇襲ボーナス)');
+const cS = gStl.db.C; M.applyAction(gStl, 'strike:zeus'); const dS = cS - gStl.db.C;
+const gNo = M.createGame(M.STAGE); ['breach', 'evade:fw', 'pivot'].forEach(a => M.applyAction(gNo, a));
+gNo.warning = 35; // 潜伏圏外(だがalert42未満なのでブルーは不動・条件をH等揃える)
+const cN = gNo.db.C; M.applyAction(gNo, 'strike:zeus'); const dN = cN - gNo.db.C;
+assert(dS > dN + 5, '潜伏中の撃破は非潜伏より大きい（奇襲ボーナス ' + Math.round(dS) + ' vs ' + Math.round(dN) + '）');
 
 // 22) 経路技が編成マルウェアの進化名で表示される
 console.log('シナリオ22: 経路技の編成反映');

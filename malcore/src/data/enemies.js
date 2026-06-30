@@ -30,7 +30,8 @@ const STAGES = [
       { id: 'fw', name: 'ルータACL', gate: true, between: ['pc', 'db'], def: { C: 0.06, I: 0.08, A: 0.10 },
         detect: {}, evade: { info: 10 }, breakable: true, desc: '簡易な境界制御。回避(情報10)か破壊で通れる。' },
     ],
-    audit: { every: 5, hardenUp: 10 }, diag: { warnThreshold: 80, vulnDown: 10 }, edr: false, win: { ratio: 0.25 },
+    audit: { hardenUp: 10 }, diag: { warnThreshold: 80, vulnDown: 10 }, edr: false, win: { ratio: 0.25 },
+    blue: { alert: 50, react: 0.7 }, // 潜伏しやすい(発覚度50まで動かない)・反応も鈍い
   },
   { // 2) 金融（機密性が厚い）
     id: 'zenith', name: 'ゼニス銀行', gen: 1, turnLimit: 8,
@@ -46,7 +47,8 @@ const STAGES = [
       { id: 'dlp', name: 'プロキシ/DLP', gate: false, watch: 'C', def: { C: 0.30 }, detect: { C: 0.8 },
         evade: { info: 10 }, breakable: false, desc: '機密性の持ち出しを監視。回避で機密性の防御力と検知を下げる。' },
     ],
-    audit: { every: 4, hardenUp: 15 }, diag: { warnThreshold: 60, vulnDown: 15 }, edr: false, win: { ratio: 0.20 },
+    audit: { hardenUp: 15 }, diag: { warnThreshold: 60, vulnDown: 15 }, edr: false, win: { ratio: 0.20 },
+    blue: { alert: 42, react: 1.0 },
   },
   { // 3) インフラOT（可用性が厚い）
     id: 'power', name: '電力公社', gen: 2, turnLimit: 9,
@@ -62,7 +64,8 @@ const STAGES = [
       { id: 'ips', name: 'IPS', gate: false, watch: 'A', def: { A: 0.22 }, detect: { A: 0.7 },
         evade: { info: 10 }, breakable: true, desc: '可用性攻撃を検査・遮断。回避/破壊で可用性の防御力と検知を下げる。' },
     ],
-    audit: { every: 3, hardenUp: 15 }, diag: { warnThreshold: 55, vulnDown: 15 }, edr: false, win: { ratio: 0.20 },
+    audit: { hardenUp: 15 }, diag: { warnThreshold: 55, vulnDown: 15 }, edr: false, win: { ratio: 0.20 },
+    blue: { alert: 40, react: 1.15 },
   },
   { // 4) サプライチェーン（完全性が厚い・EDR）
     id: 'cyber', name: 'サイバネ重工', gen: 2, turnLimit: 9,
@@ -78,7 +81,8 @@ const STAGES = [
       { id: 'fim', name: '整合性監視', gate: false, watch: 'I', def: { I: 0.24 }, detect: { I: 0.7 },
         evade: { tech: 10 }, breakable: false, desc: '完全性の改ざんを監視。回避(技術)で完全性の防御力と検知を下げる。' },
     ],
-    audit: { every: 3, hardenUp: 15 }, diag: { warnThreshold: 50, vulnDown: 15 }, edr: true, win: { ratio: 0.18 },
+    audit: { hardenUp: 15 }, diag: { warnThreshold: 50, vulnDown: 15 }, edr: true, win: { ratio: 0.18 },
+    blue: { alert: 36, react: 1.25 },
   },
   { // 5) 政府APT（全ゲージ厚い・ゼロトラスト）
     id: 'nsho', name: 'N省', gen: 2, turnLimit: 10,
@@ -96,7 +100,8 @@ const STAGES = [
       { id: 'edr', name: 'EDR', gate: false, def: { C: 0.08, I: 0.08, A: 0.08 }, detect: { all: 0.5 },
         evade: { tech: 15 }, breakable: false, desc: '振る舞い検知。全ゲージにわずかな防御＋全行動の検知を底上げ。回避で検知が下がる。' },
     ],
-    audit: { every: 2, hardenUp: 12 }, diag: { warnThreshold: 45, vulnDown: 15 }, edr: false, win: { ratio: 0.24 },
+    audit: { hardenUp: 12 }, diag: { warnThreshold: 45, vulnDown: 15 }, edr: false, win: { ratio: 0.24 },
+    blue: { alert: 30, react: 1.5 }, // 政府APT: すぐ気づき頻繁に動く
   },
 ];
 
