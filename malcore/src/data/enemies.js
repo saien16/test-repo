@@ -1,6 +1,6 @@
 /* data/enemies.js — マルこれ ステージ定義（7ステージ・可変段数）
    経路は可変長: ['outside', n1, n2, ..., boss]。各内部ノードを侵害/横展開で進む。
-   段数(=outside以外のノード数): ステージ1-3=3段 / 4-6=4段 / 7=5段。
+   段数(=outside以外のノード数): ステージ1-3=2段 / 4-6=3段 / 7=4段。
    ゲート(FW/WAF: gate:true, between:[a,b])はその区間の横展開を塞ぐ。剥がすと防御力低下。
    数値は docs/MALCORE_*.md 準拠（草案）。 */
 
@@ -27,73 +27,73 @@ const EDR = { id: 'edr', name: 'EDR', gate: false, def: { C: 0.06, I: 0.06, A: 0
   evade: { tech: 14 }, breakable: false, desc: '振る舞い検知。全ゲージに薄い防御＋全行動の検知を底上げ。回避で検知が下がる。' };
 
 const STAGES = [
-  { // 1) 3段 入門
-    id: 'machi', name: 'マチ町工業', gen: 0, turnLimit: 7,
-    intro: '中小の町工場。3段(踏み台→部門サーバ→基幹)。防御は薄い入門ステージ。',
-    path: ['outside', 'pc', 'srv', 'db'],
-    nodes: { pc: PC, srv: { name: '部門サーバ', kind: 'srv' },
+  { // 1) 2段 入門（踏み台→本命）
+    id: 'machi', name: 'マチ町工業', gen: 0, turnLimit: 6,
+    intro: '中小の町工場。2段(踏み台→基幹サーバ)。FWは簡易ACLのみ。入門ステージ。',
+    path: ['outside', 'pc', 'db'],
+    nodes: { pc: PC,
       db: { name: '基幹サーバ（本命）', kind: 'db', C: 90, I: 90, A: 90, H: 25, V: 60, baseDef: { C: 0.06, I: 0.06, A: 0.06 }, desc: '防御が薄い。素直に攻略できる。' } },
-    defenses: [fwGate('srv', 'db', { C: 0.06, I: 0.08, A: 0.10 }, { name: 'ルータACL', evade: { info: 8 } })],
+    defenses: [fwGate('pc', 'db', { C: 0.06, I: 0.08, A: 0.10 }, { name: 'ルータACL', evade: { info: 8 } })],
     audit: { hardenUp: 10 }, diag: { warnThreshold: 80, vulnDown: 10 }, edr: false, win: { ratio: 0.25 },
     blue: { alert: 50, react: 0.7 },
   },
-  { // 2) 3段 金融(機密厚)
-    id: 'zenith', name: 'ゼニス銀行', gen: 1, turnLimit: 8,
-    intro: '金融系。3段(踏み台→業務サーバ→勘定系DB)。機密性(🔵)が厚くDLPで監視。',
-    path: ['outside', 'pc', 'srv', 'db'],
-    nodes: { pc: PC, srv: { name: '業務サーバ', kind: 'srv' },
+  { // 2) 2段 金融(機密厚)
+    id: 'zenith', name: 'ゼニス銀行', gen: 1, turnLimit: 7,
+    intro: '金融系。2段(踏み台→勘定系DB)。境界FWの先、機密性(🔵)が厚くDLPで監視。',
+    path: ['outside', 'pc', 'db'],
+    nodes: { pc: PC,
       db: { name: '勘定系DB（本命）', kind: 'db', C: 160, I: 100, A: 100, H: 55, V: 35, baseDef: { C: 0.14, I: 0.12, A: 0.12 }, desc: '機密性が厚い。対策を剥がしてから抜け。' } },
-    defenses: [fwGate('srv', 'db'), Object.assign({}, DLP)],
+    defenses: [fwGate('pc', 'db'), Object.assign({}, DLP)],
     audit: { hardenUp: 15 }, diag: { warnThreshold: 60, vulnDown: 15 }, edr: false, win: { ratio: 0.20 },
     blue: { alert: 42, react: 1.0 },
   },
-  { // 3) 3段 インフラ(可用厚)
-    id: 'power', name: '電力公社', gen: 2, turnLimit: 9,
-    intro: 'インフラOT。3段(踏み台→制御LAN→制御サーバ)。可用性(🟡)が厚くIPSが監視。',
-    path: ['outside', 'pc', 'srv', 'db'],
-    nodes: { pc: PC, srv: { name: '制御LAN', kind: 'srv' },
+  { // 3) 2段 インフラ(可用厚)
+    id: 'power', name: '電力公社', gen: 2, turnLimit: 8,
+    intro: 'インフラOT。2段(踏み台→制御サーバ)。境界FWの先、可用性(🟡)が厚くIPSが監視。',
+    path: ['outside', 'pc', 'db'],
+    nodes: { pc: PC,
       db: { name: '制御サーバ（本命）', kind: 'db', C: 120, I: 120, A: 180, H: 60, V: 30, baseDef: { C: 0.12, I: 0.12, A: 0.16 }, desc: '可用性が厚い。MyDoom/Blaster等が要る。' } },
-    defenses: [fwGate('srv', 'db'), Object.assign({}, IPS)],
+    defenses: [fwGate('pc', 'db'), Object.assign({}, IPS)],
     audit: { hardenUp: 15 }, diag: { warnThreshold: 55, vulnDown: 15 }, edr: false, win: { ratio: 0.20 },
     blue: { alert: 40, react: 1.15 },
   },
-  { // 4) 4段 サプライチェーン(完全厚・EDR)
-    id: 'cyber', name: 'サイバネ重工', gen: 2, turnLimit: 10,
-    intro: 'サプライチェーン。4段(踏み台→DMZ→設計LAN→設計DB)。完全性(🟢)厚＋EDR稼働。',
-    path: ['outside', 'pc', 'dmz', 'srv', 'db'],
-    nodes: { pc: PC, dmz: { name: 'DMZサーバ', kind: 'dmz' }, srv: { name: '設計LAN', kind: 'srv' },
+  { // 4) 3段 サプライチェーン(完全厚・EDR)
+    id: 'cyber', name: 'サイバネ重工', gen: 2, turnLimit: 9,
+    intro: 'サプライチェーン。3段(踏み台→設計LAN→設計DB)。完全性(🟢)厚＋EDR稼働。',
+    path: ['outside', 'pc', 'srv', 'db'],
+    nodes: { pc: PC, srv: { name: '設計LAN', kind: 'srv' },
       db: { name: '設計DB（本命）', kind: 'db', C: 150, I: 170, A: 120, H: 65, V: 28, baseDef: { C: 0.14, I: 0.16, A: 0.12 }, desc: '完全性が厚い。EDRで全行動が目立つ。短期決戦を。' } },
-    defenses: [fwGate('dmz', 'srv'), fwGate('srv', 'db'), Object.assign({}, FIM)],
+    defenses: [fwGate('srv', 'db'), Object.assign({}, FIM)],
     audit: { hardenUp: 15 }, diag: { warnThreshold: 50, vulnDown: 15 }, edr: true, win: { ratio: 0.18 },
     blue: { alert: 38, react: 1.2 },
   },
-  { // 5) 4段 医療(機密厚・WAF) NEW
-    id: 'medi', name: 'メディテック製薬', gen: 2, turnLimit: 10,
-    intro: '医療/個人情報。4段(踏み台→DMZ→院内サーバ→患者DB)。WAFと機密監視が厚い。',
-    path: ['outside', 'pc', 'dmz', 'srv', 'db'],
-    nodes: { pc: PC, dmz: { name: 'Web/DMZ', kind: 'dmz' }, srv: { name: '院内サーバ', kind: 'srv' },
+  { // 5) 3段 医療(機密厚・WAF) NEW
+    id: 'medi', name: 'メディテック製薬', gen: 2, turnLimit: 9,
+    intro: '医療/個人情報。3段(踏み台→院内サーバ→患者DB)。入口WAF＋機密監視が厚い。',
+    path: ['outside', 'pc', 'srv', 'db'],
+    nodes: { pc: PC, srv: { name: '院内サーバ', kind: 'srv' },
       db: { name: '患者DB（本命）', kind: 'db', C: 180, I: 130, A: 110, H: 62, V: 30, baseDef: { C: 0.15, I: 0.13, A: 0.11 }, desc: '個人情報の宝庫。機密性が非常に厚い。' } },
-    defenses: [wafGate('pc', 'dmz'), fwGate('srv', 'db'), Object.assign({}, DLP)],
+    defenses: [wafGate('pc', 'srv'), fwGate('srv', 'db'), Object.assign({}, DLP)],
     audit: { hardenUp: 15 }, diag: { warnThreshold: 52, vulnDown: 15 }, edr: false, win: { ratio: 0.18 },
     blue: { alert: 38, react: 1.2 },
   },
-  { // 6) 4段 政府APT(全厚)
-    id: 'nsho', name: 'N省', gen: 2, turnLimit: 11,
-    intro: '政府APT級。4段(踏み台→DMZ→内部LAN→中枢DB)。全ゲージ厚くFW二重＋EDR。',
-    path: ['outside', 'pc', 'dmz', 'srv', 'db'],
-    nodes: { pc: PC, dmz: { name: 'DMZ', kind: 'dmz' }, srv: { name: '内部LAN', kind: 'srv' },
+  { // 6) 3段 政府APT(全厚・FW二重)
+    id: 'nsho', name: 'N省', gen: 2, turnLimit: 10,
+    intro: '政府APT級。3段(踏み台→内部LAN→中枢DB)。全ゲージ厚くFW二重＋EDR。',
+    path: ['outside', 'pc', 'srv', 'db'],
+    nodes: { pc: PC, srv: { name: '内部LAN', kind: 'srv' },
       db: { name: '中枢DB（本命）', kind: 'db', C: 180, I: 170, A: 160, H: 75, V: 22, baseDef: { C: 0.15, I: 0.14, A: 0.14 }, desc: 'ゼロトラスト。全ゲージ厚い。' } },
-    defenses: [fwGate('dmz', 'srv'), fwGate('srv', 'db', { C: 0.12, I: 0.16, A: 0.18 }), Object.assign({}, DLP), Object.assign({}, EDR)],
+    defenses: [fwGate('pc', 'srv'), fwGate('srv', 'db', { C: 0.12, I: 0.16, A: 0.18 }), Object.assign({}, DLP), Object.assign({}, EDR)],
     audit: { hardenUp: 13 }, diag: { warnThreshold: 45, vulnDown: 15 }, edr: false, win: { ratio: 0.22 },
     blue: { alert: 32, react: 1.4 },
   },
-  { // 7) 5段 最終ボス(2000年代の集大成)
-    id: 'clearing', name: '国際金融クリアリング機構', gen: 2, turnLimit: 13,
-    intro: '2000年代の集大成。5段(踏み台→DMZ→認証サーバ→認証DB→機密決済サーバ)。WAF＋多重FW＋全監視のゼロトラスト要塞。',
-    path: ['outside', 'pc', 'dmz', 'auth', 'authdb', 'db'],
-    nodes: { pc: PC, dmz: { name: 'DMZ', kind: 'dmz' }, auth: { name: '認証サーバ', kind: 'auth' }, authdb: { name: '認証DB', kind: 'authdb' },
+  { // 7) 4段 最終ボス(2000年代の集大成)
+    id: 'clearing', name: '国際金融クリアリング機構', gen: 2, turnLimit: 12,
+    intro: '2000年代の集大成。4段(踏み台→認証サーバ→認証DB→機密決済サーバ)。入口WAF＋多重FW＋全監視のゼロトラスト要塞。',
+    path: ['outside', 'pc', 'auth', 'authdb', 'db'],
+    nodes: { pc: PC, auth: { name: '認証サーバ', kind: 'auth' }, authdb: { name: '認証DB', kind: 'authdb' },
       db: { name: '機密決済サーバ（本命）', kind: 'db', C: 200, I: 190, A: 180, H: 80, V: 20, baseDef: { C: 0.16, I: 0.15, A: 0.15 }, desc: '最終目標。全ゲージ厚く多層防御。世代進化と編成と隠密の総力戦。' } },
-    defenses: [wafGate('pc', 'dmz'), fwGate('auth', 'authdb'), fwGate('authdb', 'db', { C: 0.12, I: 0.16, A: 0.18 }), Object.assign({}, DLP), Object.assign({}, IPS)],
+    defenses: [wafGate('pc', 'auth'), fwGate('authdb', 'db', { C: 0.12, I: 0.16, A: 0.18 }), Object.assign({}, DLP), Object.assign({}, IPS)],
     audit: { hardenUp: 12 }, diag: { warnThreshold: 42, vulnDown: 15 }, edr: true, win: { ratio: 0.28 },
     blue: { alert: 34, react: 1.35 },
   },

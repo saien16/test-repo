@@ -216,11 +216,11 @@ assert(gf.banner && gf.banner.sprId && gf.banner.tone === 'strike', '撃破は�
 console.log('シナリオ19: 7ステージ＋可変段数');
 const STG = M.STAGES;
 assert(STG.length === 7, 'ステージが7つある');
-assert(STG.every(s => s.nodes.db && s.defenses.length >= 1 && s.turnLimit >= 5 && s.win && s.path.length >= 4), '全ステージに本命/対策/制限ターン/勝利条件と3段以上の経路がある');
-// 段数: 1-3=3段(path4) / 4-6=4段(path5) / 7=5段(path6)
-assert(STG[0].path.length === 4 && STG[2].path.length === 4, 'ステージ1-3は3段構成');
-assert(STG[3].path.length === 5 && STG[5].path.length === 5, 'ステージ4-6は4段構成');
-assert(STG[6].path.length === 6, 'ステージ7は5段構成');
+assert(STG.every(s => s.nodes.db && s.defenses.length >= 1 && s.turnLimit >= 5 && s.win && s.path.length >= 3), '全ステージに本命/対策/制限ターン/勝利条件と2段以上の経路がある');
+// 段数(=outside以外のノード数): 1-3=2段(path3) / 4-6=3段(path4) / 7=4段(path5)
+assert(STG[0].path.length === 3 && STG[2].path.length === 3, 'ステージ1-3は2段構成');
+assert(STG[3].path.length === 4 && STG[5].path.length === 4, 'ステージ4-6は3段構成');
+assert(STG[6].path.length === 5, 'ステージ7は4段構成');
 const gm = M.createGame(STG[0]); // マチ町工業
 assert(gm.db.initC === STG[0].nodes.db.C, 'バー最大値=本命CIA初期値(ステージ別)');
 M.setRng(() => 0.99);
