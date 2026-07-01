@@ -629,9 +629,11 @@ if (typeof document !== 'undefined' && document.getElementById) {
         const c = cardById(a.id.slice(5));
         if (c && c.icon && SPRITES.card(c.icon)) spr = '<span class="actspr">' + SPRITES.card(c.icon) + '</span>';
       }
-      return '<button class="act' + kind + ' ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
+      const rec = (a.id === recId && a.enabled);
+      return '<button class="act' + kind + (rec ? ' rec' : '') + ' ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
         (a.enabled ? '' : 'disabled title="' + a.reason + '"') + '>' +
-        spr + '<span class="act-txt"><b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></span></button>';
+        spr + '<span class="act-txt"><b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></span>' +
+        (rec ? '<span class="rec-badge">👉おすすめ</span>' : '') + '</button>';
     };
     const ACT_CATS = [
       { key: 'intrude', label: '🚪 侵入', match: a => a.id === 'recon' || a.id === 'breach' || a.id === 'botnet' },
@@ -642,6 +644,17 @@ if (typeof document !== 'undefined' && document.getElementById) {
     ];
     const allActs = listActions(g);
     const cats = ACT_CATS.map(c => ({ key: c.key, label: c.label, acts: allActs.filter(c.match) })).filter(c => c.acts.length);
+    // 初回だけ「王道順」の次の一手を光らせる（recon→breach→scan/exploit→pivot→撃破）
+    let recId = null;
+    if (!onboarded) {
+      const en = allActs.filter(a => a.enabled);
+      recId = (en.find(a => a.id === 'recon') || {}).id
+        || (en.find(a => a.id === 'breach') || {}).id
+        || (en.find(a => a.id.startsWith('exploit:')) || {}).id
+        || (en.find(a => a.id.startsWith('scan:')) || {}).id
+        || (en.find(a => a.id === 'pivot') || {}).id
+        || (en.find(a => a.id.startsWith('strike:')) || {}).id || null;
+    }
     // アクティブタブ決定（保持しつつ、無効なら自動選択：本命到達後は撃破優先、なければ有効な行動を持つ最初）
     let curTab = actTab;
     if (!curTab || !cats.some(c => c.key === curTab)) {
@@ -649,6 +662,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
       const pick = (reachedBoss(g) && withEnabled.find(c => c.key === 'strike')) || withEnabled[0] || cats[0];
       curTab = pick ? pick.key : null;
     }
+    // 初回はおすすめ手のあるタブへ誘導（迷子防止）
+    if (recId) { const rc = cats.find(c => c.acts.some(a => a.id === recId)); if (rc) curTab = rc.key; }
     const tabRow = cats.map(c => {
       const en = c.acts.filter(a => a.enabled).length;
       return '<button class="acttab' + (c.key === curTab ? ' on' : '') + '" data-acttab="' + c.key + '">' +
@@ -682,9 +697,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<div class="boss-head"><span class="bossspr ' + dbState + '">' + SPRITES.node('db', { state: dbState }) + '</span>' +
           '<span class="boss-title">★ ' + g.stage.nodes.db.name +
           '<span class="hv">H ' + effH(g) + ' / V ' + effV(g) + ' ' + cutBadges + '</span></span></div>' +
-        '<div class="goal-chip">🎯 勝利まで CIA合計 <b class="ci-total" data-from="' + Math.round(shTotal) +
+        '<div class="goal-chip">🎯 このサーバを乗っ取れ！ 守り(CIA) <b class="ci-total" data-from="' + Math.round(shTotal) +
           '" data-to="' + Math.round(d.C + d.I + d.A) + '">' + Math.round(shTotal) + '</b>' +
-          ' → <b>' + Math.round(d.initTotal * g.stage.win.ratio) + '以下</b></div>' +
+          ' を <b>' + Math.round(d.initTotal * g.stage.win.ratio) + '以下</b>まで削ればクリア</div>' +
         bar('🔵 機密性 C', d.C, d.initC, 'c', sh.C) +
         bar('🟢 完全性 I', d.I, d.initI, 'i', sh.I) +
         bar('🟡 可用性 A', d.A, d.initA, 'a', sh.A) +
@@ -865,6 +880,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
 
   function renderResult() {
     show('result-screen');
+    if (!onboarded) { onboarded = true; saveJSON('malcore.onboarded', true); } // 初回終了で手引きを卒業
     const win = G.result === 'win';
     let reward = '';
     if (win) {
@@ -899,6 +915,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
   let codexTab = 'mal';     // 図鑑タブ: 'mal'|'card'
   let codexGauge = 'all';   // 図鑑ゲージ絞り込み: all|C|I|A
   let codexOwned = false;   // 図鑑: 所持のみ（カード用）
+  let onboarded = loadJSON('malcore.onboarded', false); // 初回プレイの手引き（おすすめ手・導線）を出すか
 
   // 世代進化の永続状態（localStorage、無ければデモ用に開発P=4で開始）
   let levels = loadJSON('malcore.levels', {});
@@ -996,6 +1013,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       if (rep.cleaned.length) G.log.push('🧹 ' + rep.cleaned.map(id => (STAGES.find(s => s.id === id) || {}).name).join('・') + ' のマイナーは駆除された');
       stock.info = 0; stock.tech = 0; stock.res = 0; saveStock();
     }
+    if (!onboarded) G.log.push('🔰 まずは光っている「👉おすすめ」の手を順番に押していけばOK。まず🔍偵察で敵を調べよう。');
     actTab = null; // カテゴリタブを初期化（自動で侵入から）
     Sound.bgm(); show('battle-screen'); renderBattle();
     playDefenseIntro(defenseIntro(G)); // 敵の防御を開幕カットインで提示（多いほど手強い印象）
@@ -1016,8 +1034,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
   function playDefenseIntro(items) {
     if (!items || !items.length) return;
-    // テンポ重視: 先頭2件だけバナー化（残りは防御パネルのチップで常時可視）
-    const show = items.slice(0, 2);
+    // テンポ重視: 先頭2件だけバナー化（初回は1件に絞って情報の集中砲火を避ける）
+    const show = items.slice(0, onboarded ? 2 : 1);
     show.forEach((it, i) => setTimeout(() => popDefBanner(it, items.length, i), 350 + i * 500));
   }
 
@@ -1238,10 +1256,14 @@ if (typeof document !== 'undefined' && document.getElementById) {
         siphon += '<span class="siphon" style="left:' + sx + '%;animation-delay:' + dl + 's">' + gl + '</span>';
       }
     }
+    const firstTip = !onboarded
+      ? '<div class="home-card firsttip">🔰 <b>はじめての方へ</b><br>あなたは<b>悪の秘密基地の主</b>。手下（マルウェア）を率いて敵サーバを乗っ取ろう。まずは下の<b>⚔️出撃</b>を押すだけ。戦闘は光る「👉おすすめ」を順に押せばOK！</div>'
+      : '';
     $('home-body').innerHTML =
       '<div class="hub-scene' + (mining ? ' mining' : '') + '">' + SPRITES.hubBg() + siphon + scene + '</div>' +
       '<p class="hub-hint">タップでマルウェアの詳細・出撃メンバーの入替。出撃 ' + party.length + '/3' +
       (mining ? ' ／ ⛏️ 採掘中 ' + mining + '拠点' : '') + '</p>' +
+      firstTip +
       '<div id="hub-pop"></div>' +
       '<div class="home-card">' +
       '<p class="home-meta">₿ <b>' + stock.btc + '</b>（改良・開発に使用） ／ 🛠️ 開発P <b>' + devP + '</b> ／ 🦠 母港 ' + unlockedMal.length + '/' + MAL.length + '</p>' +
