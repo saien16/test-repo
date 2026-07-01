@@ -799,11 +799,26 @@ if (typeof document !== 'undefined' && document.getElementById) {
     G._loot = loot;
     return loot;
   }
-  // 本命サーバから戦利品（情報/技術/リソース・低確率のカード/マルウェア）が溢れ出す演出
+  // 宝箱がポップして開き、中から戦利品が飛び出す演出
+  const CHEST_SVG = '<svg viewBox="0 0 100 100">' +
+    '<g class="chest-glow"><ellipse cx="50" cy="54" rx="30" ry="14" fill="#fff3b0"/>' +
+    '<g stroke="#ffe066" stroke-width="2.4" stroke-linecap="round" opacity=".85">' +
+    '<path d="M50 54 L26 20 M50 54 L50 12 M50 54 L74 20 M50 54 L14 44 M50 54 L86 44"/></g></g>' +
+    '<rect x="22" y="52" width="56" height="32" rx="5" fill="#8a5a2a" stroke="#4e3216" stroke-width="2.5"/>' +
+    '<rect x="22" y="60" width="56" height="8" fill="#c08a3a"/>' +
+    '<rect x="43" y="62" width="14" height="15" rx="2" fill="#ffd34a" stroke="#a8791f" stroke-width="1.5"/>' +
+    '<circle cx="50" cy="69" r="2.2" fill="#4e3216"/>' +
+    '<g class="chest-lid"><path d="M22 56 v-4 a28 14 0 0 1 56 0 v4 Z" fill="#9a6a34" stroke="#4e3216" stroke-width="2.5"/>' +
+    '<rect x="22" y="50" width="56" height="7" fill="#c08a3a"/>' +
+    '<rect x="43" y="47" width="14" height="8" rx="2" fill="#ffd34a" stroke="#a8791f" stroke-width="1.5"/></g></svg>';
   function spawnLootBurst(loot) {
-    const bs = document.querySelector('.bossspr'); if (!bs || typeof bs.getBoundingClientRect !== 'function') return;
-    const r = bs.getBoundingClientRect();
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const cx = (window.innerWidth || 390) / 2;
+    const cy = (window.innerHeight || 800) * 0.6;
+    const layer = document.createElement('div'); layer.className = 'loot-layer';
+    const chest = document.createElement('div'); chest.className = 'loot-chest';
+    chest.style.left = cx + 'px'; chest.style.top = cy + 'px';
+    chest.innerHTML = '<div class="chest-inner">' + CHEST_SVG + '</div>';
+    layer.appendChild(chest);
     const parts = [];
     const push = (g, n) => { for (let i = 0; i < n; i++) parts.push(g); };
     push('📡', Math.min(6, Math.max(1, Math.ceil(loot.reward.info / 12))));
@@ -811,19 +826,19 @@ if (typeof document !== 'undefined' && document.getElementById) {
     push('💾', Math.min(6, Math.max(1, Math.ceil(loot.reward.res / 12))));
     if (loot.card) push('🃏', 3);
     if (loot.malware) push('🦠', 3);
-    const layer = document.createElement('div'); layer.className = 'loot-layer';
     parts.forEach((g, i) => {
       const s = document.createElement('span'); s.className = 'loot-p'; s.textContent = g;
-      const ang = (i / parts.length) * Math.PI * 2 + Math.random() * 0.6;
-      const dist = 66 + Math.random() * 96;
-      s.style.left = cx + 'px'; s.style.top = cy + 'px';
+      const t = parts.length > 1 ? i / (parts.length - 1) : 0.5;
+      const ang = -Math.PI / 2 + (t - 0.5) * Math.PI * 1.15; // 宝箱の口から上向きに扇状
+      const dist = 76 + Math.random() * 72;
+      s.style.left = cx + 'px'; s.style.top = (cy - 16) + 'px';
       s.style.setProperty('--dx', Math.round(Math.cos(ang) * dist) + 'px');
-      s.style.setProperty('--dy', Math.round(Math.sin(ang) * dist - 46) + 'px');
-      s.style.animationDelay = (i * 0.035).toFixed(2) + 's';
+      s.style.setProperty('--dy', Math.round(Math.sin(ang) * dist) + 'px');
+      s.style.animationDelay = (0.5 + i * 0.05).toFixed(2) + 's'; // フタが開いてから噴出
       layer.appendChild(s);
     });
     $('app').appendChild(layer);
-    setTimeout(() => layer.remove(), 2300);
+    setTimeout(() => layer.remove(), 2000);
   }
 
   // 勝敗の決着演出（切り替えが速すぎて分かりにくい問題への対応・1.9秒見せる）

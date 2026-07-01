@@ -329,15 +329,25 @@ body {
 .reward { text-align: center; color: #ffd79a; font-size: 13px; margin-top: 10px; background: #1f1808; border: 1px solid #6a4a1a; border-radius: 8px; padding: 8px; }
 .reward.loot { color: #ffe6a0; background: #241a06; border-color: #b08a2a; font-weight: 700; }
 
-/* 制圧時: 本命サーバから戦利品が溢れ出す演出 */
-.loot-layer { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
-.loot-p { position: fixed; font-size: 22px; transform: translate(-50%,-50%) scale(.4); opacity: 0;
-  animation: lootFly 1.7s cubic-bezier(.2,.7,.3,1) forwards; filter: drop-shadow(0 0 6px rgba(255,211,74,.8)); }
+/* 制圧時: 宝箱が開いて戦利品が飛び出す演出（勝利オーバーレイより前面 z:72+） */
+.loot-layer { position: fixed; inset: 0; z-index: 72; pointer-events: none; }
+.loot-chest { position: fixed; transform: translate(-50%,-50%); width: 100px; height: 100px; z-index: 73;
+  animation: chestFade .4s ease 1.55s forwards; }
+.chest-inner { width: 100%; height: 100%; animation: chestPop .5s cubic-bezier(.2,1.5,.4,1) both; }
+.loot-chest svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 6px 8px rgba(0,0,0,.5)); }
+.chest-lid { transform-box: fill-box; transform-origin: 50% 92%; animation: lidOpen .5s cubic-bezier(.34,1.4,.5,1) .34s both; }
+.chest-glow { opacity: 0; transform-box: fill-box; transform-origin: 50% 54%; animation: chestGlow 1.05s ease .42s; }
+@keyframes chestPop { 0% { transform: scale(0) rotate(-16deg); } 55% { transform: scale(1.18) rotate(5deg); } 100% { transform: scale(1) rotate(0); } }
+@keyframes lidOpen { 0% { transform: rotate(0); } 100% { transform: rotate(-104deg); } }
+@keyframes chestGlow { 0% { opacity: 0; transform: scale(.4); } 35% { opacity: .95; transform: scale(1); } 100% { opacity: 0; transform: scale(1.35); } }
+@keyframes chestFade { to { opacity: 0; transform: translate(-50%,-50%) scale(.85); } }
+.loot-p { position: fixed; font-size: 22px; z-index: 74; transform: translate(-50%,-50%) scale(.3); opacity: 0;
+  animation: lootFly 1.25s cubic-bezier(.2,.7,.3,1) forwards; filter: drop-shadow(0 0 6px rgba(255,211,74,.85)); }
 @keyframes lootFly {
-  0% { transform: translate(-50%,-50%) scale(.4); opacity: 0; }
-  18% { opacity: 1; }
-  65% { opacity: 1; }
-  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.15); opacity: 0; } }
+  0% { transform: translate(-50%,-50%) scale(.3); opacity: 0; }
+  15% { opacity: 1; }
+  55% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.18); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 42px)) scale(.9); opacity: 0; } }
 .debrief { background: #0f1b18; border: 1px solid #2f4a3c; border-radius: 10px; padding: 12px; margin-top: 14px; }
 .debrief b { color: #7fd0ff; }
 .debrief p { margin: 6px 0 0; font-size: 13px; }
@@ -2137,11 +2147,26 @@ if (typeof document !== 'undefined' && document.getElementById) {
     G._loot = loot;
     return loot;
   }
-  // 本命サーバから戦利品（情報/技術/リソース・低確率のカード/マルウェア）が溢れ出す演出
+  // 宝箱がポップして開き、中から戦利品が飛び出す演出
+  const CHEST_SVG = '<svg viewBox="0 0 100 100">' +
+    '<g class="chest-glow"><ellipse cx="50" cy="54" rx="30" ry="14" fill="#fff3b0"/>' +
+    '<g stroke="#ffe066" stroke-width="2.4" stroke-linecap="round" opacity=".85">' +
+    '<path d="M50 54 L26 20 M50 54 L50 12 M50 54 L74 20 M50 54 L14 44 M50 54 L86 44"/></g></g>' +
+    '<rect x="22" y="52" width="56" height="32" rx="5" fill="#8a5a2a" stroke="#4e3216" stroke-width="2.5"/>' +
+    '<rect x="22" y="60" width="56" height="8" fill="#c08a3a"/>' +
+    '<rect x="43" y="62" width="14" height="15" rx="2" fill="#ffd34a" stroke="#a8791f" stroke-width="1.5"/>' +
+    '<circle cx="50" cy="69" r="2.2" fill="#4e3216"/>' +
+    '<g class="chest-lid"><path d="M22 56 v-4 a28 14 0 0 1 56 0 v4 Z" fill="#9a6a34" stroke="#4e3216" stroke-width="2.5"/>' +
+    '<rect x="22" y="50" width="56" height="7" fill="#c08a3a"/>' +
+    '<rect x="43" y="47" width="14" height="8" rx="2" fill="#ffd34a" stroke="#a8791f" stroke-width="1.5"/></g></svg>';
   function spawnLootBurst(loot) {
-    const bs = document.querySelector('.bossspr'); if (!bs || typeof bs.getBoundingClientRect !== 'function') return;
-    const r = bs.getBoundingClientRect();
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const cx = (window.innerWidth || 390) / 2;
+    const cy = (window.innerHeight || 800) * 0.6;
+    const layer = document.createElement('div'); layer.className = 'loot-layer';
+    const chest = document.createElement('div'); chest.className = 'loot-chest';
+    chest.style.left = cx + 'px'; chest.style.top = cy + 'px';
+    chest.innerHTML = '<div class="chest-inner">' + CHEST_SVG + '</div>';
+    layer.appendChild(chest);
     const parts = [];
     const push = (g, n) => { for (let i = 0; i < n; i++) parts.push(g); };
     push('📡', Math.min(6, Math.max(1, Math.ceil(loot.reward.info / 12))));
@@ -2149,19 +2174,19 @@ if (typeof document !== 'undefined' && document.getElementById) {
     push('💾', Math.min(6, Math.max(1, Math.ceil(loot.reward.res / 12))));
     if (loot.card) push('🃏', 3);
     if (loot.malware) push('🦠', 3);
-    const layer = document.createElement('div'); layer.className = 'loot-layer';
     parts.forEach((g, i) => {
       const s = document.createElement('span'); s.className = 'loot-p'; s.textContent = g;
-      const ang = (i / parts.length) * Math.PI * 2 + Math.random() * 0.6;
-      const dist = 66 + Math.random() * 96;
-      s.style.left = cx + 'px'; s.style.top = cy + 'px';
+      const t = parts.length > 1 ? i / (parts.length - 1) : 0.5;
+      const ang = -Math.PI / 2 + (t - 0.5) * Math.PI * 1.15; // 宝箱の口から上向きに扇状
+      const dist = 76 + Math.random() * 72;
+      s.style.left = cx + 'px'; s.style.top = (cy - 16) + 'px';
       s.style.setProperty('--dx', Math.round(Math.cos(ang) * dist) + 'px');
-      s.style.setProperty('--dy', Math.round(Math.sin(ang) * dist - 46) + 'px');
-      s.style.animationDelay = (i * 0.035).toFixed(2) + 's';
+      s.style.setProperty('--dy', Math.round(Math.sin(ang) * dist) + 'px');
+      s.style.animationDelay = (0.5 + i * 0.05).toFixed(2) + 's'; // フタが開いてから噴出
       layer.appendChild(s);
     });
     $('app').appendChild(layer);
-    setTimeout(() => layer.remove(), 2300);
+    setTimeout(() => layer.remove(), 2000);
   }
 
   // 勝敗の決着演出（切り替えが速すぎて分かりにくい問題への対応・1.9秒見せる）
