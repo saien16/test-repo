@@ -177,6 +177,7 @@ body {
 .hop.fw small { color: #e08a7a; }
 .hop-arrow { color: #5e7d6e; font-size: 16px; align-self: center; padding-top: 14px; }
 .hop-arrow.open { color: #2f9e63; }
+.vuln-tag { font-size: 9px; color: #ffdf6a; background: #2a2410; border: 1px solid #6a5a2a; border-radius: 999px; padding: 1px 5px; white-space: nowrap; }
 
 /* ボス */
 .boss { background: #0e1620; border: 1px solid #2a3b50; border-radius: 12px; padding: 12px; margin: 8px 0; }

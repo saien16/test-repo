@@ -27,10 +27,12 @@ function createGame(stage, equipped, levels, party) {
     diagDone: false,  // ブルーのセキュリティ診断が発動済みか
     cut: { hHack: 0, vDiag: 0 }, // カットイン残ターン
     sinceBlue: 0,    // ブルーチームが動いてからの経過ターン
+    gateScan: {},    // ゲートid→発見した脆弱性id（脆弱性スキャンの結果。何が出るかは運）
     defenses: (stage.defenses || []).map(d => ({ ...d, state: 'active' })), // 対策の状態
     db: {
       C: db.C, I: db.I, A: db.A,
       baseH: db.H, baseV: db.V, baseDef: db.baseDef || {},
+      debuff: { C: 0, I: 0, A: 0 }, // RCE/装置破壊による本命防御力の低下
       initC: db.C, initI: db.I, initA: db.A,
       initTotal: db.C + db.I + db.A,
     },
@@ -67,7 +69,8 @@ function defenseDef(d) { return d.def || {}; }
 function gaugeDefRaw(g, gauge) {
   let d = (g.db.baseDef && g.db.baseDef[gauge]) || 0;
   (g.defenses || []).forEach(df => { if (df.state === 'active') d += (defenseDef(df)[gauge] || 0); });
-  return d;
+  if (g.db.debuff) d -= (g.db.debuff[gauge] || 0); // RCE/装置破壊デバフで本命防御が低下
+  return Math.max(0, d);
 }
 // 実効緩和率（ハードニング倍率込み・上限0.8）
 function gaugeMit(g, gauge, ignoreH) {
@@ -108,7 +111,43 @@ const ACT_TECH = {
   pivot: { name: 'ラテラルムーブメント', en: 'Lateral Movement / Pass-the-Hash' },
   evade: { name: 'リビング・オフ・ザ・ランド', en: 'Living off the Land' },
   brk: { name: 'サービス・クラッシュ', en: 'Service Crash / DoS' },
+  scan: { name: '脆弱性スキャン', en: 'Vulnerability Scanning' },
+  penetrate: { name: 'ペネトレーション', en: 'Forced Penetration' },
 };
+
+/* ===== NW機器(FW/WAF)の脆弱性 =====
+   脆弱性スキャンで1つ発見（何が出るかは運）。エクスプロイトで区間を開通しつつ効果が変わる。
+   ・open は「ゲートを無効化して次ノードへ侵攻」を意味する（全脆弱性共通）。
+   ・debuff は本命サーバの防御力低下（=装置破壊デバフ）。 */
+const GATE_VULNS = {
+  filter_bypass: { name: 'フィルタリング・バイパス', en: 'Filtering Bypass', icon: '🌫️', warn: 3, weight: 3,
+    short: 'FWの防御を無効化して素通り', hint: 'ACLの穴を突きFW防御を無効化して侵攻。低リスク。 W+3' },
+  config_disclosure: { name: 'コンフィグ・ディスクロージャー', en: 'Config Disclosure', icon: '📄', warn: 2, weight: 2,
+    reveal: true, loot: { info: 12 }, short: '設定を吸い出し本命を偵察＋情報+12',
+    hint: '設定情報を開示させ侵攻＋本命を偵察＋情報+12。静か。 W+2' },
+  traffic_leak: { name: 'トラフィック・データ漏洩', en: 'Traffic Data Leak', icon: '📡', warn: 4, weight: 2,
+    steal: { C: 34 }, loot: { info: 8 }, short: '通過しつつ機密性を削る＋情報+8',
+    hint: '流れるデータを抜き侵攻＋本命の機密性(🔵)を削る。 W+4' },
+  rce: { name: '任意コード実行(RCE)', en: 'Remote Code Execution', icon: '🧬', warn: 6, weight: 2,
+    debuff: { C: 0.05, I: 0.05, A: 0.05 }, short: '本命の防御力を全体的に低下',
+    hint: '機器上でコード実行し侵攻＋本命の防御力を低下（装置破壊デバフ）。 W+6' },
+  crash: { name: 'クラッシュ（強制ダウン）', en: 'Crash', icon: '💥', warn: 14, weight: 1,
+    short: '強行突破だが警戒度が大幅増', hint: '機器を落として強引に侵攻。防御↓だが W+14（大幅）' },
+};
+// 脆弱性を重み付きで1つ抽選（何が見つかるかはその時々）
+function rollVuln() {
+  const ids = Object.keys(GATE_VULNS);
+  const total = ids.reduce((s, id) => s + (GATE_VULNS[id].weight || 1), 0);
+  let r = _rng() * total;
+  for (const id of ids) { r -= (GATE_VULNS[id].weight || 1); if (r < 0) return id; }
+  return ids[0];
+}
+// ゲートを無効化して次ノードへ侵攻（エクスプロイト/貫通の共通処理）
+function breachGate(g, d, newState) {
+  d.state = newState || 'breached';
+  const b = d.between[1];
+  g.footholds[b] = true; // ゲートの先へ自動侵攻（横展開連打の解消）
+}
 
 /* 経路アクションの役割親和性。編成にこの役割のマルウェアが居れば、その子が実行（進化名つき）。 */
 const PATH_AFFINITY = { recon: '偵察', breach: '侵入', botnet: '足場', brk: '装置破壊' };
@@ -231,26 +270,40 @@ function listActions(g) {
       nodeName(g.stage.path[1]) + 'を初期侵害し足場確立。 W+3');
   can('botnet', '🏴 ボットネット編入' + perfSuffix(g, 'botnet'), inside && !g.botnet, inside ? '実施済み' : '踏み台が必要',
       '踏み台をボット化。可用性火力+10%。 W+4');
-  // 対策の無効化（回避/破壊）。剥がすと防御力が一気に低下＝本体防御だけが残る。
   const hasBreaker = g.hand.some(id => (malById(id) || {}).breaker);
   activeDefenses(g).forEach(d => {
     const act = defActionable(g, d);
-    if (d.evade) {
-      can('evade:' + d.id, '🌫️ ' + d.name + 'を回避', act && canAfford(g, d.evade),
-          act ? '資源不足(' + costLabel(d.evade) + ')' : '手前に到達が必要',
-          '正規に偽装し無効化。防御力↓＆検知↓。' + costLabel(d.evade) + ' / W+2');
-    }
-    if (d.breakable) {
-      can('break:' + d.id, '💥 ' + d.name + 'を破壊' + perfSuffix(g, 'brk'), act && hasBreaker,
-          act ? '装置破壊ロールが必要' : '手前に到達が必要',
-          '装置破壊ロールで強行無効化。防御力↓だが W+25（派手）');
+    if (d.gate) {
+      // NW機器(FW/WAF): 脆弱性スキャン→エクスプロイト or 貫通で侵攻（横展開連打の解消）
+      const b = nodeName(d.between[1]);
+      const found = g.gateScan[d.id];
+      can('scan:' + d.id, '🔎 脆弱性スキャン: ' + d.name, act && canAfford(g, { info: 6 }),
+          act ? '情報6が必要' : '手前に到達が必要',
+          (found ? '再スキャンで別の脆弱性を探す' : d.name + 'の弱点を探る（何が出るかは運）') + ' 情報6 / W+2');
+      if (found) {
+        const v = GATE_VULNS[found];
+        can('exploit:' + d.id, v.icon + ' ' + v.name + ' → ' + b, act, '手前に到達が必要', v.hint);
+      }
+      can('penetrate:' + d.id, '💥 貫通攻撃: ' + d.name + ' → ' + b + perfSuffix(g, 'brk'), act, '手前に到達が必要',
+          '脆弱性なしで強引に侵攻。本命防御↓だが W+15（派手）');
+    } else {
+      // 監視系(DLP/IPS/FIM/EDR): 回避/破壊
+      if (d.evade) {
+        can('evade:' + d.id, '🌫️ ' + d.name + 'を回避', act && canAfford(g, d.evade),
+            act ? '資源不足(' + costLabel(d.evade) + ')' : '内部に到達が必要',
+            '正規に偽装し無効化。防御力↓＆検知↓。' + costLabel(d.evade) + ' / W+2');
+      }
+      if (d.breakable) {
+        can('break:' + d.id, '💥 ' + d.name + 'を破壊' + perfSuffix(g, 'brk'), act && hasBreaker,
+            act ? '装置破壊ロールが必要' : '内部に到達が必要',
+            '装置破壊ロールで無効化＋本命防御↓。だが W+25（派手）');
+      }
     }
   });
-  // 横展開: 現在ノード → 次のノード（区間にゲートがあれば開通が必要）
+  // 横展開: ゲートの無い区間のみ（脆弱性攻略はゲート側で行う）
   const nxt = nextNodeId(g);
-  if (inside && nxt) {
-    const open = segmentOpen(g, currentNodeId(g), nxt);
-    can('pivot', '↔️ ラテラルムーブメント → ' + nodeName(nxt), open, open ? '踏み台が必要' : 'FW/WAFが閉',
+  if (inside && nxt && segmentOpen(g, currentNodeId(g), nxt) && !g.footholds[nxt]) {
+    can('pivot', '↔️ ラテラルムーブメント → ' + nodeName(nxt), true, '',
         'パス・ザ・ハッシュで ' + nodeName(nxt) + ' へ横展開。 W+3');
   }
   can('ci_recon', '🛠️ アタックサーフェス・マッピング（H -20/3T）', g.reconDone && g.res.info >= 20, g.reconDone ? '情報20が必要' : '先に偵察が必要',
@@ -308,7 +361,32 @@ function applyAction(g, actionId) {
   } else if (actionId.startsWith('break:')) {
     const d = g.defenses.find(x => x.id === actionId.slice(6));
     d.state = 'destroyed'; warn = 25; g.flash = flashWith(g, ACT_TECH.brk, 'brk');
-    msg = '⚡ ' + flashMsg(g.flash) + ': ' + d.name + 'を破壊。防御力↓だが発覚度が跳ね上がった';
+    ['C', 'I', 'A'].forEach(k => g.db.debuff[k] += 0.04); // 装置破壊デバフ: 本命防御が低下
+    msg = '⚡ ' + flashMsg(g.flash) + ': ' + d.name + 'を破壊。本命防御↓だが発覚度が跳ね上がった';
+  } else if (actionId.startsWith('scan:')) {
+    const d = g.defenses.find(x => x.id === actionId.slice(5));
+    payCost(g, { info: 6 });
+    const vid = rollVuln(); g.gateScan[d.id] = vid;
+    const v = GATE_VULNS[vid]; warn = 2;
+    g.flash = { name: ACT_TECH.scan.name + ': ' + v.name + ' 発見', en: v.en, by: null };
+    msg = '🔎 脆弱性スキャン: ' + d.name + ' に「' + v.name + '」を発見（' + v.short + '）';
+  } else if (actionId.startsWith('exploit:')) {
+    const d = g.defenses.find(x => x.id === actionId.slice(8));
+    const v = GATE_VULNS[g.gateScan[d.id]];
+    breachGate(g, d, 'breached'); warn = v.warn;
+    let extra = '';
+    if (v.debuff) { ['C', 'I', 'A'].forEach(k => g.db.debuff[k] += (v.debuff[k] || 0)); extra += ' 本命防御↓'; }
+    if (v.reveal) { g.reconDone = true; extra += ' 本命偵察'; }
+    if (v.loot) { g.res.info += (v.loot.info || 0); g.res.tech += (v.loot.tech || 0); g.res.res += (v.loot.res || 0); extra += ' +資源'; }
+    if (v.steal) { const dmg = v.steal.C || 0; g.db.C = Math.max(0, g.db.C - dmg); g.res.info += Math.floor(dmg / 10); extra += ' 🔵-' + dmg; }
+    g.banner = { name: v.name + '！', en: v.en, tone: 'strike', gauge: 'C' };
+    msg = v.icon + ' ' + v.name + ': ' + d.name + 'を突破し ' + g.stage.nodes[d.between[1]].name + ' へ侵攻。' + extra;
+  } else if (actionId.startsWith('penetrate:')) {
+    const d = g.defenses.find(x => x.id === actionId.slice(10));
+    breachGate(g, d, 'penetrated'); warn = 15;
+    ['C', 'I', 'A'].forEach(k => g.db.debuff[k] += 0.03); // 強行突破でも軽い装置破壊デバフ
+    g.flash = flashWith(g, ACT_TECH.penetrate, 'brk');
+    msg = '💥 ' + flashMsg(g.flash) + ': ' + d.name + 'を強引に突破し ' + g.stage.nodes[d.between[1]].name + ' へ侵攻（本命防御↓ / 発覚度+15）';
   } else if (actionId === 'pivot') {
     const nxt = nextNodeId(g); g.footholds[nxt] = true; warn = 2; g.flash = ACT_TECH.pivot;
     msg = '⚡ ' + ACT_TECH.pivot.name + ': ' + g.stage.nodes[nxt].name + 'へ横展開';
@@ -515,7 +593,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
         const live = gateBetween(g, n, next); // active のみ返る
         if (live) {
           const ico = /waf/.test(live.id) ? 'waf' : 'fw';
-          return hop + '<span class="hop gate"><span class="nodespr sm">' + SPRITES.node(ico) + '</span><small>' + live.name + '</small></span>';
+          const vid = g.gateScan[live.id];
+          const vTag = vid ? '<span class="vuln-tag">' + GATE_VULNS[vid].icon + '脆弱性発見</span>' : '';
+          return hop + '<span class="hop gate"><span class="nodespr sm">' + SPRITES.node(ico) + '</span><small>' + live.name + '</small>' + vTag + '</span>';
         }
         return hop + '<span class="hop-arrow open">▶</span>'; // ゲート突破済み
       }
@@ -543,7 +623,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     };
     const ACT_CATS = [
       { key: 'intrude', label: '🚪 侵入', match: a => a.id === 'recon' || a.id === 'breach' || a.id === 'botnet' },
-      { key: 'pivot', label: '↔️ 横展開', match: a => a.id === 'pivot' || a.id.startsWith('evade:') || a.id.startsWith('break:') },
+      { key: 'pivot', label: '🧭 侵攻', match: a => a.id === 'pivot' || /^(scan|exploit|penetrate|evade|break):/.test(a.id) },
       { key: 'support', label: '🛠️ 支援', match: a => a.id === 'ci_recon' || a.id === 'ci_diag' },
       { key: 'strike', label: '⚔️ 撃破', match: a => a.id.startsWith('strike:') },
       { key: 'card', label: '🃏 カード', match: a => a.id.startsWith('card:') },
