@@ -309,6 +309,15 @@ body {
 .cx-en { font-size: 10px; color: #7fb89c; margin-bottom: 3px; }
 .cxentry .cc-desc { font-size: 11px; }
 .cxentry .cc-def { font-size: 11px; }
+/* 段階開示 */
+.cx-l0 { font-size: 12px; color: #dfeee7; margin: 4px 0 2px; }
+.cx-more { margin-top: 4px; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  background: #14263a; border: 1px solid #2f4f6a; color: #bfe0ff; cursor: pointer; touch-action: manipulation; }
+.cx-l2 { font-size: 11px; color: #cfe4f5; background: #0d1a24; border: 1px solid #26415a; border-radius: 6px; padding: 6px 7px; margin-top: 5px; }
+.cx-l2.locked { color: #9fb3c2; background: #16130a; border-color: #4a3a1a; }
+.cx-tag { display: inline-block; font-size: 10px; font-weight: 800; color: #ffd88a; background: #2a2410; border: 1px solid #6a5320; border-radius: 999px; padding: 0 6px; margin-right: 4px; }
+.cx-real { color: #9fd8ff; margin-top: 3px; }
+.cx-l3 { font-size: 10px; color: #8fb6cf; margin-top: 4px; }
 @media (max-width: 360px) { .cxgrid { grid-template-columns: 1fr; } }
 
 /* 編成のアーキタイプ見出し */

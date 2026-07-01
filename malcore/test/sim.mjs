@@ -308,10 +308,12 @@ console.log('シナリオ23: コンテンツ倫理lint（抽象化契約）');
   // 全マルウェア: waza.defense 必須＋危険文言なし
   assert(MALS.every(m => m.waza && m.waza.defense && m.waza.defense.length > 3), '全マルウェアに対策(waza.defense)がある');
   MALS.forEach(m => scan('マルウェア「' + m.name + '」', m, ['name', 'desc', 'waza.name', 'waza.defense',
-    'voice.attack', 'voice.crit', 'voice.hurt', 'voice.idle'])); // 声も倫理lintの対象
+    'voice.attack', 'voice.crit', 'voice.hurt', 'voice.idle',
+    'intel.L0', 'intel.notable', 'intel.real', 'intel.refs'])); // 声・図鑑intelも倫理lintの対象
   // 全カード: defense 必須＋危険文言なし
   assert(CARDSL.every(c => c.defense && c.defense.length > 3), '全カードに対策(defense)がある');
-  CARDSL.forEach(c => scan('カード「' + c.name + '」', c, ['name', 'desc', 'defense']));
+  CARDSL.forEach(c => scan('カード「' + c.name + '」', c, ['name', 'desc', 'defense',
+    'intel.L0', 'intel.notable', 'intel.real', 'intel.refs']));
   assert(true, 'コンテンツlint完了（' + MALS.length + 'ユニット / ' + CARDSL.length + 'カード）');
 }
 

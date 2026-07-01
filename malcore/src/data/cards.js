@@ -93,6 +93,32 @@ const CARDS = [
     defense: '多層防御と異常検知。単一対策に頼らない設計で被害を限定。' },
 ];
 
+/* 図鑑の段階開示(intel)。L0=一言(初心者)／L1=defense(既存)／L2=技術詳細(習熟で解錠)／L3=参考名。
+   ※抽象・分類のみ（ATT&CK T番号/OWASPカテゴリは分類であって手順ではない）。実CVE/IP/手順は載せない。 */
+const CARD_INTEL = {
+  sqli: { L0: '入力欄からDBに命令を"注射"して中身を吸い出す', notable: '2000年代以降のWeb侵害の定番。OWASP Top10の常連。', real: '入力を文字列連結でクエリに混ぜるのが根本原因。', refs: ['OWASP Cheat Sheet: SQL Injection Prevention', 'MITRE ATT&CK T1190'] },
+  xss: { L0: 'ページに他人のスクリプトを紛れ込ませる', notable: 'Samworm(2005)がMySpaceを1日で席巻した古典。', real: '出力時のエスケープ漏れが原因。CSPで多層防御。', refs: ['OWASP Cheat Sheet: Cross Site Scripting Prevention'] },
+  traversal: { L0: '「../」で見えないはずのファイルまで辿る', notable: 'Webサーバ黎明期から続く定番の設定ミス系。', real: 'パス正規化と公開範囲の限定で塞ぐ。', refs: ['OWASP: Path Traversal', 'MITRE ATT&CK T1083'] },
+  kerberoast: { L0: '認証チケットを貰ってオフラインで解読', notable: 'AD内部侵害の定番。管理者が最も嫌う手口。', real: 'サービスアカウントの弱い鍵が狙われる。', refs: ['MITRE ATT&CK T1558.003'] },
+  phishing: { L0: '偽メールで入口(認証情報や足場)を得る', notable: '侵害の最多起点。ほぼ全APTの第一歩。', real: '技術より"人"を狙う。教育とMFAが効く。', refs: ['MITRE ATT&CK T1566'] },
+  password_spray: { L0: '弱いパスワードを大量アカウントに広く試す', notable: 'ロックアウト回避のため"広く浅く"試すのが特徴。', real: 'MFAとロックアウトで大半が無力化。', refs: ['MITRE ATT&CK T1110.003'] },
+  ssrf: { L0: 'サーバに内部へリクエストさせて到達する', notable: 'クラウドのメタデータ窃取で一躍有名に。', real: 'egress制限と宛先許可リストで封じる。', refs: ['OWASP Top10 A10:2021 (SSRF)'] },
+  c2_beacon: { L0: '静かな間隔で外部と通信し少しずつ運ぶ', notable: '低く遅く(low & slow)がAPTの美学。', real: '通信の周期性やDNS異常で炙り出す。', refs: ['MITRE ATT&CK T1071'] },
+  csrf: { L0: '正規ユーザーになりすまして操作を強制', notable: '"ワンクリック詐欺"の技術版。SameSiteで大幅減。', real: 'トークンとSameSite Cookieで正規性を担保。', refs: ['OWASP Cheat Sheet: CSRF Prevention'] },
+  deserialize: { L0: '信頼できないデータの復元を悪用', notable: 'Java/PHP等で重大RCEを何度も生んだ地雷。', real: '型の許可リストと署名検証で限定。', refs: ['OWASP Top10 A08:2021', 'MITRE ATT&CK T1190'] },
+  webshell: { L0: '改ざん拠点を植えて遠隔操作の足場に', notable: 'サーバ侵害後の"住み着き"の定番。', real: '書込権限の最小化と整合性監視で検知。', refs: ['MITRE ATT&CK T1505.003'] },
+  dns_poison: { L0: '名前解決を書き換え宛先ごと偽装', notable: 'Kaminsky脆弱性(2008)でDNSSEC普及が加速。', real: 'DNSSECと解決結果の検証で防ぐ。', refs: ['MITRE ATT&CK T1565'] },
+  golden_ticket: { L0: '認証基盤の鍵を握り万能チケットを発行', notable: 'ドメイン完全掌握の象徴。復旧が非常に困難。', real: 'KRBTGT定期更新と特権分離が要。', refs: ['MITRE ATT&CK T1558.001'] },
+  supplychain: { L0: '信頼される配布物を汚染し多層防御を通過', notable: 'SolarWinds(2020)で世界が震撼した手口。', real: '署名検証とSBOM、ビルド供給元の完全性監視。', refs: ['MITRE ATT&CK T1195'] },
+  ikatako: { L0: 'ファイルをイカ・タコ画像で塗り潰す', notable: '日本の"原田/イカタコウイルス"(2007–10)。作者は器物損壊で摘発。', real: '暗号化ではなく"上書き"破壊。BKと実行制限が要。', refs: ['ATT&CK Impact: Data Destruction'] },
+  slowloris: { L0: '接続を小出しに保ち枠を枯らす', notable: '少ない帯域で落とせる"上品な"DoSの代表。', real: 'タイムアウトとリバースプロキシで吸収。', refs: ['MITRE ATT&CK T1499'] },
+  forkbomb: { L0: 'プロセスを自己増殖させ資源を食い尽くす', notable: '":(){ :|:& };:"の一行で有名な古典。', real: 'ulimit/cgroupsでプロセス数を制限。', refs: ['ATT&CK Impact: Resource Exhaustion'] },
+  amplification: { L0: '増幅応答を踏み台に集中させ回線を溢れさす', notable: 'DNS/NTP/memcachedで史上最大級のDDoSを記録。', real: 'レート制限と送信元検証(BCP38)、上流吸収。', refs: ['MITRE ATT&CK T1498.002'] },
+  gpcode: { L0: 'ファイルを暗号化して人質にする', notable: 'GpCode(2004–08)は現代ランサムの原型。', real: 'オフラインBKと復旧手順、鍵管理の監視。', refs: ['ATT&CK Impact: Data Encrypted for Impact'] },
+  zeroday: { L0: '誰も知らない穴を突く。防御が間に合わない', notable: '最高値で取引される攻撃資源。国家級が備蓄。', real: '単一対策に頼らない多層防御と異常検知で被害限定。', refs: ['MITRE ATT&CK T1190'] },
+};
+CARDS.forEach(c => { c.intel = CARD_INTEL[c.id] || {}; });
+
 function cardById(id) { return CARDS.find(c => c.id === id) || null; }
 
 if (typeof globalThis !== 'undefined') { globalThis.CARDS = CARDS; globalThis.cardById = cardById; }

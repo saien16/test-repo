@@ -715,6 +715,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     $('battle-root').querySelectorAll('.act:not(.off)').forEach(b =>
       b.addEventListener('click', () => {
         Sound.unlock();
+        bumpUse(b.dataset.act); // 習熟カウント（図鑑の技術詳細アンロック用）
         // 音は afterAction 側で出し分け（撃破=技カットイン / 移動=軽量フラッシュ）。
         applyAction(G, b.dataset.act); afterAction();
       }));
@@ -923,7 +924,18 @@ if (typeof document !== 'undefined' && document.getElementById) {
   let codexTab = 'mal';     // 図鑑タブ: 'mal'|'card'
   let codexGauge = 'all';   // 図鑑ゲージ絞り込み: all|C|I|A
   let codexOwned = false;   // 図鑑: 所持のみ（カード用）
+  let codexExpanded = {};   // 図鑑: id→展開中か（段階開示）
   let onboarded = loadJSON('malcore.onboarded', false); // 初回プレイの手引き（おすすめ手・導線）を出すか
+  // 習熟カウント（技/マルウェアを使った回数）。図鑑の"技術詳細"を段階開示するゲートに使う。
+  let useCount = loadJSON('malcore.usecount', {});
+  const INTEL_GATE = 3; // この回数使うとATT&CK/史実などの技術詳細が解錠
+  function bumpUse(actId) {
+    let id = null;
+    if (actId && actId.indexOf('strike:') === 0) id = actId.slice(7);
+    else if (actId && actId.indexOf('card:') === 0) id = actId.slice(5);
+    if (!id) return;
+    useCount[id] = (useCount[id] || 0) + 1; saveJSON('malcore.usecount', useCount);
+  }
 
   // 世代進化の永続状態（localStorage、無ければデモ用に開発P=4で開始）
   let levels = loadJSON('malcore.levels', {});
@@ -1150,6 +1162,26 @@ if (typeof document !== 'undefined' && document.getElementById) {
     if (codexTab === 'card') filterRow += '<button class="cxchip owned' + (codexOwned ? ' on' : '') + '" data-cxowned="1">✓ 所持のみ</button>';
     filterRow += '</div>';
 
+    // 段階開示: L0(一言)＝初心者／▼で L1(対策)／技術詳細L2(ATT&CK・史実)は習熟で解錠／L3(参考)
+    const intelBlock = (id, intel, defense, tag) => {
+      intel = intel || {};
+      const l0 = intel.L0 ? '<div class="cx-l0">💡 ' + intel.L0 + '</div>' : '';
+      if (!codexExpanded[id]) return l0 + '<button class="cx-more" data-more="' + id + '">▼ もっと知る</button>';
+      let h = l0 + (defense ? '<div class="cc-def">🛡️ 対策: ' + defense + '</div>' : '');
+      if (intel.notable || intel.real) {
+        const used = useCount[id] || 0;
+        if (used < INTEL_GATE) {
+          h += '<div class="cx-l2 locked">🔒 技術詳細（ATT&CK・史実）は、この技/ユニットを ' + INTEL_GATE +
+            '回使うと解錠（あと ' + (INTEL_GATE - used) + '回）</div>';
+        } else {
+          h += '<div class="cx-l2">📖 ' + (tag ? '<span class="cx-tag">' + tag + '</span> ' : '') +
+            (intel.notable ? intel.notable : '') +
+            (intel.real ? '<div class="cx-real">🔬 ' + intel.real + '</div>' : '') + '</div>';
+          if (intel.refs && intel.refs.length) h += '<div class="cx-l3">📚 参考: ' + intel.refs.join(' ／ ') + '</div>';
+        }
+      }
+      return h + '<button class="cx-more" data-more="' + id + '">▲ 閉じる</button>';
+    };
     let entries;
     if (codexTab === 'mal') {
       const list = MAL.filter(m => codexGauge === 'all' || (m.waza && m.waza.gauge === codexGauge));
@@ -1163,8 +1195,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
           '<span class="cx-arch">' + (m.archetype || '') + '</span></div>' +
           '<div class="cx-cia">🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</div>' +
           (m.waza ? '<div class="cx-waza">⚡ ' + m.waza.name.replace(/！+$/, '') + '</div>' : '') +
-          '<div class="cc-desc">' + m.desc + '</div>' +
-          (m.waza && m.waza.defense ? '<div class="cc-def">🛡️ ' + m.waza.defense + '</div>' : '') + '</div>';
+          intelBlock(m.id, m.intel, m.waza && m.waza.defense, (m.intel || {}).tag) + '</div>';
       }).join('');
     } else {
       let list = CARDS.filter(c => codexGauge === 'all' || c.gauge === codexGauge);
@@ -1175,9 +1206,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<span class="cx-name"><b>' + c.name + '</b><span class="cx-meta">' +
         (isUnlocked(c.id) ? '<span class="cc-own">✓所持</span>' : '<span class="cc-lock">🔒未入手</span>') + ' 世代' + c.gen + '</span></span></div>' +
         '<div class="cx-cia">' + gaugeMark(c) + '</div>' +
-        '<div class="cx-en">' + c.en + ' ・ ' + c.tactic + '</div>' +
-        '<div class="cc-desc">' + c.desc + '</div>' +
-        '<div class="cc-def">🛡️ ' + c.defense + '</div></div>'
+        intelBlock(c.id, c.intel, c.defense, c.tactic) + '</div>'
       ).join('');
     }
     $('codex-body').innerHTML = tabRow + filterRow +
@@ -1188,6 +1217,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
       b.addEventListener('click', () => { Sound.play('select'); codexGauge = b.dataset.cxg; renderCodex(); }));
     const ob = $('codex-body').querySelector('.cxchip[data-cxowned]');
     if (ob) ob.addEventListener('click', () => { Sound.play('select'); codexOwned = !codexOwned; renderCodex(); });
+    $('codex-body').querySelectorAll('.cx-more').forEach(b =>
+      b.addEventListener('click', () => { Sound.play('select'); const id = b.dataset.more; codexExpanded[id] = !codexExpanded[id]; renderCodex(); }));
   }
 
   // 母港ハブ: マルウェアが屯するサークル風シーン＋進捗＋母港バフ
