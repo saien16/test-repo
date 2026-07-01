@@ -154,7 +154,12 @@ body {
 .bar { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 12px; }
 .bar-label { width: 64px; flex: none; }
 .bar-track { flex: 1; height: 12px; background: #0b1310; border-radius: 999px; overflow: hidden; border: 1px solid #1d2c25; }
-.bar-fill { display: block; height: 100%; }
+.bar-fill { display: block; height: 100%; transition: width .6s cubic-bezier(.35,0,.2,1); }
+.bar-fill.drop { animation: barDrop .55s ease; }   /* HPが削れた: 白フラッシュ */
+.bar-fill.rise { animation: barRise .55s ease; }   /* 発覚度が上がった: 赤フラッシュ */
+@keyframes barDrop { 0%{ filter: brightness(2.4); } 100%{ filter: brightness(1); } }
+@keyframes barRise { 0%{ filter: brightness(1); box-shadow: 0 0 10px #ff5252 inset; } 40%{ filter: brightness(1.8); } 100%{ filter: brightness(1); } }
+.bar-num { transition: color .3s; }
 .bar-fill.warn { background: linear-gradient(90deg,#f0a93a,#ff5252); }
 .bar-fill.c { background: #4aa3ff; }
 .bar-fill.i { background: #44d07b; }
@@ -187,8 +192,12 @@ body {
 /* 防御力（ゲージ別＋効いている対策） */
 .defrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #24384a; font-size: 12px; }
 .def-title { color: #9fb3c2; font-weight: 700; }
-.def-g { font-weight: 800; }
+.def-g { font-weight: 800; display: inline-block; }
 .def-g.c { color: #6fb6ff; } .def-g.i { color: #5fe0a0; } .def-g.a { color: #ffd86a; }
+.def-g.dn { animation: defDn .7s ease; }   /* 防御力が下がった＝攻略が進んだ: 緑パルス */
+.def-g.up { animation: defUp .7s ease; }   /* 防御力が上がった＝硬化された: 赤パルス */
+@keyframes defDn { 0%,100%{ transform: scale(1); } 35%{ transform: scale(1.35); text-shadow: 0 0 10px #7CFFB2; } }
+@keyframes defUp { 0%,100%{ transform: scale(1); } 35%{ transform: scale(1.35); text-shadow: 0 0 10px #ff6b6b; color: #ff8a5a; } }
 .def-list { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
 .def-chip { font-size: 10px; padding: 2px 6px; border-radius: 6px; background: #15273a; border: 1px solid #2f4f6a; color: #bfe0ff; }
 .def-chip.none { background: #2a1814; border-color: #6a3a2a; color: #ffb89a; }

@@ -78,7 +78,7 @@ const STAGES = [
     blue: { alert: 38, react: 1.2 },
   },
   { // 6) 3段 政府APT(全厚・FW二重)
-    id: 'nsho', name: 'N省', gen: 2, turnLimit: 10,
+    id: 'nsho', name: 'X省', gen: 2, turnLimit: 10,
     intro: '政府APT級。3段(踏み台→内部LAN→中枢DB)。全ゲージ厚くFW二重＋EDR。',
     path: ['outside', 'pc', 'srv', 'db'],
     nodes: { pc: PC, srv: { name: '内部LAN', kind: 'srv' },

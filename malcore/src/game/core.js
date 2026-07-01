@@ -429,30 +429,66 @@ if (typeof document !== 'undefined' && document.getElementById) {
     $(id).classList.add('active');
   };
 
-  function bar(label, val, max, cls) {
-    const pct = Math.max(0, Math.min(100, (val / max) * 100));
+  // val=最新値 / from=前回表示値（省略時は val=アニメ無し）。前回値から現在値へバー幅と数値をトゥイーン。
+  function bar(label, val, max, cls, from) {
+    const f = (from == null ? val : from);
+    const toPct = Math.max(0, Math.min(100, (val / max) * 100));
+    const fromPct = Math.max(0, Math.min(100, (f / max) * 100));
+    const dir = val < f - 0.5 ? ' drop' : (val > f + 0.5 ? ' rise' : '');
     return '<div class="bar"><span class="bar-label">' + label + '</span>' +
-      '<span class="bar-track"><i class="bar-fill ' + cls + '" style="width:' + pct + '%"></i></span>' +
-      '<span class="bar-num">' + Math.round(val) + '</span></div>';
+      '<span class="bar-track"><i class="bar-fill ' + cls + dir + '" style="width:' + fromPct + '%" data-w="' + toPct.toFixed(2) + '"></i></span>' +
+      '<span class="bar-num" data-from="' + Math.round(f) + '" data-to="' + Math.round(val) + '">' + Math.round(f) + '</span></div>';
+  }
+  // 数値カウントアップ/ダウン（easeOutCubic）
+  function tweenNum(el, from, to, dur) {
+    if (typeof requestAnimationFrame === 'undefined' || typeof performance === 'undefined' || from === to) { el.textContent = to; return; }
+    const t0 = performance.now();
+    (function step(now) {
+      const p = Math.min(1, (now - t0) / dur);
+      const e = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(from + (to - from) * e);
+      if (p < 1) requestAnimationFrame(step);
+    })(t0);
+  }
+  // 直近 renderBattle 後に、幅トランジション始動＋数値トゥイーンを実行
+  function animateBattle() {
+    if (typeof requestAnimationFrame === 'undefined') return;
+    const root = $('battle-root'); if (!root) return;
+    root.querySelectorAll('.bar-fill[data-w]').forEach(el => {
+      const to = el.getAttribute('data-w');
+      requestAnimationFrame(() => { el.style.width = to + '%'; });
+    });
+    root.querySelectorAll('.bar-num[data-to], .ci-total[data-to]').forEach(el =>
+      tweenNum(el, +el.getAttribute('data-from'), +el.getAttribute('data-to'), 600));
+    root.querySelectorAll('.def-g[data-to]').forEach(el => {
+      const n = el.querySelector('.dg-n'); if (n) tweenNum(n, +el.getAttribute('data-from'), +el.getAttribute('data-to'), 600);
+    });
   }
 
   // 本命の防御力（ゲージ別の実効緩和％）と、効いている対策を表示
   function defensePanel(g) {
     const pct = (gauge) => Math.round(gaugeMit(g, gauge) * 100);
+    const sd = g._shownDef || {};
+    const gspan = (gauge, mark, cls) => {
+      const to = pct(gauge), from = (sd[gauge] == null ? to : sd[gauge]);
+      const dir = to > from ? ' up' : (to < from ? ' dn' : ''); // up=硬化(敵有利/赤) dn=剥がれた(自分有利/緑)
+      return '<span class="def-g ' + cls + dir + '" data-from="' + from + '" data-to="' + to + '">' +
+        mark + '<i class="dg-n">' + from + '</i>%</span>';
+    };
     const act = activeDefenses(g);
     const list = act.length
       ? act.map(d => '<span class="def-chip">🛡️ ' + d.name + '</span>').join('')
       : '<span class="def-chip none">本体防御のみ</span>';
     return '<div class="defrow">' +
       '<span class="def-title">防御力</span>' +
-      '<span class="def-g c">🔵' + pct('C') + '%</span>' +
-      '<span class="def-g i">🟢' + pct('I') + '%</span>' +
-      '<span class="def-g a">🟡' + pct('A') + '%</span>' +
+      gspan('C', '🔵', 'c') + gspan('I', '🟢', 'i') + gspan('A', '🟡', 'a') +
       '<span class="def-list">' + list + '</span></div>';
   }
 
   function renderBattle() {
     const g = G, d = g.db;
+    const sh = g._shown || {};                         // 前回表示した C/I/A・発覚度・CIA合計
+    const shTotal = (sh.total == null ? d.C + d.I + d.A : sh.total);
     const dbState = (function () {
       const r = (d.C + d.I + d.A) / d.initTotal;
       return r > 0.66 ? 'ok' : (r > 0.33 ? 'hurt' : 'crit');
@@ -512,7 +548,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<span class="pill tech">🧬 技術 ' + g.res.tech + '</span>' +
         '<span class="pill resr">⚙️ 資源 ' + g.res.res + '</span>' +
       '</div>' +
-      bar('🚨 発覚度', g.warning, 100, 'warn') +
+      bar('🚨 発覚度', g.warning, 100, 'warn', sh.warn) +
       (function () {
         const alert = (g.stage.blue || {}).alert || 40;
         let cls, txt;
@@ -527,11 +563,12 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<div class="boss-head"><span class="bossspr ' + dbState + '">' + SPRITES.node('db', { state: dbState }) + '</span>' +
           '<span class="boss-title">★ ' + g.stage.nodes.db.name +
           '<span class="hv">H ' + effH(g) + ' / V ' + effV(g) + ' ' + cutBadges + '</span></span></div>' +
-        '<div class="goal-chip">🎯 勝利まで CIA合計 ' + Math.round(d.C + d.I + d.A) +
+        '<div class="goal-chip">🎯 勝利まで CIA合計 <b class="ci-total" data-from="' + Math.round(shTotal) +
+          '" data-to="' + Math.round(d.C + d.I + d.A) + '">' + Math.round(shTotal) + '</b>' +
           ' → <b>' + Math.round(d.initTotal * g.stage.win.ratio) + '以下</b></div>' +
-        bar('🔵 機密性 C', d.C, d.initC, 'c') +
-        bar('🟢 完全性 I', d.I, d.initI, 'i') +
-        bar('🟡 可用性 A', d.A, d.initA, 'a') +
+        bar('🔵 機密性 C', d.C, d.initC, 'c', sh.C) +
+        bar('🟢 完全性 I', d.I, d.initI, 'i', sh.I) +
+        bar('🟡 可用性 A', d.A, d.initA, 'a', sh.A) +
         defensePanel(g) +
       '</div>' +
       '<div class="acts">' + acts + '</div>' +
@@ -543,6 +580,11 @@ if (typeof document !== 'undefined' && document.getElementById) {
         // 音は afterAction 側で出し分け（撃破=技カットイン / 移動=軽量フラッシュ）。
         applyAction(G, b.dataset.act); afterAction();
       }));
+
+    animateBattle();                                   // バー幅トランジション＋数値カウント始動
+    // 今回の表示値を記録（次回 render の「前回値」＝アニメ始点）
+    g._shown = { warn: g.warning, C: d.C, I: d.I, A: d.A, total: d.C + d.I + d.A };
+    g._shownDef = { C: Math.round(gaugeMit(g, 'C') * 100), I: Math.round(gaugeMit(g, 'I') * 100), A: Math.round(gaugeMit(g, 'A') * 100) };
   }
 
   function popBanner(b) {
