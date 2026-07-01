@@ -341,7 +341,10 @@ body {
 .hub-mal { position: absolute; transform: translate(-50%, -50%); background: none; border: none; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0;
   animation: hubBob 3.2s ease-in-out infinite; z-index: 2; touch-action: manipulation; }
+.hub-spr { display: inline-flex; line-height: 0; }
 .hub-mal svg { width: 42px; height: 42px; filter: drop-shadow(0 4px 5px rgba(0,0,0,.55)); }
+.hub-mal.reacting .hub-spr { animation: hubPop .45s ease; }
+@keyframes hubPop { 0% { transform: scale(1); } 35% { transform: scale(1.28); } 100% { transform: scale(1); } }
 .hub-mal:not(.party) svg { opacity: .82; }
 .hub-mal.party { z-index: 5; }
 .hub-mal.party svg { width: 58px; height: 58px; filter: drop-shadow(0 0 8px rgba(72,255,160,.35)) drop-shadow(0 4px 5px rgba(0,0,0,.55)); }

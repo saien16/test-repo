@@ -516,6 +516,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       tb.hidden = HUB_SCREENS.indexOf(id) < 0;
       tb.querySelectorAll('.tabbar-btn').forEach(b => b.classList.toggle('on', b.dataset.tab === id));
     }
+    if (id !== 'home-screen' && typeof stopHubIdle === 'function') stopHubIdle(); // 母港を離れたら表情サイクル停止
   };
 
   // val=最新値 / from=前回表示値（省略時は val=アニメ無し）。前回値から現在値へバー幅と数値をトゥイーン。
@@ -1122,6 +1123,35 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const tg = pop.querySelector('.hub-pop-toggle');
     if (tg) tg.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); toggleParty(id); renderHome(); showHubInfo(id); });
   }
+  // 表情差分（母港でころころ変わる／タップで反応）
+  const HUB_EXPR = ['happy', 'surprised', 'angry'];
+  let hubIdleTimer = null;
+  function setHubExpr(el, expr, ms) {
+    if (!el || !el.isConnected) return;
+    const id = el.dataset.hubmal; if (!id) return;
+    const L = levels[id] || 0;
+    const spr = el.querySelector('.hub-spr'); if (!spr) return;
+    spr.innerHTML = SPRITES.mal(id, { gen: L, expr: expr });
+    el.classList.add('reacting');
+    clearTimeout(el._exprT);
+    el._exprT = setTimeout(() => {
+      if (!el.isConnected) return;
+      spr.innerHTML = SPRITES.mal(id, { gen: L });
+      el.classList.remove('reacting');
+    }, ms || 1000);
+  }
+  function startHubIdle() {
+    stopHubIdle();
+    hubIdleTimer = setInterval(() => {
+      const home = $('home-screen');
+      if (!home || !home.classList.contains('active')) return;
+      const els = home.querySelectorAll('.hub-mal');
+      if (!els.length) return;
+      setHubExpr(els[Math.floor(Math.random() * els.length)], HUB_EXPR[Math.floor(Math.random() * HUB_EXPR.length)], 1100);
+    }, 1500);
+  }
+  function stopHubIdle() { if (hubIdleTimer) { clearInterval(hubIdleTimer); hubIdleTimer = null; } }
+
   function renderHome() {
     // マルウェアを母港に散りばめる（屯している雰囲気。出撃メンバーは大きく前面に）
     const scene = ROSTER.map((id, i) => {
@@ -1134,7 +1164,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
       const delay = ((i % 5) * 0.4).toFixed(1);
       return '<button class="hub-mal' + (inParty ? ' party' : '') + '" data-hubmal="' + id + '" ' +
         'style="left:' + left + '%;top:' + top + '%;animation-delay:' + delay + 's">' +
-        SPRITES.mal(id, { gen: L }) + (inParty ? '<span class="hub-badge">出撃</span>' : '') +
+        '<span class="hub-spr">' + SPRITES.mal(id, { gen: L }) + '</span>' +
+        (inParty ? '<span class="hub-badge">出撃</span>' : '') +
         '<span class="hub-name">' + m.name + '</span></button>';
     }).join('');
     const owned = PORT_BUFFS.filter(b => (portBuffs[b.key] || 0) > 0);
@@ -1161,9 +1192,14 @@ if (typeof document !== 'undefined' && document.getElementById) {
       '<p class="home-meta">🏅 母港バフ: ' + buffLine + '</p></div>' +
       '<button id="home-sortie" class="big-btn">⚔️ 出撃（ステージ選択）</button>';
     $('home-body').querySelectorAll('.hub-mal').forEach(b =>
-      b.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); showHubInfo(b.dataset.hubmal); }));
+      b.addEventListener('click', () => {
+        Sound.unlock(); Sound.play('select');
+        setHubExpr(b, HUB_EXPR[Math.floor(Math.random() * HUB_EXPR.length)], 950); // タップで驚き/喜び/怒り
+        showHubInfo(b.dataset.hubmal);
+      }));
     const hs = $('home-sortie');
     if (hs) hs.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); renderStageSelect(); show('stage-screen'); });
+    startHubIdle(); // 表情がころころ変わる
   }
 
   // 開発: 母港バフの購入（開発Pの使い道＝メタ進行）

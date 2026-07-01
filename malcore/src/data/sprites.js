@@ -155,6 +155,32 @@ const SPRITES = (() => {
       `<path d="M26 26 q5 7 0 12 q-5 -5 0 -12" fill="#7fd0ff" opacity=".9"/>` +
       `<g stroke="#ff5252" stroke-width="2.4" stroke-linecap="round"><path d="M80 22 l8 -7 M82 30 l9 -2 M78 16 l3 -9"/></g>`;
   }
+  // 喜び: ^ ^ の笑い目＋ほっぺ＋大きな笑顔＋きらり
+  function happyOverlay(eyes) {
+    const [l, r] = eyes, my = Math.max(l[1], r[1]);
+    return `<path d="M${l[0] - 5} ${l[1] + 1} q5 -7 10 0" stroke="#111" stroke-width="3" fill="none" stroke-linecap="round"/>` +
+      `<path d="M${r[0] - 5} ${r[1] + 1} q5 -7 10 0" stroke="#111" stroke-width="3" fill="none" stroke-linecap="round"/>` +
+      `<circle cx="${l[0] - 8}" cy="${l[1] + 8}" r="3.2" fill="#ff9ab0" opacity=".65"/>` +
+      `<circle cx="${r[0] + 8}" cy="${r[1] + 8}" r="3.2" fill="#ff9ab0" opacity=".65"/>` +
+      `<path d="M${l[0]} ${my + 15} Q50 ${my + 25} ${r[0]} ${my + 15}" stroke="#111" stroke-width="2.8" fill="none" stroke-linecap="round"/>` +
+      `<g fill="#fff3b0"><path d="M80 20 l1.6 4.4 4.4 1.6 -4.4 1.6 -1.6 4.4 -1.6 -4.4 -4.4 -1.6 4.4 -1.6 z"/></g>`;
+  }
+  // 驚き: 見開いた目＋あんぐり口＋「!」
+  function surprisedOverlay(eyes) {
+    const [l, r] = eyes, my = Math.max(l[1], r[1]);
+    const eye = (c) => `<circle cx="${c[0]}" cy="${c[1]}" r="6.6" fill="#fff" stroke="#111" stroke-width="1"/><circle cx="${c[0]}" cy="${c[1] + 1}" r="2.7" fill="#11202a"/>`;
+    return eye(l) + eye(r) +
+      `<ellipse cx="50" cy="${my + 17}" rx="4.2" ry="5.4" fill="#3a2028"/>` +
+      `<text x="80" y="28" font-size="21" font-weight="900" fill="#ffd34a" stroke="#a8000a" stroke-width="0.6">!</text>`;
+  }
+  // 怒り: つり上がった眉＋への字口＋💢
+  function angryOverlay(eyes) {
+    const [l, r] = eyes, my = Math.max(l[1], r[1]);
+    return `<path d="M${l[0] - 8} ${l[1] - 8} l13 5" stroke="#111" stroke-width="3.6" stroke-linecap="round"/>` +
+      `<path d="M${r[0] + 8} ${r[1] - 8} l-13 5" stroke="#111" stroke-width="3.6" stroke-linecap="round"/>` +
+      `<path d="M${l[0] + 1} ${my + 18} q${(r[0] - l[0]) / 2 - 1} -7 ${r[0] - l[0] - 2} 0" stroke="#111" stroke-width="2.8" fill="none" stroke-linecap="round"/>` +
+      `<g stroke="#ff3b3b" stroke-width="2.2" stroke-linecap="round"><path d="M74 15 l7 7 M81 15 l-7 7 M77 12 v13 M70 19 h14"/></g>`;
+  }
   // 世代進化の差分: gen1=オーラ環 / gen2=きらめき星も追加
   function genOverlay(gen) {
     let s = '';
@@ -199,6 +225,9 @@ const SPRITES = (() => {
     let inject = '';
     if (opt.expr === 'attack') inject += attackOverlay(eyes);
     else if (opt.expr === 'hurt') inject += hurtOverlay(eyes);
+    else if (opt.expr === 'happy') inject += happyOverlay(eyes);
+    else if (opt.expr === 'surprised') inject += surprisedOverlay(eyes);
+    else if (opt.expr === 'angry') inject += angryOverlay(eyes);
     inject += genOverlay(opt.gen || 0);
     return `<svg viewBox="0 0 100 100">${body}${inject}</svg>`;
   }
