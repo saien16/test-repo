@@ -116,6 +116,7 @@ body {
 .banner-spr svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 0 8px rgba(0,0,0,.5)); }
 @keyframes lunge { 0%{transform:scale(.5) translateY(20px); opacity:0} 60%{transform:scale(1.15) translateY(-4px); opacity:1} 100%{transform:scale(1) translateY(0)} }
 .banner-en { font-size: 13px; color: #ffd9d9; letter-spacing: 3px; margin-top: 4px; }
+.banner-voice { font-size: 13px; color: #ffe6a0; margin-bottom: 2px; font-weight: 700; }
 .banner-crit { font-size: 20px; font-weight: 900; color: #ffd34a; text-shadow: 0 0 12px rgba(255,211,74,.9); margin-top: 2px; }
 .banner.ci .banner-name { background: linear-gradient(90deg, rgba(138,90,255,0) 0%, rgba(138,90,255,.85) 50%, rgba(138,90,255,0) 100%); text-shadow: 0 0 14px rgba(170,120,255,.9), 0 2px 0 #2a1060; }
 .banner.crit .banner-name { background: linear-gradient(90deg, rgba(255,170,40,0) 0%, rgba(255,170,40,.9) 50%, rgba(255,170,40,0) 100%); }
@@ -347,6 +348,8 @@ body {
   100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 42px)) scale(.9); opacity: 0; } }
 .debrief { background: #0f1b18; border: 1px solid #2f4a3c; border-radius: 10px; padding: 12px; margin-top: 14px; }
 .debrief b { color: #7fd0ff; }
+.debrief .boya { color: #ffcf8a; font-size: 13px; margin: 0 0 8px; font-style: italic; }
+.realnote { color: #9fd8ff; font-size: 11px; }
 .debrief p { margin: 6px 0 0; font-size: 13px; }
 .result-btns { margin-top: 18px; }
 
@@ -379,6 +382,13 @@ body {
 .hub-name { font-size: 9px; color: #cffbe4; white-space: nowrap; background: rgba(6,16,12,.72);
   padding: 0 4px; border-radius: 4px; opacity: 0; transition: opacity .2s; }
 .hub-mal.party .hub-name, .hub-mal:hover .hub-name { opacity: 1; }
+.hub-bubble { position: absolute; bottom: 100%; left: 50%; transform: translate(-50%, 4px); margin-bottom: 4px;
+  max-width: 130px; width: max-content; font-size: 10px; line-height: 1.3; color: #142018; background: #eafff2;
+  border-radius: 8px; padding: 4px 7px; white-space: normal; text-align: center; z-index: 8;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.hub-bubble::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: #eafff2; }
+.hub-bubble.show { opacity: 1; transform: translate(-50%, 0); }
 .hub-badge { position: absolute; top: -4px; right: -8px; font-size: 8px; background: #47d08a; color: #06140d;
   border-radius: 999px; padding: 0 4px; font-weight: 800; }
 @keyframes hubBob { 0%,100% { transform: translate(-50%,-50%); } 50% { transform: translate(-50%, calc(-50% - 6px)); } }

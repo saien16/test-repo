@@ -125,6 +125,7 @@ body {
 .banner-spr svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 0 8px rgba(0,0,0,.5)); }
 @keyframes lunge { 0%{transform:scale(.5) translateY(20px); opacity:0} 60%{transform:scale(1.15) translateY(-4px); opacity:1} 100%{transform:scale(1) translateY(0)} }
 .banner-en { font-size: 13px; color: #ffd9d9; letter-spacing: 3px; margin-top: 4px; }
+.banner-voice { font-size: 13px; color: #ffe6a0; margin-bottom: 2px; font-weight: 700; }
 .banner-crit { font-size: 20px; font-weight: 900; color: #ffd34a; text-shadow: 0 0 12px rgba(255,211,74,.9); margin-top: 2px; }
 .banner.ci .banner-name { background: linear-gradient(90deg, rgba(138,90,255,0) 0%, rgba(138,90,255,.85) 50%, rgba(138,90,255,0) 100%); text-shadow: 0 0 14px rgba(170,120,255,.9), 0 2px 0 #2a1060; }
 .banner.crit .banner-name { background: linear-gradient(90deg, rgba(255,170,40,0) 0%, rgba(255,170,40,.9) 50%, rgba(255,170,40,0) 100%); }
@@ -356,6 +357,8 @@ body {
   100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 42px)) scale(.9); opacity: 0; } }
 .debrief { background: #0f1b18; border: 1px solid #2f4a3c; border-radius: 10px; padding: 12px; margin-top: 14px; }
 .debrief b { color: #7fd0ff; }
+.debrief .boya { color: #ffcf8a; font-size: 13px; margin: 0 0 8px; font-style: italic; }
+.realnote { color: #9fd8ff; font-size: 11px; }
 .debrief p { margin: 6px 0 0; font-size: 13px; }
 .result-btns { margin-top: 18px; }
 
@@ -388,6 +391,13 @@ body {
 .hub-name { font-size: 9px; color: #cffbe4; white-space: nowrap; background: rgba(6,16,12,.72);
   padding: 0 4px; border-radius: 4px; opacity: 0; transition: opacity .2s; }
 .hub-mal.party .hub-name, .hub-mal:hover .hub-name { opacity: 1; }
+.hub-bubble { position: absolute; bottom: 100%; left: 50%; transform: translate(-50%, 4px); margin-bottom: 4px;
+  max-width: 130px; width: max-content; font-size: 10px; line-height: 1.3; color: #142018; background: #eafff2;
+  border-radius: 8px; padding: 4px 7px; white-space: normal; text-align: center; z-index: 8;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.hub-bubble::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: #eafff2; }
+.hub-bubble.show { opacity: 1; transform: translate(-50%, 0); }
 .hub-badge { position: absolute; top: -4px; right: -8px; font-size: 8px; background: #47d08a; color: #06140d;
   border-radius: 999px; padding: 0 4px; font-weight: 800; }
 @keyframes hubBob { 0%,100% { transform: translate(-50%,-50%); } 50% { transform: translate(-50%, calc(-50% - 6px)); } }
@@ -617,6 +627,24 @@ const MAL = [
             defense: '初期パスワード変更とファーム更新、上流でのトラフィック吸収。' },
   },
 ];
+
+// キャラの声（母港idle＋カットイン）。既知者向けの元ネタ×台詞のギャップで笑い、
+// hurt(やられ台詞)は「対策の裏返し」になっており、二段オチのボヤキに再利用する。
+const MAL_VOICES = {
+  zeus: { idle: ['今日の相場はいくらだい？', '口座番号、預かっておくよ'], attack: 'その認証、いただいた！', crit: '¥¥¥ 全額 引き出し完了！', hurt: 'MFAさえ無ければ…！' },
+  iloveyou: { idle: ['ねえ、開いてくれる？💌', 'あなたに、メール届いた？'], attack: '愛を、受け取って？💌', crit: '上書き♡ ぜんぶ私色に', hurt: 'バックアップから復元…フラれた…' },
+  mydoom: { idle: ['軍団、招集なう', '君のPCも、数に入れとくね'], attack: 'ボットネット、参集！', crit: '総攻撃だあああ！', hurt: '外向き通信、塞がれた…' },
+  blaster: { idle: ['再起動まで、あと…', 'カウントダウン、好き'], attack: 'バッファ、あふれろ！', crit: 'ドッカーン！！', hurt: 'パッチ当てられた…卑怯だ' },
+  nimda: { idle: ['どの穴から入る？全部？', '経路はいくらでもある'], attack: '全方位から、いくよ', crit: 'どこもかしこも、私だ', hurt: '不要サービス、止めたな…' },
+  slammer: { idle: ['1パケットで十分', '回線、細くない？'], attack: 'ワンショット・フラッド！', crit: '世界が5分で落ちた', hurt: 'UDP1434、塞がれた…' },
+  codered: { idle: ['赤く染めてやる', 'そのWeb、書き換え希望？'], attack: 'デフェイス＆フラッド！', crit: '全ページ、私のもの', hurt: 'IISにパッチ…だと' },
+  sasser: { idle: ['再起動、無限ループ♪', 'LSASS、元気してる？'], attack: 'クラッシュ・ループ！', crit: '永遠の再起動地獄へ', hurt: 'また…パッチか…' },
+  conficker: { idle: ['我が軍団、数百万', 'ドメイン名、生成中…'], attack: 'DGA、始動', crit: '王の一撃、跪け', hurt: 'シンクホールされた…！' },
+  cryptolocker: { idle: ['鍵、返してほしい？', 'バックアップ…あるの？(にっこり)'], attack: '暗号化、開始します', crit: '身代金、お待ちしてます', hurt: 'オフラインBKとは…卑怯な' },
+  emotet: { idle: ['配達です、受け取りを', '添付、開けてくれた？'], attack: 'ローダー、配送完了', crit: '仲間、全員 招待した', hurt: 'サンドボックス…罠か' },
+  mirai: { idle: ['IoT機器、あと4億台', '君の防犯カメラ、いい子だ'], attack: 'IoT大群、突撃！', crit: '史上最大の、洪水だ', hurt: '初期パスワード、変えたな…' },
+};
+MAL.forEach(m => { m.voice = MAL_VOICES[m.id] || { idle: ['…'], attack: 'いくぞ', crit: '決まった！', hurt: 'ぐあっ…' }; });
 
 function malById(id) { return MAL.find(m => m.id === id) || null; }
 
@@ -1627,7 +1655,7 @@ function listActions(g) {
   can('breach', '🚪 スピアフィッシング' + perfSuffix(g, 'breach'), !inside, '侵害済み',
       nodeName(g.stage.path[1]) + 'を初期侵害し足場確立。 W+3');
   can('botnet', '🏴 ボットネット編入' + perfSuffix(g, 'botnet'), inside && !g.botnet, inside ? '実施済み' : '踏み台が必要',
-      '踏み台をボット化。可用性火力+10%。 W+4');
+      '踏み台をボット化。可用性火力+10%。 W+4（※あなたのスマホも、誰かの踏み台かも）');
   const hasBreaker = g.hand.some(id => (malById(id) || {}).breaker);
   activeDefenses(g).forEach(d => {
     const act = defActionable(g, d);
@@ -1764,9 +1792,10 @@ function applyAction(g, actionId) {
     warn = strikeWarn(g, primGauge(s), L);
     const w = m.waza || { name: m.name, en: '', gauge: 'C' };
     const nm = wazaName(m, L);
-    // 技名カットイン演出（攻撃名を必殺技として表示・攻撃表情のキャラつき）
+    // 技名カットイン演出（攻撃名を必殺技として表示・攻撃表情のキャラつき＋キャラの声）
     g.banner = { name: nm, en: w.en, tone: 'strike', gauge: w.gauge, crit: r.crit,
-                 defense: w.defense, sprId: id, gen: L };
+                 defense: w.defense, sprId: id, gen: L,
+                 voice: r.crit ? (m.voice && m.voice.crit) : (m.voice && m.voice.attack) };
     msg = '⚡ ' + nm + (r.crit ? ' 会心!' : '') + ' 🔵-' + Math.round(r.rc.dmg) +
           ' 🟢-' + Math.round(r.ri.dmg) + ' 🟡-' + Math.round(r.ra.dmg);
   } else if (actionId.startsWith('card:')) {
@@ -2085,6 +2114,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     el.className = 'banner ' + (b.tone || '') + (b.crit ? ' crit' : '');
     const spr = b.sprId ? '<div class="banner-spr">' + SPRITES.mal(b.sprId, { expr: 'attack', gen: b.gen || 0 }) + '</div>' : '';
     el.innerHTML = spr +
+      (b.voice ? '<div class="banner-voice">「' + b.voice + '」</div>' : '') +
       '<div class="banner-name">⚡ ' + b.name + '</div>' +
       (b.en ? '<div class="banner-en">' + b.en + '</div>' : '') +
       (b.crit ? '<div class="banner-crit">会心!</div>' : '');
@@ -2245,20 +2275,26 @@ if (typeof document !== 'undefined' && document.getElementById) {
         ' 🧬技術+' + loot.reward.tech + ' 💾リソース+' + loot.reward.res + '（ストックへ → 次の出撃で投入）</div>';
       reward += '<div class="reward">🛠️ 開発P +' + loot.devP + '（所持 ' + devP + '）— 母港バフに使える</div>';
       reward += '<div class="reward">⛏️ コインマイナー設置！「' + STAGES[selectedStage].name +
-        '」で ' + loot.minerLeft + '回の出撃までビットコイン等を採掘</div>';
+        '」で ' + loot.minerLeft + '回の出撃までビットコイン等を採掘' +
+        '<br><span class="realnote">※これ実在の"クリプトジャッキング"。あなたのCPUで勝手に採掘されてたら…？</span></div>';
       if (loot.card) reward += '<div class="reward unlock">🃏 攻撃カード・ドロップ！「' + loot.card +
         '」（図鑑 ' + unlockedCards.length + '/' + CARDS.length + '）</div>';
       if (loot.malware) reward += '<div class="reward unlock">🦠 マルウェア・ドロップ！「' + loot.malware +
         '」が仲間に（母港 ' + unlockedMal.length + '/' + MAL.length + '）</div>';
       G._loot = null;
     }
+    // 二段オチ: 攻撃側マルウェアのボヤキ（=対策の裏返し）→ 防御官のツッコミ（=学び）
+    const rep = malById(party[0]) || malById((G.hand || [])[0]);
+    const boya = win ? (rep && rep.voice && rep.voice.crit) : (rep && rep.voice && rep.voice.hurt);
+    const boyaHtml = rep && boya
+      ? '<p class="boya">' + (win ? '😈 ' : '💢 ') + rep.name + '「' + boya + '」</p>' : '';
     $('result-body').innerHTML =
       '<div class="verdict ' + (win ? 'win' : 'lose') + '">' +
         (win ? '🏆 攻略成功' : (G.result === 'lose_turn' ? '⏳ タイムオーバー' : '🚨 駆除された')) + '</div>' +
       '<div class="stat">残りCIA合計 ' + Math.round(G.db.C + G.db.I + G.db.A) +
         ' ／ 使用 ' + (G.turn) + 'T ／ 警戒度 ' + G.warning + '</div>' +
       reward +
-      '<div class="debrief"><b>防御官の総評</b><p>' + debrief(G) + '</p></div>';
+      '<div class="debrief">' + boyaHtml + '<b>👮 防御官のツッコミ</b><p>' + debrief(G) + '</p></div>';
   }
 
   let equipped = []; // 装備中の攻撃手法カード（最大3）
@@ -2279,7 +2315,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     { key: 'info', name: '諜報ネットワーク', icon: '📡', max: 3, cost: [2, 3, 4], effect: '出撃時の初期情報 +10 / Lv' },
     { key: 'tech', name: '開発ラボ', icon: '🧬', max: 3, cost: [2, 3, 4], effect: '出撃時の初期技術 +5 / Lv' },
     { key: 'crit', name: '精密解析', icon: '🎯', max: 3, cost: [3, 4, 5], effect: '会心率 +5% / Lv' },
-    { key: 'stealth', name: '低ノイズ実装', icon: '🥷', max: 3, cost: [3, 4, 5], effect: '潜伏の上限 +5 / Lv（見つかりにくく）' },
+    { key: 'stealth', name: '低ノイズ実装', icon: '🥷', max: 3, cost: [3, 4, 5], effect: '潜伏の上限 +5 / Lv ＝ 実際のAPTが最も金と時間をかける"検知回避"' },
     { key: 'scan', name: '自動偵察ツール', icon: '🔎', max: 2, cost: [3, 5], effect: '脆弱性スキャンの情報コスト -2 / Lv' },
   ];
   let portBuffs = loadJSON('malcore.port', {});
@@ -2553,7 +2589,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const tg = pop.querySelector('.hub-pop-toggle');
     if (tg) tg.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); toggleParty(id); renderHome(); showHubInfo(id); });
   }
-  // 表情差分（母港でころころ変わる／タップで反応）
+  // 表情差分（母港でころころ変わる／タップで反応）＋セリフ吹き出し
   const HUB_EXPR = ['happy', 'surprised', 'angry'];
   let hubIdleTimer = null;
   function setHubExpr(el, expr, ms) {
@@ -2570,6 +2606,18 @@ if (typeof document !== 'undefined' && document.getElementById) {
       el.classList.remove('reacting');
     }, ms || 1000);
   }
+  function hubSay(el, ms) {
+    if (!el || !el.isConnected) return;
+    const m = malById(el.dataset.hubmal); const v = m && m.voice;
+    const line = v && v.idle && v.idle.length ? v.idle[Math.floor(Math.random() * v.idle.length)] : null;
+    if (!line) return;
+    let bub = el.querySelector('.hub-bubble');
+    if (!bub) { bub = document.createElement('span'); bub.className = 'hub-bubble'; el.appendChild(bub); }
+    bub.textContent = line;
+    bub.classList.remove('show'); void bub.offsetWidth; bub.classList.add('show');
+    clearTimeout(el._sayT);
+    el._sayT = setTimeout(() => { if (bub && bub.isConnected) bub.classList.remove('show'); }, ms || 1700);
+  }
   function startHubIdle() {
     stopHubIdle();
     hubIdleTimer = setInterval(() => {
@@ -2577,7 +2625,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
       if (!home || !home.classList.contains('active')) return;
       const els = home.querySelectorAll('.hub-mal');
       if (!els.length) return;
-      setHubExpr(els[Math.floor(Math.random() * els.length)], HUB_EXPR[Math.floor(Math.random() * HUB_EXPR.length)], 1100);
+      const el = els[Math.floor(Math.random() * els.length)];
+      setHubExpr(el, HUB_EXPR[Math.floor(Math.random() * HUB_EXPR.length)], 1100);
+      if (Math.random() < 0.6) hubSay(el); // ときどき一言つぶやく
     }, 1500);
   }
   function stopHubIdle() { if (hubIdleTimer) { clearInterval(hubIdleTimer); hubIdleTimer = null; } }
@@ -2629,6 +2679,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       b.addEventListener('click', () => {
         Sound.unlock(); Sound.play('select');
         setHubExpr(b, HUB_EXPR[Math.floor(Math.random() * HUB_EXPR.length)], 950); // タップで驚き/喜び/怒り
+        hubSay(b); // 一言しゃべる
         showHubInfo(b.dataset.hubmal);
       }));
     const hs = $('home-sortie');

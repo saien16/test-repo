@@ -273,7 +273,7 @@ function listActions(g) {
   can('breach', '🚪 スピアフィッシング' + perfSuffix(g, 'breach'), !inside, '侵害済み',
       nodeName(g.stage.path[1]) + 'を初期侵害し足場確立。 W+3');
   can('botnet', '🏴 ボットネット編入' + perfSuffix(g, 'botnet'), inside && !g.botnet, inside ? '実施済み' : '踏み台が必要',
-      '踏み台をボット化。可用性火力+10%。 W+4');
+      '踏み台をボット化。可用性火力+10%。 W+4（※あなたのスマホも、誰かの踏み台かも）');
   const hasBreaker = g.hand.some(id => (malById(id) || {}).breaker);
   activeDefenses(g).forEach(d => {
     const act = defActionable(g, d);
@@ -410,9 +410,10 @@ function applyAction(g, actionId) {
     warn = strikeWarn(g, primGauge(s), L);
     const w = m.waza || { name: m.name, en: '', gauge: 'C' };
     const nm = wazaName(m, L);
-    // 技名カットイン演出（攻撃名を必殺技として表示・攻撃表情のキャラつき）
+    // 技名カットイン演出（攻撃名を必殺技として表示・攻撃表情のキャラつき＋キャラの声）
     g.banner = { name: nm, en: w.en, tone: 'strike', gauge: w.gauge, crit: r.crit,
-                 defense: w.defense, sprId: id, gen: L };
+                 defense: w.defense, sprId: id, gen: L,
+                 voice: r.crit ? (m.voice && m.voice.crit) : (m.voice && m.voice.attack) };
     msg = '⚡ ' + nm + (r.crit ? ' 会心!' : '') + ' 🔵-' + Math.round(r.rc.dmg) +
           ' 🟢-' + Math.round(r.ri.dmg) + ' 🟡-' + Math.round(r.ra.dmg);
   } else if (actionId.startsWith('card:')) {
@@ -731,6 +732,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     el.className = 'banner ' + (b.tone || '') + (b.crit ? ' crit' : '');
     const spr = b.sprId ? '<div class="banner-spr">' + SPRITES.mal(b.sprId, { expr: 'attack', gen: b.gen || 0 }) + '</div>' : '';
     el.innerHTML = spr +
+      (b.voice ? '<div class="banner-voice">「' + b.voice + '」</div>' : '') +
       '<div class="banner-name">⚡ ' + b.name + '</div>' +
       (b.en ? '<div class="banner-en">' + b.en + '</div>' : '') +
       (b.crit ? '<div class="banner-crit">会心!</div>' : '');
@@ -891,20 +893,26 @@ if (typeof document !== 'undefined' && document.getElementById) {
         ' 🧬技術+' + loot.reward.tech + ' 💾リソース+' + loot.reward.res + '（ストックへ → 次の出撃で投入）</div>';
       reward += '<div class="reward">🛠️ 開発P +' + loot.devP + '（所持 ' + devP + '）— 母港バフに使える</div>';
       reward += '<div class="reward">⛏️ コインマイナー設置！「' + STAGES[selectedStage].name +
-        '」で ' + loot.minerLeft + '回の出撃までビットコイン等を採掘</div>';
+        '」で ' + loot.minerLeft + '回の出撃までビットコイン等を採掘' +
+        '<br><span class="realnote">※これ実在の"クリプトジャッキング"。あなたのCPUで勝手に採掘されてたら…？</span></div>';
       if (loot.card) reward += '<div class="reward unlock">🃏 攻撃カード・ドロップ！「' + loot.card +
         '」（図鑑 ' + unlockedCards.length + '/' + CARDS.length + '）</div>';
       if (loot.malware) reward += '<div class="reward unlock">🦠 マルウェア・ドロップ！「' + loot.malware +
         '」が仲間に（母港 ' + unlockedMal.length + '/' + MAL.length + '）</div>';
       G._loot = null;
     }
+    // 二段オチ: 攻撃側マルウェアのボヤキ（=対策の裏返し）→ 防御官のツッコミ（=学び）
+    const rep = malById(party[0]) || malById((G.hand || [])[0]);
+    const boya = win ? (rep && rep.voice && rep.voice.crit) : (rep && rep.voice && rep.voice.hurt);
+    const boyaHtml = rep && boya
+      ? '<p class="boya">' + (win ? '😈 ' : '💢 ') + rep.name + '「' + boya + '」</p>' : '';
     $('result-body').innerHTML =
       '<div class="verdict ' + (win ? 'win' : 'lose') + '">' +
         (win ? '🏆 攻略成功' : (G.result === 'lose_turn' ? '⏳ タイムオーバー' : '🚨 駆除された')) + '</div>' +
       '<div class="stat">残りCIA合計 ' + Math.round(G.db.C + G.db.I + G.db.A) +
         ' ／ 使用 ' + (G.turn) + 'T ／ 警戒度 ' + G.warning + '</div>' +
       reward +
-      '<div class="debrief"><b>防御官の総評</b><p>' + debrief(G) + '</p></div>';
+      '<div class="debrief">' + boyaHtml + '<b>👮 防御官のツッコミ</b><p>' + debrief(G) + '</p></div>';
   }
 
   let equipped = []; // 装備中の攻撃手法カード（最大3）
@@ -925,7 +933,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     { key: 'info', name: '諜報ネットワーク', icon: '📡', max: 3, cost: [2, 3, 4], effect: '出撃時の初期情報 +10 / Lv' },
     { key: 'tech', name: '開発ラボ', icon: '🧬', max: 3, cost: [2, 3, 4], effect: '出撃時の初期技術 +5 / Lv' },
     { key: 'crit', name: '精密解析', icon: '🎯', max: 3, cost: [3, 4, 5], effect: '会心率 +5% / Lv' },
-    { key: 'stealth', name: '低ノイズ実装', icon: '🥷', max: 3, cost: [3, 4, 5], effect: '潜伏の上限 +5 / Lv（見つかりにくく）' },
+    { key: 'stealth', name: '低ノイズ実装', icon: '🥷', max: 3, cost: [3, 4, 5], effect: '潜伏の上限 +5 / Lv ＝ 実際のAPTが最も金と時間をかける"検知回避"' },
     { key: 'scan', name: '自動偵察ツール', icon: '🔎', max: 2, cost: [3, 5], effect: '脆弱性スキャンの情報コスト -2 / Lv' },
   ];
   let portBuffs = loadJSON('malcore.port', {});
@@ -1199,7 +1207,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const tg = pop.querySelector('.hub-pop-toggle');
     if (tg) tg.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); toggleParty(id); renderHome(); showHubInfo(id); });
   }
-  // 表情差分（母港でころころ変わる／タップで反応）
+  // 表情差分（母港でころころ変わる／タップで反応）＋セリフ吹き出し
   const HUB_EXPR = ['happy', 'surprised', 'angry'];
   let hubIdleTimer = null;
   function setHubExpr(el, expr, ms) {
@@ -1216,6 +1224,18 @@ if (typeof document !== 'undefined' && document.getElementById) {
       el.classList.remove('reacting');
     }, ms || 1000);
   }
+  function hubSay(el, ms) {
+    if (!el || !el.isConnected) return;
+    const m = malById(el.dataset.hubmal); const v = m && m.voice;
+    const line = v && v.idle && v.idle.length ? v.idle[Math.floor(Math.random() * v.idle.length)] : null;
+    if (!line) return;
+    let bub = el.querySelector('.hub-bubble');
+    if (!bub) { bub = document.createElement('span'); bub.className = 'hub-bubble'; el.appendChild(bub); }
+    bub.textContent = line;
+    bub.classList.remove('show'); void bub.offsetWidth; bub.classList.add('show');
+    clearTimeout(el._sayT);
+    el._sayT = setTimeout(() => { if (bub && bub.isConnected) bub.classList.remove('show'); }, ms || 1700);
+  }
   function startHubIdle() {
     stopHubIdle();
     hubIdleTimer = setInterval(() => {
@@ -1223,7 +1243,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
       if (!home || !home.classList.contains('active')) return;
       const els = home.querySelectorAll('.hub-mal');
       if (!els.length) return;
-      setHubExpr(els[Math.floor(Math.random() * els.length)], HUB_EXPR[Math.floor(Math.random() * HUB_EXPR.length)], 1100);
+      const el = els[Math.floor(Math.random() * els.length)];
+      setHubExpr(el, HUB_EXPR[Math.floor(Math.random() * HUB_EXPR.length)], 1100);
+      if (Math.random() < 0.6) hubSay(el); // ときどき一言つぶやく
     }, 1500);
   }
   function stopHubIdle() { if (hubIdleTimer) { clearInterval(hubIdleTimer); hubIdleTimer = null; } }
@@ -1275,6 +1297,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       b.addEventListener('click', () => {
         Sound.unlock(); Sound.play('select');
         setHubExpr(b, HUB_EXPR[Math.floor(Math.random() * HUB_EXPR.length)], 950); // タップで驚き/喜び/怒り
+        hubSay(b); // 一言しゃべる
         showHubInfo(b.dataset.hubmal);
       }));
     const hs = $('home-sortie');
