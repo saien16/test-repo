@@ -733,6 +733,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
   let selectedStage = 0;
   let briefTab = 'party';   // ブリーフィングのサブタブ: 'party'|'equip'
   let actTab = null;        // バトルの行動カテゴリ: intrude|pivot|support|strike|card（nullで自動選択）
+  let codexTab = 'mal';     // 図鑑タブ: 'mal'|'card'
+  let codexGauge = 'all';   // 図鑑ゲージ絞り込み: all|C|I|A
+  let codexOwned = false;   // 図鑑: 所持のみ（カード用）
 
   // 世代進化の永続状態（localStorage、無ければデモ用に開発P=4で開始）
   let levels = loadJSON('malcore.levels', {});
@@ -821,7 +824,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function renderBriefing() {
     const stage = STAGES[selectedStage];
     $('briefing-title').textContent = '作戦: ' + stage.name;
-    const handHtml = ROSTER.map(id => {
+    // 1体分のカードHTML
+    const malCard = (id) => {
       const m = malById(id);
       const L = levels[id] || 0;
       const s = MALCORE.malStats(m, L);
@@ -840,7 +844,16 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<div class="card-role">' + m.role + ' / ' + m.sub + '</div>' +
         (m.waza ? '<div class="card-waza">⚡ ' + MALCORE.wazaName(m, L) + '</div>' : '') +
         partyBtn + evoBtn + '</div>';
-    }).join('');
+    };
+    // アーキタイプ別にグルーピング（12体以上でも役割で探せる）
+    const ARCH_ORDER = ['機密特化', '完全DoT', '可用DoS', '装置破壊', '横展開', 'バフ支援', '貫通'];
+    const byArch = {};
+    ROSTER.forEach(id => { const a = (malById(id) || {}).archetype || 'その他'; (byArch[a] = byArch[a] || []).push(id); });
+    const archKeys = ARCH_ORDER.filter(a => byArch[a]).concat(Object.keys(byArch).filter(a => ARCH_ORDER.indexOf(a) < 0));
+    const handHtml = archKeys.map(a =>
+      '<h3 class="arch-h">' + a + ' <small>' + byArch[a].length + '</small></h3>' +
+      '<div class="cards">' + byArch[a].map(malCard).join('') + '</div>'
+    ).join('');
     // 装備技カードの選択（入手済みのみ装備可。未入手は🔒）
     equipped = equipped.filter(isUnlocked); // 念のため未所持を除外
     const ownIcon = (c) => (c.icon && SPRITES.card(c.icon)) ? '<span class="equip-spr">' + SPRITES.card(c.icon) + '</span>' : '🃏 ';
@@ -859,7 +872,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       ? '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3 ・ 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</small></h2>' +
         '<div class="equips">' + equipHtml + '</div>'
       : '<h2 class="sub">編成（出撃 ' + party.length + '/3）<small>🛠️ 開発P ' + devP + '</small></h2>' +
-        '<div class="cards">' + handHtml + '</div>';
+        handHtml;
     $('briefing-body').innerHTML =
       '<p class="intro">' + stage.intro + '</p>' + tabs + body;
     $('briefing-body').querySelectorAll('.brieftab').forEach(b =>
@@ -883,21 +896,53 @@ if (typeof document !== 'undefined' && document.getElementById) {
     else if (equipped.length < 3) equipped.push(id);
   }
 
-  // 図鑑（全カードを英名・型・世代・対策つきで一覧）
+  // 図鑑（マルウェア／攻撃カード。タブ＋ゲージ/所持フィルタで50+件でも探せる）
   function renderCodex() {
-    const groups = [['C', '🔵 機密性'], ['I', '🟢 完全性'], ['A', '🟡 可用性']];
-    const html = groups.map(([g, title]) => {
-      const items = CARDS.filter(c => c.gauge === g).map(c =>
-        '<div class="codex-card"><div class="cc-top"><b>' +
-        (c.icon && SPRITES.card(c.icon) ? '<span class="cc-spr">' + SPRITES.card(c.icon) + '</span>' : '⚡ ') + c.name + '</b>' +
-        '<span class="cc-gen">' + (isUnlocked(c.id) ? '<span class="cc-own">✓所持</span> ' : '<span class="cc-lock">🔒未入手</span> ') + '世代' + c.gen + '</span></div>' +
-        '<div class="cc-en">' + c.en + ' ・ ' + c.type + ' ・ ' + c.tactic + '</div>' +
+    const GB = { C: '🔵', I: '🟢', A: '🟡' };
+    const tabRow = '<div class="brieftabs">' +
+      '<button class="brieftab' + (codexTab === 'mal' ? ' on' : '') + '" data-cxtab="mal">🦠 マルウェア ' + MAL.length + '</button>' +
+      '<button class="brieftab' + (codexTab === 'card' ? ' on' : '') + '" data-cxtab="card">🃏 攻撃カード ' + CARDS.length + '</button></div>';
+    const gChip = (g, lbl) => '<button class="cxchip' + (codexGauge === g ? ' on' : '') + '" data-cxg="' + g + '">' + lbl + '</button>';
+    let filterRow = '<div class="cxfilter">' + gChip('all', 'すべて') + gChip('C', '🔵C') + gChip('I', '🟢I') + gChip('A', '🟡A');
+    if (codexTab === 'card') filterRow += '<button class="cxchip owned' + (codexOwned ? ' on' : '') + '" data-cxowned="1">✓ 所持のみ</button>';
+    filterRow += '</div>';
+
+    let entries;
+    if (codexTab === 'mal') {
+      const list = MAL.filter(m => codexGauge === 'all' || (m.waza && m.waza.gauge === codexGauge));
+      entries = list.map(m => {
+        const s = MALCORE.malStats(m, 0);
+        return '<div class="cxentry mal"><div class="cx-top">' +
+          '<span class="cx-spr">' + SPRITES.mal(m.id, { gen: 0 }) + '</span>' +
+          '<span class="cx-name"><b>' + m.name + '</b><span class="cx-meta">世代' + m.gen + ' / ' + m.year + '</span></span>' +
+          '<span class="cx-arch">' + (m.archetype || '') + '</span></div>' +
+          '<div class="cx-cia">🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</div>' +
+          (m.waza ? '<div class="cx-waza">⚡ ' + m.waza.name.replace(/！+$/, '') + '</div>' : '') +
+          '<div class="cc-desc">' + m.desc + '</div>' +
+          (m.waza && m.waza.defense ? '<div class="cc-def">🛡️ ' + m.waza.defense + '</div>' : '') + '</div>';
+      }).join('');
+    } else {
+      let list = CARDS.filter(c => codexGauge === 'all' || c.gauge === codexGauge);
+      if (codexOwned) list = list.filter(c => isUnlocked(c.id));
+      entries = list.map(c =>
+        '<div class="cxentry card"><div class="cx-top">' +
+        '<span class="cx-spr">' + (c.icon && SPRITES.card(c.icon) ? SPRITES.card(c.icon) : GB[c.gauge] || '⚡') + '</span>' +
+        '<span class="cx-name"><b>' + c.name + '</b><span class="cx-meta">' +
+        (isUnlocked(c.id) ? '<span class="cc-own">✓所持</span>' : '<span class="cc-lock">🔒未入手</span>') + ' 世代' + c.gen + '</span></span></div>' +
+        '<div class="cx-cia">' + gaugeMark(c) + '</div>' +
+        '<div class="cx-en">' + c.en + ' ・ ' + c.tactic + '</div>' +
         '<div class="cc-desc">' + c.desc + '</div>' +
         '<div class="cc-def">🛡️ ' + c.defense + '</div></div>'
       ).join('');
-      return '<h2 class="sub">' + title + '</h2>' + items;
-    }).join('');
-    $('codex-body').innerHTML = html;
+    }
+    $('codex-body').innerHTML = tabRow + filterRow +
+      (entries ? '<div class="cxgrid">' + entries + '</div>' : '<p class="intro">該当なし</p>');
+    $('codex-body').querySelectorAll('.brieftab').forEach(b =>
+      b.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); codexTab = b.dataset.cxtab; renderCodex(); }));
+    $('codex-body').querySelectorAll('.cxchip[data-cxg]').forEach(b =>
+      b.addEventListener('click', () => { Sound.play('select'); codexGauge = b.dataset.cxg; renderCodex(); }));
+    const ob = $('codex-body').querySelector('.cxchip[data-cxowned]');
+    if (ob) ob.addEventListener('click', () => { Sound.play('select'); codexOwned = !codexOwned; renderCodex(); });
   }
 
   function initUI() {

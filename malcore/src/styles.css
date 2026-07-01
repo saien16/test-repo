@@ -8,7 +8,8 @@ body {
   font-size: 15px; line-height: 1.5;
 }
 #app { max-width: 480px; margin: 0 auto; min-height: 100%; position: relative; }
-.screen { display: none; padding: 16px; min-height: 100vh; }
+.screen { display: none; padding: 16px; min-height: 100vh; min-height: 100dvh; /* iOS Safari: 動的ツールバー対応 */
+  padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
 .screen.active { display: block; }
 .screen-title { font-size: 20px; color: #6fe3a6; border-left: 4px solid #2f9e63; padding-left: 10px; margin: 6px 0 14px; }
 
@@ -277,6 +278,34 @@ body {
 .cc-en { font-size: 11px; color: #7fd0ff; margin: 3px 0; }
 .cc-desc { font-size: 12px; color: #cfe9d8; }
 .cc-def { font-size: 12px; color: #9fe7c1; margin-top: 4px; background: #0c1512; border-radius: 6px; padding: 5px 7px; }
+
+/* 図鑑 タブ＋フィルタ＋グリッド */
+.cxfilter { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.cxchip { padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: #101c17; border: 1px solid #274238; color: #9fc7b4; cursor: pointer; touch-action: manipulation; }
+.cxchip.on { background: #1c3a2c; border-color: #47d08a; color: #d6ffe8; }
+.cxchip.owned { margin-left: auto; border-color: #2f4f6a; color: #bfe0ff; }
+.cxchip.owned.on { background: #163a4a; border-color: #47b6d0; color: #d6f4ff; }
+.cxgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cxentry { background: #0f1620; border: 1px solid #243447; border-radius: 10px; padding: 9px; }
+.cxentry.mal { border-color: #2a4a3a; }
+.cx-top { display: flex; align-items: center; gap: 7px; }
+.cx-spr { width: 30px; height: 30px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
+.cx-spr svg { width: 30px; height: 30px; }
+.cx-name { display: flex; flex-direction: column; min-width: 0; }
+.cx-name b { font-size: 12px; line-height: 1.2; }
+.cx-meta { font-size: 10px; color: #8fb6a3; }
+.cx-arch { margin-left: auto; flex: none; font-size: 10px; font-weight: 800; color: #9fe0c4; background: #12241c; border: 1px solid #2a4a3a; border-radius: 999px; padding: 2px 7px; }
+.cx-cia { font-size: 12px; margin: 5px 0 2px; }
+.cx-waza { font-size: 11px; color: #ffd34a; }
+.cx-en { font-size: 10px; color: #7fb89c; margin-bottom: 3px; }
+.cxentry .cc-desc { font-size: 11px; }
+.cxentry .cc-def { font-size: 11px; }
+@media (max-width: 360px) { .cxgrid { grid-template-columns: 1fr; } }
+
+/* 編成のアーキタイプ見出し */
+.arch-h { font-size: 12px; color: #9fe0c4; margin: 12px 0 4px; font-weight: 800; }
+.arch-h small { color: #7fb89c; font-weight: 600; margin-left: 4px; }
 
 /* ログ */
 .logbox { background: #080d0b; border: 1px solid #1a2620; border-radius: 10px; padding: 8px; font-size: 11px; color: #9fcbb3; max-height: 130px; overflow: auto; }

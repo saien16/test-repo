@@ -268,5 +268,29 @@ const gpe = M.createGame(M.STAGE, [], { iloveyou: 1 }, ['zeus', 'iloveyou', 'myd
 const breachLabel = M.listActions(gpe).find(a => a.id === 'breach').label;
 assert(/ILOVEYOU改/.test(breachLabel), '初期侵害に侵入ロールのILOVEYOU改が反映される（' + breachLabel + '）');
 
+// 23) コンテンツ倫理lint（商用/ストア/B2Bのゲート）: 実行可能な悪用情報を含めない＆対策必須
+console.log('シナリオ23: コンテンツ倫理lint（抽象化契約）');
+{
+  const MALS = sandbox.MAL, CARDSL = sandbox.CARDS || M.CARDS;
+  // 危険パターン: CVE番号 / IPv4 / コピペ可能なコマンド。実マルウェア名(Zeus等)は歴史的アーキタイプとして許容。
+  const DANGER = [
+    { re: /CVE-\d{4}-\d{3,}/i, name: '実CVE番号' },
+    { re: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/, name: '実IPアドレス' },
+    { re: /https?:\/\/\S+/i, name: '外部URL' },
+    { re: /(rm\s+-rf|curl\s+-|wget\s+http|powershell\s|cmd\.exe|\/bin\/sh|base64\s+-d|nc\s+-[a-z])/i, name: '実行可能コマンド' },
+  ];
+  const scan = (label, obj, fields) => {
+    const text = fields.map(f => f.split('.').reduce((o, k) => (o || {})[k], obj)).filter(Boolean).join(' ／ ');
+    DANGER.forEach(d => assert(!d.re.test(text), label + ' に' + d.name + 'が無い（抽象化契約）'));
+  };
+  // 全マルウェア: waza.defense 必須＋危険文言なし
+  assert(MALS.every(m => m.waza && m.waza.defense && m.waza.defense.length > 3), '全マルウェアに対策(waza.defense)がある');
+  MALS.forEach(m => scan('マルウェア「' + m.name + '」', m, ['name', 'desc', 'waza.name', 'waza.defense']));
+  // 全カード: defense 必須＋危険文言なし
+  assert(CARDSL.every(c => c.defense && c.defense.length > 3), '全カードに対策(defense)がある');
+  CARDSL.forEach(c => scan('カード「' + c.name + '」', c, ['name', 'desc', 'defense']));
+  assert(true, 'コンテンツlint完了（' + MALS.length + 'ユニット / ' + CARDSL.length + 'カード）');
+}
+
 console.log(fails === 0 ? '\n✅ すべて通過' : `\n❌ ${fails}件 失敗`);
 process.exit(fails === 0 ? 0 : 1);
