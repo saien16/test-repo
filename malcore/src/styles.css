@@ -322,3 +322,36 @@ body {
 .debrief b { color: #7fd0ff; }
 .debrief p { margin: 6px 0 0; font-size: 13px; }
 .result-btns { margin-top: 18px; }
+
+/* 下部タブバー（母港/図鑑/開発/出撃） */
+.screen.hub { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: flex; max-width: 480px; margin: 0 auto;
+  background: #0c1512; border-top: 1px solid #1f3a30; padding-bottom: env(safe-area-inset-bottom); }
+.tabbar[hidden] { display: none; }
+.tabbar-btn { flex: 1; background: none; border: none; color: #7fb89c; font-size: 20px; padding: 9px 0 7px;
+  cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; touch-action: manipulation; }
+.tabbar-btn span { font-size: 10px; }
+.tabbar-btn.on { color: #7CFFB2; }
+.tabbar-btn:active { transform: translateY(1px); }
+
+/* 母港ハブ */
+.home-card { background: #0f1b18; border: 1px solid #1f3a30; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+.home-party { display: flex; gap: 14px; justify-content: center; margin: 8px 0; }
+.home-unit { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.home-unit svg { width: 46px; height: 46px; }
+.home-unit small { font-size: 10px; color: #aef0c9; }
+.home-meta { font-size: 12px; color: #9fb3c2; margin: 6px 0 0; }
+.home-meta b { color: #7CFFB2; }
+
+/* 開発（母港バフ） */
+.dev-list { display: flex; flex-direction: column; gap: 8px; }
+.dev-row { display: flex; align-items: center; gap: 10px; background: #0f1b18; border: 1px solid #1f3a30; border-radius: 10px; padding: 10px; }
+.dev-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dev-info b { font-size: 13px; }
+.dev-info small { font-size: 11px; color: #8fb6a3; }
+.dev-pips { display: flex; gap: 4px; margin-top: 4px; }
+.pip { width: 10px; height: 10px; border-radius: 50%; background: #16241c; border: 1px solid #2f9e63; }
+.pip.on { background: #47d08a; }
+.dev-buy { flex: none; padding: 9px 12px; border-radius: 8px; background: #1c3a2c; border: 1px solid #47d08a;
+  color: #d6ffe8; font-weight: 700; font-size: 12px; cursor: pointer; touch-action: manipulation; }
+.dev-buy:disabled { opacity: .5; cursor: not-allowed; }

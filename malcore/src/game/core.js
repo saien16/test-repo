@@ -8,16 +8,18 @@ let _rng = Math.random;
 function setRng(fn) { _rng = fn; }
 
 /* ===== ゲーム状態生成 ===== */
-function createGame(stage, equipped, levels, party) {
+function createGame(stage, equipped, levels, party, buffs) {
   const db = stage.nodes.db;
   const footholds = {};
+  buffs = buffs || {}; // 母港バフ（メタ進行）: info/tech/crit/stealth/scan の各レベル
   stage.path.forEach((n, i) => { footholds[n] = (i === 0); }); // 外部のみ最初から到達
   return {
     stage,
     turn: 1,
     maxTurn: stage.turnLimit,
     warning: 0,
-    res: { info: 40, tech: 20, res: 20 }, // 初期資源
+    buffs: buffs,
+    res: { info: 40 + (buffs.info || 0) * 10, tech: 20 + (buffs.tech || 0) * 5, res: 20 }, // 初期資源（母港バフで底上げ）
     hand: (party && party.length ? party.slice(0, 3) : ['zeus', 'iloveyou', 'mydoom', 'blaster']),
     levels: levels || {},               // 世代進化レベル（id→0..2）
     equipped: (equipped || []).slice(0, 3), // 装備した攻撃手法カード（最大3）
@@ -202,7 +204,9 @@ function defenseIntro(g) {
 /* ===== 隠密（低発覚度の報酬）＆ ブルーチーム活動 ===== */
 const STEALTH_MAX = 30;   // 発覚度がこれ未満なら「潜伏中」＝奇襲ボーナス
 const STEALTH_MUL = 1.30; // 潜伏中の攻撃は刺さる（見つかっていない＝防御が身構えていない）
-function isStealth(g) { return g.warning < STEALTH_MAX; }
+function stealthMax(g) { return STEALTH_MAX + ((g.buffs && g.buffs.stealth) || 0) * 5; } // 母港バフで潜伏枠拡張
+function isStealth(g) { return g.warning < stealthMax(g); }
+function scanCost(g) { return Math.max(0, 6 - ((g.buffs && g.buffs.scan) || 0) * 2); } // 母港バフでスキャン費用減
 // ブルーチームが動く間隔。発覚度がalert未満なら動かない（潜伏が報われる）。高いほど頻繁。
 function blueInterval(g) {
   const b = g.stage.blue || { alert: 40, react: 1.0 };
@@ -217,7 +221,7 @@ function gaugeDamage(g, base, gauge, opt) {
   const V = effV(g);
   const mit = gaugeMit(g, gauge, opt.ignoreH); // ゼロデイ等はハードニング無視
   const hit = 0.6 + (V / 100) * 0.8;
-  const crit = _rng() < V / 100 ? 1.5 : 1.0;
+  const crit = _rng() < (V / 100 + ((g.buffs && g.buffs.crit) || 0) * 0.05) ? 1.5 : 1.0; // 母港バフで会心率+
   const stealth = isStealth(g) ? STEALTH_MUL : 1.0; // 潜伏中の奇襲ボーナス
   return { dmg: base * (1 - mit) * hit * crit * stealth, crit: crit > 1 };
 }
@@ -277,9 +281,10 @@ function listActions(g) {
       // NW機器(FW/WAF): 脆弱性スキャン→エクスプロイト or 貫通で侵攻（横展開連打の解消）
       const b = nodeName(d.between[1]);
       const found = g.gateScan[d.id];
-      can('scan:' + d.id, '🔎 脆弱性スキャン: ' + d.name, act && canAfford(g, { info: 6 }),
-          act ? '情報6が必要' : '手前に到達が必要',
-          (found ? '再スキャンで別の脆弱性を探す' : d.name + 'の弱点を探る（何が出るかは運）') + ' 情報6 / W+2');
+      const sc = scanCost(g);
+      can('scan:' + d.id, '🔎 脆弱性スキャン: ' + d.name, act && canAfford(g, { info: sc }),
+          act ? '情報' + sc + 'が必要' : '手前に到達が必要',
+          (found ? '再スキャンで別の脆弱性を探す' : d.name + 'の弱点を探る（何が出るかは運）') + ' 情報' + sc + ' / W+2');
       if (found) {
         const v = GATE_VULNS[found];
         can('exploit:' + d.id, v.icon + ' ' + v.name + ' → ' + b, act, '手前に到達が必要', v.hint);
@@ -365,7 +370,7 @@ function applyAction(g, actionId) {
     msg = '⚡ ' + flashMsg(g.flash) + ': ' + d.name + 'を破壊。本命防御↓だが発覚度が跳ね上がった';
   } else if (actionId.startsWith('scan:')) {
     const d = g.defenses.find(x => x.id === actionId.slice(5));
-    payCost(g, { info: 6 });
+    payCost(g, { info: scanCost(g) });
     const vid = rollVuln(); g.gateScan[d.id] = vid;
     const v = GATE_VULNS[vid]; warn = 2;
     g.flash = { name: ACT_TECH.scan.name + ': ' + v.name + ' 発見', en: v.en, by: null };
@@ -502,9 +507,15 @@ if (typeof document !== 'undefined' && document.getElementById) {
   let G = null;
 
   const $ = (id) => document.getElementById(id);
+  const HUB_SCREENS = ['home-screen', 'codex-screen', 'develop-screen', 'stage-screen'];
   const show = (id) => {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     $(id).classList.add('active');
+    const tb = $('tabbar'); // 母港系の画面でだけ下部タブバーを出す
+    if (tb) {
+      tb.hidden = HUB_SCREENS.indexOf(id) < 0;
+      tb.querySelectorAll('.tabbar-btn').forEach(b => b.classList.toggle('on', b.dataset.tab === id));
+    }
   };
 
   // val=最新値 / from=前回表示値（省略時は val=アニメ無し）。前回値から現在値へバー幅と数値をトゥイーン。
@@ -820,6 +831,15 @@ if (typeof document !== 'undefined' && document.getElementById) {
   // 世代進化の永続状態（localStorage、無ければデモ用に開発P=4で開始）
   let levels = loadJSON('malcore.levels', {});
   let devP = loadJSON('malcore.devP', 4);
+  // 母港バフ（恒久メタ進行。開発Pの使い道。出撃時に効果を発揮）
+  const PORT_BUFFS = [
+    { key: 'info', name: '諜報ネットワーク', icon: '📡', max: 3, cost: [2, 3, 4], effect: '出撃時の初期情報 +10 / Lv' },
+    { key: 'tech', name: '開発ラボ', icon: '🧬', max: 3, cost: [2, 3, 4], effect: '出撃時の初期技術 +5 / Lv' },
+    { key: 'crit', name: '精密解析', icon: '🎯', max: 3, cost: [3, 4, 5], effect: '会心率 +5% / Lv' },
+    { key: 'stealth', name: '低ノイズ実装', icon: '🥷', max: 3, cost: [3, 4, 5], effect: '潜伏の上限 +5 / Lv（見つかりにくく）' },
+    { key: 'scan', name: '自動偵察ツール', icon: '🔎', max: 2, cost: [3, 5], effect: '脆弱性スキャンの情報コスト -2 / Lv' },
+  ];
+  let portBuffs = loadJSON('malcore.port', {});
   // 入手済み技カード（初期は基本3枚。勝利で増える＝収集ループ）
   let unlockedCards = loadJSON('malcore.cards', ['sqli', 'slowloris', 'csrf']);
   function isUnlocked(id) { return unlockedCards.indexOf(id) >= 0; }
@@ -858,7 +878,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
   function startGame() {
-    G = createGame(STAGES[selectedStage], equipped, levels, party);
+    G = createGame(STAGES[selectedStage], equipped, levels, party, portBuffs);
     actTab = null; // カテゴリタブを初期化（自動で侵入から）
     Sound.bgm(); show('battle-screen'); renderBattle();
     playDefenseIntro(defenseIntro(G)); // 敵の防御を開幕カットインで提示（多いほど手強い印象）
@@ -1025,6 +1045,52 @@ if (typeof document !== 'undefined' && document.getElementById) {
     if (ob) ob.addEventListener('click', () => { Sound.play('select'); codexOwned = !codexOwned; renderCodex(); });
   }
 
+  // 母港ハブ: 編成サマリ＋進捗＋母港バフ
+  function renderHome() {
+    const partyHtml = party.map(id => {
+      const m = malById(id); const L = levels[id] || 0;
+      return '<span class="home-unit">' + SPRITES.mal(id, { gen: L }) +
+        '<small>' + m.name + (['', '改', '改弐'][L] || '') + '</small></span>';
+    }).join('');
+    const owned = PORT_BUFFS.filter(b => (portBuffs[b.key] || 0) > 0);
+    const buffLine = owned.length ? owned.map(b => b.icon + b.name + ' Lv' + portBuffs[b.key]).join(' ／ ') : 'なし（開発で強化）';
+    $('home-body').innerHTML =
+      '<div class="home-card"><h2 class="sub">現在の編成</h2><div class="home-party">' + partyHtml + '</div>' +
+      '<p class="home-meta">🛠️ 開発P <b>' + devP + '</b> ／ 🗺️ 解放ステージ ' + unlockedStages + '/' + STAGES.length +
+      ' ／ 📖 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</p>' +
+      '<p class="home-meta">🏅 母港バフ: ' + buffLine + '</p></div>' +
+      '<button id="home-sortie" class="big-btn">⚔️ 出撃（ステージ選択）</button>' +
+      '<p class="intro">下のタブで 📖図鑑・🛠️開発（母港バフ）・⚔️出撃 に移動できます。</p>';
+    const hs = $('home-sortie');
+    if (hs) hs.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); renderStageSelect(); show('stage-screen'); });
+  }
+
+  // 開発: 母港バフの購入（開発Pの使い道＝メタ進行）
+  function buyBuff(key) {
+    const b = PORT_BUFFS.find(x => x.key === key); if (!b) return;
+    const lv = portBuffs[key] || 0; if (lv >= b.max) return;
+    const cost = b.cost[lv]; if (devP < cost) return;
+    devP -= cost; portBuffs[key] = lv + 1;
+    saveJSON('malcore.port', portBuffs); saveJSON('malcore.devP', devP);
+    Sound.play('cutin'); renderDevelop();
+  }
+  function renderDevelop() {
+    const rows = PORT_BUFFS.map(b => {
+      const lv = portBuffs[b.key] || 0, maxed = lv >= b.max, cost = maxed ? 0 : b.cost[lv];
+      const pips = Array.from({ length: b.max }, (_, i) => '<span class="pip' + (i < lv ? ' on' : '') + '"></span>').join('');
+      return '<div class="dev-row"><div class="dev-info"><b>' + b.icon + ' ' + b.name + '</b>' +
+        '<small>' + b.effect + '</small><span class="dev-pips">' + pips + '</span></div>' +
+        '<button class="dev-buy" data-buff="' + b.key + '" ' + (maxed || devP < cost ? 'disabled' : '') + '>' +
+        (maxed ? 'MAX' : '⬆ 開発P ' + cost) + '</button></div>';
+    }).join('');
+    $('develop-body').innerHTML =
+      '<p class="intro">開発P で恒久的な母港バフを開発。出撃時に効果を発揮します。</p>' +
+      '<p class="home-meta">🛠️ 開発P <b>' + devP + '</b></p>' +
+      '<div class="dev-list">' + rows + '</div>';
+    $('develop-body').querySelectorAll('.dev-buy').forEach(b =>
+      b.addEventListener('click', () => { Sound.unlock(); buyBuff(b.dataset.buff); }));
+  }
+
   function initUI() {
     // click だけでなく touchend も拾う（スマホでの取りこぼし防止）
     const tap = (id, fn) => {
@@ -1032,14 +1098,23 @@ if (typeof document !== 'undefined' && document.getElementById) {
       const h = (e) => { e.preventDefault(); Sound.unlock(); fn(); };
       el.addEventListener('click', h);
     };
-    tap('btn-start', () => { Sound.play('select'); renderStageSelect(); show('stage-screen'); });
-    tap('btn-stage-back', () => show('title-screen'));
+    // タイトル → 母港ハブ（以降は下部タブバーで移動）
+    tap('btn-start', () => { Sound.play('select'); renderHome(); show('home-screen'); });
     tap('btn-brief-back', () => { renderStageSelect(); show('stage-screen'); });
     tap('btn-codex', () => { Sound.play('select'); renderCodex(); show('codex-screen'); });
-    tap('btn-codex-back', () => show('title-screen'));
     tap('btn-sortie', () => { Sound.play('select'); startGame(); });
     tap('btn-retry', () => { Sound.play('select'); Sound.stopBgm(); renderBriefing(); show('briefing-screen'); });
-    tap('btn-title', () => { Sound.stopBgm(); show('title-screen'); });
+    tap('btn-title', () => { Sound.stopBgm(); renderHome(); show('home-screen'); });
+    // 下部タブバー: 母港/図鑑/開発/出撃
+    const goTab = (id) => {
+      if (id === 'home-screen') renderHome();
+      else if (id === 'codex-screen') renderCodex();
+      else if (id === 'develop-screen') renderDevelop();
+      else if (id === 'stage-screen') renderStageSelect();
+      show(id);
+    };
+    document.querySelectorAll('.tabbar-btn').forEach(b =>
+      b.addEventListener('click', (e) => { e.preventDefault(); Sound.unlock(); Sound.play('select'); goTab(b.dataset.tab); }));
     $('btn-mute').addEventListener('click', () => {
       Sound.unlock();
       const m = !Sound.isMuted();

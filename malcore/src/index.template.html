@@ -26,18 +26,28 @@
     </div>
   </section>
 
+  <!-- 母港（ハブ） -->
+  <section id="home-screen" class="screen hub">
+    <h1 class="screen-title">🏠 母港</h1>
+    <div id="home-body"></div>
+  </section>
+
   <!-- 図鑑 -->
-  <section id="codex-screen" class="screen">
+  <section id="codex-screen" class="screen hub">
     <h1 class="screen-title">📖 図鑑（マルウェア × 攻撃手法 × 対策）</h1>
     <div id="codex-body"></div>
-    <button id="btn-codex-back" class="big-btn">← タイトルへ</button>
+  </section>
+
+  <!-- 開発（母港バフ） -->
+  <section id="develop-screen" class="screen hub">
+    <h1 class="screen-title">🛠️ 開発（母港バフ）</h1>
+    <div id="develop-body"></div>
   </section>
 
   <!-- ステージ選択 -->
-  <section id="stage-screen" class="screen">
-    <h1 class="screen-title">🗺️ ステージ選択</h1>
+  <section id="stage-screen" class="screen hub">
+    <h1 class="screen-title">🗺️ ステージ選択（出撃）</h1>
     <div id="stage-body"></div>
-    <button id="btn-stage-back" class="big-btn">← タイトルへ</button>
   </section>
 
   <!-- 作戦ブリーフィング -->
@@ -59,9 +69,17 @@
     <div id="result-body"></div>
     <div class="result-btns">
       <button id="btn-retry" class="big-btn retry">🔁 編成・進化へ</button>
-      <button id="btn-title" class="big-btn">タイトルへ</button>
+      <button id="btn-title" class="big-btn">🏠 母港へ</button>
     </div>
   </section>
+
+  <!-- 下部タブバー（母港/図鑑/開発/出撃） -->
+  <nav id="tabbar" class="tabbar" hidden>
+    <button class="tabbar-btn" data-tab="home-screen">🏠<span>母港</span></button>
+    <button class="tabbar-btn" data-tab="codex-screen">📖<span>図鑑</span></button>
+    <button class="tabbar-btn" data-tab="develop-screen">🛠️<span>開発</span></button>
+    <button class="tabbar-btn" data-tab="stage-screen">⚔️<span>出撃</span></button>
+  </nav>
 
 </div>
 <script>

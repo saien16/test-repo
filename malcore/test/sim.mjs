@@ -279,6 +279,17 @@ const gpe = M.createGame(M.STAGE, [], { iloveyou: 1 }, ['zeus', 'iloveyou', 'myd
 const breachLabel = M.listActions(gpe).find(a => a.id === 'breach').label;
 assert(/ILOVEYOU改/.test(breachLabel), '初期侵害に侵入ロールのILOVEYOU改が反映される（' + breachLabel + '）');
 
+// 22b) 母港バフ（メタ進行）が出撃時に効く
+console.log('シナリオ22b: 母港バフ');
+{
+  const gb0 = M.createGame(M.STAGE);
+  const gb1 = M.createGame(M.STAGE, [], {}, ['zeus'], { info: 2, tech: 1, stealth: 1 });
+  assert(gb1.res.info === gb0.res.info + 20, '諜報ネットワークで初期情報+10/Lv');
+  assert(gb1.res.tech === gb0.res.tech + 5, '開発ラボで初期技術+5/Lv');
+  gb0.warning = 32; gb1.warning = 32;
+  assert(!M.isStealth(gb0) && M.isStealth(gb1), '低ノイズ実装で潜伏の上限が上がる（32でも潜伏）');
+}
+
 // 23) コンテンツ倫理lint（商用/ストア/B2Bのゲート）: 実行可能な悪用情報を含めない＆対策必須
 console.log('シナリオ23: コンテンツ倫理lint（抽象化契約）');
 {
