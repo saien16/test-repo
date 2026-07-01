@@ -1080,7 +1080,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const owned = PORT_BUFFS.filter(b => (portBuffs[b.key] || 0) > 0);
     const buffLine = owned.length ? owned.map(b => b.icon + b.name + ' Lv' + portBuffs[b.key]).join(' ／ ') : 'なし（開発で強化）';
     $('home-body').innerHTML =
-      '<div class="hub-scene"><div class="hub-floor"></div>' + scene + '</div>' +
+      '<div class="hub-scene">' + SPRITES.hubBg() + scene + '</div>' +
       '<p class="hub-hint">タップでマルウェアの詳細・出撃メンバーの入替。出撃 ' + party.length + '/3</p>' +
       '<div id="hub-pop"></div>' +
       '<div class="home-card">' +
