@@ -809,6 +809,19 @@ if (typeof document !== 'undefined' && document.getElementById) {
       } else {
         reward += '<div class="reward">🃏 技図鑑コンプリート（' + CARDS.length + '/' + CARDS.length + '）</div>';
       }
+      // コインマイナーを攻略ステージに仕込む（数回の出撃の間だけ採掘）
+      plantMiner(STAGES[selectedStage].id);
+      reward += '<div class="reward">⛏️ コインマイナー設置！「' + STAGES[selectedStage].name +
+        '」で ' + miners[STAGES[selectedStage].id] + '回の出撃までビットコイン等を採掘</div>';
+      // 低確率で未開発マルウェアがドロップ＝収集
+      const lockedMal = MAL.filter(m => !malUnlocked(m.id));
+      if (lockedMal.length && _rng() < 0.14) {
+        const nm = lockedMal[Math.floor(_rng() * lockedMal.length) % lockedMal.length];
+        unlockedMal.push(nm.id); saveJSON('malcore.malunlocked', unlockedMal); refreshRoster();
+        Sound.play('cutin');
+        reward += '<div class="reward unlock">🦠 マルウェア鹵獲！「' + nm.name + '」が仲間に（母港 ' +
+          unlockedMal.length + '/' + MAL.length + '）</div>';
+      }
     }
     $('result-body').innerHTML =
       '<div class="verdict ' + (win ? 'win' : 'lose') + '">' +
@@ -845,7 +858,43 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function isUnlocked(id) { return unlockedCards.indexOf(id) >= 0; }
   // 解放済みステージ数（初期1。勝利で次が解放）
   let unlockedStages = loadJSON('malcore.unlocked', 1);
-  const ROSTER = MAL.map(m => m.id); // 全マルウェアを編成候補に（新ユニットは自動で並ぶ）
+
+  // ===== マルウェア収集（初期は4体のみ。新規開発 or 低確率ドロップで増える） =====
+  const INITIAL_MAL = ['zeus', 'iloveyou', 'mydoom', 'blaster'];
+  let unlockedMal = loadJSON('malcore.malunlocked', INITIAL_MAL.slice());
+  function malUnlocked(id) { return unlockedMal.indexOf(id) >= 0; }
+  function devCost(m) { return 8 + (m.gen || 0) * 4; } // 新規開発のビットコインコスト（gen0=8 / gen1=12）
+  function btcEvoCost(level) { return level <= 0 ? 5 : 8; } // 改良（世代進化）のビットコインコスト
+
+  // ===== コインマイナー＆採掘ストック（攻略後にステージへ仕込まれ、数回の出撃の間だけ微量採掘） =====
+  let miners = loadJSON('malcore.miners', {}); // stageId → 残り出撃回数
+  let stock = Object.assign({ btc: 0, info: 0, tech: 0, res: 0 }, loadJSON('malcore.stock', {}));
+  function saveStock() { saveJSON('malcore.stock', stock); }
+  // 出撃1回あたりの採掘（微量）。深いステージほど少し多い。
+  function minerYield(stageId) {
+    const idx = STAGES.findIndex(s => s.id === stageId);
+    const t = 1 + Math.max(0, idx) * 0.15;
+    return { btc: Math.round(2 * t), info: Math.round(5 * t), tech: Math.round(3 * t), res: Math.round(4 * t) };
+  }
+  // 出撃のたびに全マイナーが採掘→ストックへ。残り0で駆除。レポートを返す。
+  function tickMiners() {
+    const rep = { btc: 0, info: 0, tech: 0, res: 0, sites: 0, cleaned: [] };
+    Object.keys(miners).forEach(sid => {
+      if (miners[sid] <= 0) { delete miners[sid]; return; }
+      const y = minerYield(sid);
+      stock.btc += y.btc; stock.info += y.info; stock.tech += y.tech; stock.res += y.res;
+      rep.btc += y.btc; rep.info += y.info; rep.tech += y.tech; rep.res += y.res; rep.sites++;
+      miners[sid]--;
+      if (miners[sid] <= 0) { delete miners[sid]; rep.cleaned.push(sid); }
+    });
+    saveJSON('malcore.miners', miners); saveStock();
+    return rep;
+  }
+  function plantMiner(stageId) { miners[stageId] = 3 + Math.floor(_rng() * 6); saveJSON('malcore.miners', miners); } // 3..8回
+  function minerCount() { return Object.keys(miners).filter(k => miners[k] > 0).length; }
+
+  let ROSTER = unlockedMal.slice(); // 編成候補＝解放済みマルウェア
+  function refreshRoster() { ROSTER = unlockedMal.slice(); }
 
   function renderStageSelect() {
     const html = STAGES.map((s, i) => {
@@ -878,7 +927,16 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
   function startGame() {
+    const rep = tickMiners(); // 出撃のたびに既設マイナーが採掘
     G = createGame(STAGES[selectedStage], equipped, levels, party, portBuffs);
+    // 採掘した情報/技術/資源は今回の出撃に注ぎ込む（ビットコインはストックに残る＝開発資金）
+    if (rep.sites) {
+      G.res.info += stock.info; G.res.tech += stock.tech; G.res.res += stock.res;
+      G.log.push('⛏️ コインマイナー' + rep.sites + '拠点が採掘: ₿+' + rep.btc +
+        ' 情報+' + stock.info + ' 技術+' + stock.tech + ' 資源+' + stock.res + ' を投入');
+      if (rep.cleaned.length) G.log.push('🧹 ' + rep.cleaned.map(id => (STAGES.find(s => s.id === id) || {}).name).join('・') + ' のマイナーは駆除された');
+      stock.info = 0; stock.tech = 0; stock.res = 0; saveStock();
+    }
     actTab = null; // カテゴリタブを初期化（自動で侵入から）
     Sound.bgm(); show('battle-screen'); renderBattle();
     playDefenseIntro(defenseIntro(G)); // 敵の防御を開幕カットインで提示（多いほど手強い印象）
@@ -907,10 +965,10 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function evolve(id) {
     const L = levels[id] || 0;
     if (L >= EVO_MAX) return;
-    const cost = evoCost(L);
-    if (devP < cost) return;
-    devP -= cost; levels[id] = L + 1;
-    saveJSON('malcore.levels', levels); saveJSON('malcore.devP', devP);
+    const cost = btcEvoCost(L);
+    if (stock.btc < cost) return;
+    stock.btc -= cost; levels[id] = L + 1;
+    saveJSON('malcore.levels', levels); saveStock();
     Sound.play('cutin');
     renderBriefing();
   }
@@ -932,9 +990,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
       const inParty = party.includes(id);
       const badge = L > 0 ? '<span class="evo-badge">' + ['', '改', '改弐'][L] + '</span>' : '';
       const maxed = L >= EVO_MAX;
-      const cost = evoCost(L);
-      const evoBtn = '<button class="evo-btn" data-evo="' + id + '" ' + (maxed || devP < cost ? 'disabled' : '') + '>' +
-        (maxed ? '進化MAX' : '⬆ 進化（開発P ' + cost + '）') + '</button>';
+      const cost = btcEvoCost(L);
+      const evoBtn = '<button class="evo-btn" data-evo="' + id + '" ' + (maxed || stock.btc < cost ? 'disabled' : '') + '>' +
+        (maxed ? '改良MAX' : '⬆ 改良（₿ ' + cost + '）') + '</button>';
       const partyBtn = '<button class="party-btn ' + (inParty ? 'on' : '') + '" data-party="' + id + '">' +
         (inParty ? '✅ 出撃' : '出撃する') + '</button>';
       return '<div class="card' + (inParty ? ' inparty' : '') + '"><div class="card-top">' +
@@ -971,7 +1029,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const body = briefTab === 'equip'
       ? '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3 ・ 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</small></h2>' +
         '<div class="equips">' + equipHtml + '</div>'
-      : '<h2 class="sub">編成（出撃 ' + party.length + '/3）<small>🛠️ 開発P ' + devP + '</small></h2>' +
+      : '<h2 class="sub">編成（出撃 ' + party.length + '/3）<small>₿ ' + stock.btc + '（改良に使用）</small></h2>' +
         handHtml;
     $('briefing-body').innerHTML =
       '<p class="intro">' + stage.intro + '</p>' + tabs + body;
@@ -1012,9 +1070,11 @@ if (typeof document !== 'undefined' && document.getElementById) {
       const list = MAL.filter(m => codexGauge === 'all' || (m.waza && m.waza.gauge === codexGauge));
       entries = list.map(m => {
         const s = MALCORE.malStats(m, 0);
-        return '<div class="cxentry mal"><div class="cx-top">' +
+        const own = malUnlocked(m.id);
+        return '<div class="cxentry mal' + (own ? '' : ' locked') + '"><div class="cx-top">' +
           '<span class="cx-spr">' + SPRITES.mal(m.id, { gen: 0 }) + '</span>' +
-          '<span class="cx-name"><b>' + m.name + '</b><span class="cx-meta">世代' + m.gen + ' / ' + m.year + '</span></span>' +
+          '<span class="cx-name"><b>' + m.name + '</b><span class="cx-meta">' +
+          (own ? '<span class="cc-own">✓開発済</span>' : '<span class="cc-lock">🔒未開発</span>') + ' 世代' + m.gen + ' / ' + m.year + '</span></span>' +
           '<span class="cx-arch">' + (m.archetype || '') + '</span></div>' +
           '<div class="cx-cia">🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</div>' +
           (m.waza ? '<div class="cx-waza">⚡ ' + m.waza.name.replace(/！+$/, '') + '</div>' : '') +
@@ -1079,13 +1139,25 @@ if (typeof document !== 'undefined' && document.getElementById) {
     }).join('');
     const owned = PORT_BUFFS.filter(b => (portBuffs[b.key] || 0) > 0);
     const buffLine = owned.length ? owned.map(b => b.icon + b.name + ' Lv' + portBuffs[b.key]).join(' ／ ') : 'なし（開発で強化）';
+    // コインマイナー採掘中の演出: 各所から粒子が奥のサーバへ吸い出される
+    const mining = minerCount();
+    let siphon = '';
+    if (mining > 0) {
+      const glyphs = ['₿', '📡', '⚙️', '🧬'];
+      for (let k = 0; k < Math.min(8, mining * 3); k++) {
+        const sx = 12 + (k * 29) % 76, gl = glyphs[k % glyphs.length], dl = (k * 0.5).toFixed(1);
+        siphon += '<span class="siphon" style="left:' + sx + '%;animation-delay:' + dl + 's">' + gl + '</span>';
+      }
+    }
     $('home-body').innerHTML =
-      '<div class="hub-scene">' + SPRITES.hubBg() + scene + '</div>' +
-      '<p class="hub-hint">タップでマルウェアの詳細・出撃メンバーの入替。出撃 ' + party.length + '/3</p>' +
+      '<div class="hub-scene' + (mining ? ' mining' : '') + '">' + SPRITES.hubBg() + siphon + scene + '</div>' +
+      '<p class="hub-hint">タップでマルウェアの詳細・出撃メンバーの入替。出撃 ' + party.length + '/3' +
+      (mining ? ' ／ ⛏️ 採掘中 ' + mining + '拠点' : '') + '</p>' +
       '<div id="hub-pop"></div>' +
       '<div class="home-card">' +
-      '<p class="home-meta">🛠️ 開発P <b>' + devP + '</b> ／ 🗺️ 解放ステージ ' + unlockedStages + '/' + STAGES.length +
-      ' ／ 📖 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</p>' +
+      '<p class="home-meta">₿ <b>' + stock.btc + '</b>（改良・開発に使用） ／ 🛠️ 開発P <b>' + devP + '</b> ／ 🦠 母港 ' + unlockedMal.length + '/' + MAL.length + '</p>' +
+      '<p class="home-meta">🗺️ 解放ステージ ' + unlockedStages + '/' + STAGES.length + ' ／ 📖 図鑑 ' + unlockedCards.length + '/' + CARDS.length +
+      ' ／ ⛏️ 採掘拠点 ' + mining + '</p>' +
       '<p class="home-meta">🏅 母港バフ: ' + buffLine + '</p></div>' +
       '<button id="home-sortie" class="big-btn">⚔️ 出撃（ステージ選択）</button>';
     $('home-body').querySelectorAll('.hub-mal').forEach(b =>
@@ -1103,8 +1175,17 @@ if (typeof document !== 'undefined' && document.getElementById) {
     saveJSON('malcore.port', portBuffs); saveJSON('malcore.devP', devP);
     Sound.play('cutin'); renderDevelop();
   }
+  // 新規開発: ビットコインで未開発マルウェアを仲間に
+  function buyDevelop(id) {
+    if (malUnlocked(id)) return;
+    const m = malById(id); if (!m) return;
+    const cost = devCost(m); if (stock.btc < cost) return;
+    stock.btc -= cost; unlockedMal.push(id);
+    saveJSON('malcore.malunlocked', unlockedMal); saveStock(); refreshRoster();
+    Sound.play('cutin'); renderDevelop();
+  }
   function renderDevelop() {
-    const rows = PORT_BUFFS.map(b => {
+    const buffRows = PORT_BUFFS.map(b => {
       const lv = portBuffs[b.key] || 0, maxed = lv >= b.max, cost = maxed ? 0 : b.cost[lv];
       const pips = Array.from({ length: b.max }, (_, i) => '<span class="pip' + (i < lv ? ' on' : '') + '"></span>').join('');
       return '<div class="dev-row"><div class="dev-info"><b>' + b.icon + ' ' + b.name + '</b>' +
@@ -1112,12 +1193,24 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<button class="dev-buy" data-buff="' + b.key + '" ' + (maxed || devP < cost ? 'disabled' : '') + '>' +
         (maxed ? 'MAX' : '⬆ 開発P ' + cost) + '</button></div>';
     }).join('');
+    const locked = MAL.filter(m => !malUnlocked(m.id));
+    const malRows = locked.length ? locked.map(m => {
+      const cost = devCost(m), s = MALCORE.malStats(m, 0);
+      return '<div class="dev-row"><span class="dev-mal-spr">' + SPRITES.mal(m.id, { gen: 0 }) + '</span>' +
+        '<div class="dev-info"><b>' + m.name + '</b>' +
+        '<small>' + (m.archetype || '') + '・世代' + m.gen + '・🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</small></div>' +
+        '<button class="dev-mal-buy" data-devmal="' + m.id + '" ' + (stock.btc < cost ? 'disabled' : '') + '>⬆ ₿ ' + cost + '</button></div>';
+    }).join('') : '<p class="home-meta">全マルウェア開発済み（' + MAL.length + '/' + MAL.length + '）</p>';
     $('develop-body').innerHTML =
-      '<p class="intro">開発P で恒久的な母港バフを開発。出撃時に効果を発揮します。</p>' +
-      '<p class="home-meta">🛠️ 開発P <b>' + devP + '</b></p>' +
-      '<div class="dev-list">' + rows + '</div>';
+      '<p class="home-meta">₿ ビットコイン <b>' + stock.btc + '</b>（コインマイナーで採掘） ／ 🛠️ 開発P <b>' + devP + '</b></p>' +
+      '<h2 class="sub">🦠 マルウェア新規開発 <small>₿ 消費 ・ 母港 ' + unlockedMal.length + '/' + MAL.length + '</small></h2>' +
+      '<div class="dev-list">' + malRows + '</div>' +
+      '<h2 class="sub">🏅 母港バフ <small>開発P 消費・出撃時に発揮</small></h2>' +
+      '<div class="dev-list">' + buffRows + '</div>';
     $('develop-body').querySelectorAll('.dev-buy').forEach(b =>
       b.addEventListener('click', () => { Sound.unlock(); buyBuff(b.dataset.buff); }));
+    $('develop-body').querySelectorAll('.dev-mal-buy').forEach(b =>
+      b.addEventListener('click', () => { Sound.unlock(); buyDevelop(b.dataset.devmal); }));
   }
 
   function initUI() {
