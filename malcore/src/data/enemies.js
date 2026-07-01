@@ -100,6 +100,19 @@ const STAGES = [
   },
 ];
 
+// 制圧報酬: ステージ毎に本命サーバから溢れ出す 情報/技術/リソース(メモリ・GPU等)。
+// テーマ: 機密(C)厚→情報多め / 完全(I)厚→技術多め / 可用(A)厚→リソース多め。
+const STAGE_REWARDS = {
+  machi: { info: 20, tech: 12, res: 15 },
+  zenith: { info: 36, tech: 16, res: 18 },   // 金融=機密→情報
+  power: { info: 24, tech: 18, res: 36 },    // インフラ=可用→リソース
+  cyber: { info: 32, tech: 34, res: 26 },    // 完全→技術
+  medi: { info: 48, tech: 24, res: 22 },     // 医療=機密→情報
+  nsho: { info: 52, tech: 44, res: 44 },     // 全厚→全体的に多い
+  clearing: { info: 74, tech: 58, res: 64 }, // 最終ボス=最大
+};
+STAGES.forEach(s => { s.reward = STAGE_REWARDS[s.id] || { info: 20, tech: 12, res: 15 }; });
+
 const STAGE_ZENITH = STAGES[1]; // 後方互換（テスト/既定）
 
 if (typeof globalThis !== 'undefined') { globalThis.STAGES = STAGES; globalThis.STAGE_ZENITH = STAGE_ZENITH; }

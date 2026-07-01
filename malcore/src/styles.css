@@ -318,6 +318,17 @@ body {
 .verdict.lose { color: #ff6b6b; }
 .stat { text-align: center; color: #9fb3c2; font-size: 13px; }
 .reward { text-align: center; color: #ffd79a; font-size: 13px; margin-top: 10px; background: #1f1808; border: 1px solid #6a4a1a; border-radius: 8px; padding: 8px; }
+.reward.loot { color: #ffe6a0; background: #241a06; border-color: #b08a2a; font-weight: 700; }
+
+/* 制圧時: 本命サーバから戦利品が溢れ出す演出 */
+.loot-layer { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+.loot-p { position: fixed; font-size: 22px; transform: translate(-50%,-50%) scale(.4); opacity: 0;
+  animation: lootFly 1.7s cubic-bezier(.2,.7,.3,1) forwards; filter: drop-shadow(0 0 6px rgba(255,211,74,.8)); }
+@keyframes lootFly {
+  0% { transform: translate(-50%,-50%) scale(.4); opacity: 0; }
+  18% { opacity: 1; }
+  65% { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.15); opacity: 0; } }
 .debrief { background: #0f1b18; border: 1px solid #2f4a3c; border-radius: 10px; padding: 12px; margin-top: 14px; }
 .debrief b { color: #7fd0ff; }
 .debrief p { margin: 6px 0 0; font-size: 13px; }

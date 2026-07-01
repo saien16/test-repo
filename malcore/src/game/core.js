@@ -766,12 +766,77 @@ if (typeof document !== 'undefined' && document.getElementById) {
     if (counter) setTimeout(() => popCounter(counter), 720); // 行動バナーの後に被弾演出
   }
 
+  // 制圧報酬を確定して永続化（1回だけ）。結果画面と溢れ出し演出の両方が参照する。
+  function grantWin() {
+    const stage = STAGES[selectedStage];
+    const loot = { stageName: null, devP: 0, reward: { info: 0, tech: 0, res: 0 }, card: null, malware: null, minerLeft: 0 };
+    if (selectedStage + 1 < STAGES.length && selectedStage + 2 > unlockedStages) {
+      unlockedStages = Math.min(STAGES.length, selectedStage + 2);
+      saveJSON('malcore.unlocked', unlockedStages);
+      loot.stageName = STAGES[selectedStage + 1].name;
+    }
+    // 制圧報酬: ステージ毎の 情報/技術/リソース が本命から溢れ出す → ストックへ（次の出撃で使える）
+    const rw = stage.reward || { info: 20, tech: 12, res: 15 };
+    stock.info += rw.info; stock.tech += rw.tech; stock.res += rw.res; saveStock();
+    loot.reward = { info: rw.info, tech: rw.tech, res: rw.res };
+    // 開発P（今回の余剰資源から）
+    const surplus = Math.floor((G.res.info + G.res.tech + G.res.res) / 20);
+    loot.devP = 3 + surplus; devP += loot.devP; saveJSON('malcore.devP', devP);
+    // コインマイナー設置
+    plantMiner(stage.id); loot.minerLeft = miners[stage.id];
+    // 低確率ドロップ: 攻撃カード（30%）
+    const lockedC = CARDS.filter(c => !isUnlocked(c.id));
+    if (lockedC.length && _rng() < 0.30) {
+      const nc = lockedC[Math.floor(_rng() * lockedC.length) % lockedC.length];
+      unlockedCards.push(nc.id); saveJSON('malcore.cards', unlockedCards); loot.card = nc.name;
+    }
+    // 低確率ドロップ: マルウェア（12%）
+    const lockedM = MAL.filter(m => !malUnlocked(m.id));
+    if (lockedM.length && _rng() < 0.12) {
+      const nm = lockedM[Math.floor(_rng() * lockedM.length) % lockedM.length];
+      unlockedMal.push(nm.id); saveJSON('malcore.malunlocked', unlockedMal); refreshRoster(); loot.malware = nm.name;
+    }
+    G._loot = loot;
+    return loot;
+  }
+  // 本命サーバから戦利品（情報/技術/リソース・低確率のカード/マルウェア）が溢れ出す演出
+  function spawnLootBurst(loot) {
+    const bs = document.querySelector('.bossspr'); if (!bs || typeof bs.getBoundingClientRect !== 'function') return;
+    const r = bs.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const parts = [];
+    const push = (g, n) => { for (let i = 0; i < n; i++) parts.push(g); };
+    push('📡', Math.min(6, Math.max(1, Math.ceil(loot.reward.info / 12))));
+    push('🧬', Math.min(6, Math.max(1, Math.ceil(loot.reward.tech / 12))));
+    push('💾', Math.min(6, Math.max(1, Math.ceil(loot.reward.res / 12))));
+    if (loot.card) push('🃏', 3);
+    if (loot.malware) push('🦠', 3);
+    const layer = document.createElement('div'); layer.className = 'loot-layer';
+    parts.forEach((g, i) => {
+      const s = document.createElement('span'); s.className = 'loot-p'; s.textContent = g;
+      const ang = (i / parts.length) * Math.PI * 2 + Math.random() * 0.6;
+      const dist = 66 + Math.random() * 96;
+      s.style.left = cx + 'px'; s.style.top = cy + 'px';
+      s.style.setProperty('--dx', Math.round(Math.cos(ang) * dist) + 'px');
+      s.style.setProperty('--dy', Math.round(Math.sin(ang) * dist - 46) + 'px');
+      s.style.animationDelay = (i * 0.035).toFixed(2) + 's';
+      layer.appendChild(s);
+    });
+    $('app').appendChild(layer);
+    setTimeout(() => layer.remove(), 2300);
+  }
+
   // 勝敗の決着演出（切り替えが速すぎて分かりにくい問題への対応・1.9秒見せる）
   function showFinish(res) {
     const win = res === 'win';
     document.querySelectorAll('.banner').forEach(e => e.remove());
     Sound.play(win ? 'win' : 'lose');
-    if (win) document.querySelectorAll('.bossspr').forEach(b => b.classList.add('shatter')); // 本命DBが砕ける
+    if (win) {
+      const loot = grantWin();                                          // 報酬を確定
+      document.querySelectorAll('.bossspr').forEach(b => b.classList.add('shatter')); // 本命DBが砕ける
+      spawnLootBurst(loot);                                             // 戦利品が溢れ出す
+      if (loot.card || loot.malware) Sound.play('cutin');
+    }
     else { const a = $('app'); a.classList.remove('shake'); void a.offsetWidth; a.classList.add('shake'); }
     const title = win ? '🏆 制圧成功！' : (res === 'lose_turn' ? '⏳ タイムオーバー' : '🚨 駆除された');
     const sub = win ? '本命「' + G.stage.nodes.db.name.replace('（本命）', '') + '」を掌握した'
@@ -788,41 +853,19 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const win = G.result === 'win';
     let reward = '';
     if (win) {
-      // 次ステージ解放（攻略進行）
-      if (selectedStage + 1 < STAGES.length && selectedStage + 2 > unlockedStages) {
-        unlockedStages = Math.min(STAGES.length, selectedStage + 2);
-        saveJSON('malcore.unlocked', unlockedStages);
-        reward += '<div class="reward unlock">🗺️ 新ステージ解放！「' + STAGES[selectedStage + 1].name + '」</div>';
-      }
-      // 戦利品（余剰の情報/技術/資源）を開発Pに変換＝「攻略→進化資金」を1本につなぐ
-      const surplus = Math.floor((G.res.info + G.res.tech + G.res.res) / 20);
-      const gain = 3 + surplus;
-      devP += gain; saveJSON('malcore.devP', devP);
-      reward = '<div class="reward">🛠️ 開発P +' + gain + '（基本3＋戦利品' + surplus + ' / 所持 ' + devP + '）— 世代進化に使える</div>';
-      // 未入手の技カードを1枚アンロック＝収集ループ
-      const locked = CARDS.filter(c => !isUnlocked(c.id));
-      if (locked.length) {
-        const nc = locked[Math.floor(_rng() * locked.length) % locked.length];
-        unlockedCards.push(nc.id); saveJSON('malcore.cards', unlockedCards);
-        Sound.play('cutin');
-        reward += '<div class="reward unlock">🃏 新カード入手！「' + nc.name + '」（図鑑 ' +
-          unlockedCards.length + '/' + CARDS.length + '）</div>';
-      } else {
-        reward += '<div class="reward">🃏 技図鑑コンプリート（' + CARDS.length + '/' + CARDS.length + '）</div>';
-      }
-      // コインマイナーを攻略ステージに仕込む（数回の出撃の間だけ採掘）
-      plantMiner(STAGES[selectedStage].id);
+      const loot = G._loot || grantWin(); // 通常は showFinish で確定済み
+      if (loot.stageName) reward += '<div class="reward unlock">🗺️ 新ステージ解放！「' + loot.stageName + '」</div>';
+      // 制圧報酬: 本命から溢れ出た 情報/技術/リソース（次の出撃で使える）
+      reward += '<div class="reward loot">💥 制圧報酬が溢れ出た！ 📡情報+' + loot.reward.info +
+        ' 🧬技術+' + loot.reward.tech + ' 💾リソース+' + loot.reward.res + '（ストックへ → 次の出撃で投入）</div>';
+      reward += '<div class="reward">🛠️ 開発P +' + loot.devP + '（所持 ' + devP + '）— 母港バフに使える</div>';
       reward += '<div class="reward">⛏️ コインマイナー設置！「' + STAGES[selectedStage].name +
-        '」で ' + miners[STAGES[selectedStage].id] + '回の出撃までビットコイン等を採掘</div>';
-      // 低確率で未開発マルウェアがドロップ＝収集
-      const lockedMal = MAL.filter(m => !malUnlocked(m.id));
-      if (lockedMal.length && _rng() < 0.14) {
-        const nm = lockedMal[Math.floor(_rng() * lockedMal.length) % lockedMal.length];
-        unlockedMal.push(nm.id); saveJSON('malcore.malunlocked', unlockedMal); refreshRoster();
-        Sound.play('cutin');
-        reward += '<div class="reward unlock">🦠 マルウェア鹵獲！「' + nm.name + '」が仲間に（母港 ' +
-          unlockedMal.length + '/' + MAL.length + '）</div>';
-      }
+        '」で ' + loot.minerLeft + '回の出撃までビットコイン等を採掘</div>';
+      if (loot.card) reward += '<div class="reward unlock">🃏 攻撃カード・ドロップ！「' + loot.card +
+        '」（図鑑 ' + unlockedCards.length + '/' + CARDS.length + '）</div>';
+      if (loot.malware) reward += '<div class="reward unlock">🦠 マルウェア・ドロップ！「' + loot.malware +
+        '」が仲間に（母港 ' + unlockedMal.length + '/' + MAL.length + '）</div>';
+      G._loot = null;
     }
     $('result-body').innerHTML =
       '<div class="verdict ' + (win ? 'win' : 'lose') + '">' +
