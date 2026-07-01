@@ -1045,22 +1045,51 @@ if (typeof document !== 'undefined' && document.getElementById) {
     if (ob) ob.addEventListener('click', () => { Sound.play('select'); codexOwned = !codexOwned; renderCodex(); });
   }
 
-  // 母港ハブ: 編成サマリ＋進捗＋母港バフ
+  // 母港ハブ: マルウェアが屯するサークル風シーン＋進捗＋母港バフ
+  function showHubInfo(id) {
+    const pop = $('hub-pop'); if (!pop) return;
+    const m = malById(id); const L = levels[id] || 0; const s = MALCORE.malStats(m, L);
+    const inParty = party.includes(id);
+    pop.innerHTML = '<div class="hub-pop-card"><div class="hub-pop-top">' +
+      '<span class="hub-pop-spr">' + SPRITES.mal(id, { gen: L }) + '</span>' +
+      '<span class="hub-pop-name"><b>' + m.name + (['', '改', '改弐'][L] || '') + '</b>' +
+      '<small>' + (m.archetype || '') + ' ・ 世代' + m.gen + '</small></span>' +
+      '<button class="hub-pop-toggle' + (inParty ? ' on' : '') + '" data-toggle="' + id + '">' +
+      (inParty ? '✅ 出撃中' : '➕ 出撃に加える') + '</button></div>' +
+      '<div class="hub-pop-cia">🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</div>' +
+      (m.waza ? '<div class="hub-pop-waza">⚡ ' + m.waza.name.replace(/！+$/, '') + '</div>' : '') +
+      '<div class="cc-desc">' + m.desc + '</div></div>';
+    const tg = pop.querySelector('.hub-pop-toggle');
+    if (tg) tg.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); toggleParty(id); renderHome(); showHubInfo(id); });
+  }
   function renderHome() {
-    const partyHtml = party.map(id => {
+    // マルウェアを母港に散りばめる（屯している雰囲気。出撃メンバーは大きく前面に）
+    const scene = ROSTER.map((id, i) => {
       const m = malById(id); const L = levels[id] || 0;
-      return '<span class="home-unit">' + SPRITES.mal(id, { gen: L }) +
-        '<small>' + m.name + (['', '改', '改弐'][L] || '') + '</small></span>';
+      const inParty = party.includes(id);
+      const col = i % 4, row = Math.floor(i / 4);
+      let left = 12 + col * 25 + (i % 2 ? 4 : -3);
+      let top = 16 + row * 27 + (((i % 3) - 1) * 5);
+      left = Math.max(6, Math.min(88, left)); top = Math.max(8, Math.min(82, top));
+      const delay = ((i % 5) * 0.4).toFixed(1);
+      return '<button class="hub-mal' + (inParty ? ' party' : '') + '" data-hubmal="' + id + '" ' +
+        'style="left:' + left + '%;top:' + top + '%;animation-delay:' + delay + 's">' +
+        SPRITES.mal(id, { gen: L }) + (inParty ? '<span class="hub-badge">出撃</span>' : '') +
+        '<span class="hub-name">' + m.name + '</span></button>';
     }).join('');
     const owned = PORT_BUFFS.filter(b => (portBuffs[b.key] || 0) > 0);
     const buffLine = owned.length ? owned.map(b => b.icon + b.name + ' Lv' + portBuffs[b.key]).join(' ／ ') : 'なし（開発で強化）';
     $('home-body').innerHTML =
-      '<div class="home-card"><h2 class="sub">現在の編成</h2><div class="home-party">' + partyHtml + '</div>' +
+      '<div class="hub-scene"><div class="hub-floor"></div>' + scene + '</div>' +
+      '<p class="hub-hint">タップでマルウェアの詳細・出撃メンバーの入替。出撃 ' + party.length + '/3</p>' +
+      '<div id="hub-pop"></div>' +
+      '<div class="home-card">' +
       '<p class="home-meta">🛠️ 開発P <b>' + devP + '</b> ／ 🗺️ 解放ステージ ' + unlockedStages + '/' + STAGES.length +
       ' ／ 📖 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</p>' +
       '<p class="home-meta">🏅 母港バフ: ' + buffLine + '</p></div>' +
-      '<button id="home-sortie" class="big-btn">⚔️ 出撃（ステージ選択）</button>' +
-      '<p class="intro">下のタブで 📖図鑑・🛠️開発（母港バフ）・⚔️出撃 に移動できます。</p>';
+      '<button id="home-sortie" class="big-btn">⚔️ 出撃（ステージ選択）</button>';
+    $('home-body').querySelectorAll('.hub-mal').forEach(b =>
+      b.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); showHubInfo(b.dataset.hubmal); }));
     const hs = $('home-sortie');
     if (hs) hs.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); renderStageSelect(); show('stage-screen'); });
   }

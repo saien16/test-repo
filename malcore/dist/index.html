@@ -343,12 +343,40 @@ body {
 .tabbar-btn.on { color: #7CFFB2; }
 .tabbar-btn:active { transform: translateY(1px); }
 
-/* 母港ハブ */
+/* 母港ハブ（マルウェアが屯するサークル風シーン） */
+.hub-scene { position: relative; height: 320px; border-radius: 14px; overflow: hidden; margin-bottom: 6px;
+  background: radial-gradient(130% 100% at 50% 0%, #163026 0%, #0b1713 55%, #060d0b 100%); border: 1px solid #1f3a30; }
+.hub-floor { position: absolute; left: 0; right: 0; bottom: 0; height: 38%;
+  background: linear-gradient(#0b1a15, #060f0c); border-top: 1px solid #1a3128;
+  box-shadow: inset 0 8px 24px rgba(0,0,0,.4); }
+.hub-mal { position: absolute; transform: translate(-50%, -50%); background: none; border: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0;
+  animation: hubBob 3.2s ease-in-out infinite; z-index: 2; touch-action: manipulation; }
+.hub-mal svg { width: 42px; height: 42px; filter: drop-shadow(0 4px 5px rgba(0,0,0,.55)); }
+.hub-mal:not(.party) svg { opacity: .82; }
+.hub-mal.party { z-index: 5; }
+.hub-mal.party svg { width: 58px; height: 58px; filter: drop-shadow(0 0 8px rgba(72,255,160,.35)) drop-shadow(0 4px 5px rgba(0,0,0,.55)); }
+.hub-mal:active { filter: brightness(1.2); }
+.hub-name { font-size: 9px; color: #cffbe4; white-space: nowrap; background: rgba(6,16,12,.72);
+  padding: 0 4px; border-radius: 4px; opacity: 0; transition: opacity .2s; }
+.hub-mal.party .hub-name, .hub-mal:hover .hub-name { opacity: 1; }
+.hub-badge { position: absolute; top: -4px; right: -8px; font-size: 8px; background: #47d08a; color: #06140d;
+  border-radius: 999px; padding: 0 4px; font-weight: 800; }
+@keyframes hubBob { 0%,100% { transform: translate(-50%,-50%); } 50% { transform: translate(-50%, calc(-50% - 6px)); } }
+.hub-hint { font-size: 11px; color: #7fb89c; text-align: center; margin: 0 0 8px; }
+.hub-pop-card { background: #0f1b18; border: 1px solid #2f9e63; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+.hub-pop-top { display: flex; align-items: center; gap: 8px; }
+.hub-pop-spr svg { width: 40px; height: 40px; }
+.hub-pop-name { display: flex; flex-direction: column; min-width: 0; }
+.hub-pop-name b { font-size: 13px; }
+.hub-pop-name small { font-size: 10px; color: #9fe0c4; }
+.hub-pop-toggle { margin-left: auto; flex: none; padding: 7px 10px; border-radius: 8px; font-size: 11px; font-weight: 700;
+  background: #14263a; border: 1px solid #2f6a8a; color: #bfe0ff; cursor: pointer; touch-action: manipulation; }
+.hub-pop-toggle.on { background: #1c3a2c; border-color: #47d08a; color: #d6ffe8; }
+.hub-pop-cia { font-size: 13px; margin: 6px 0 2px; }
+.hub-pop-waza { font-size: 11px; color: #ffd34a; margin-bottom: 3px; }
+
 .home-card { background: #0f1b18; border: 1px solid #1f3a30; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
-.home-party { display: flex; gap: 14px; justify-content: center; margin: 8px 0; }
-.home-unit { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.home-unit svg { width: 46px; height: 46px; }
-.home-unit small { font-size: 10px; color: #aef0c9; }
 .home-meta { font-size: 12px; color: #9fb3c2; margin: 6px 0 0; }
 .home-meta b { color: #7CFFB2; }
 
@@ -852,14 +880,42 @@ const SPRITES = (() => {
     return s;
   }
 
+  // アーキタイプ別の配色（手描きスプライトが無いユニットの自動生成に使う）
+  const ARCH_COLOR = {
+    '機密特化': ['#4aa3ff', '#2c7fd0'], '完全DoT': ['#44d07b', '#2c9c58'],
+    '可用DoS': ['#ffb03a', '#d0821f'], '装置破壊': ['#ff6b6b', '#c04040'],
+    '横展開': ['#b98cff', '#8a5fd0'], 'バフ支援': ['#5fe0d0', '#2ca79c'], '貫通': ['#ff8ac0', '#d05a90'],
+  };
+  function hashId(id) { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffff; return h; }
+  // 手描きが無いマルウェアの自動生成キャラ（アーキタイプ配色＋idハッシュで形が変わる）
+  function genericMal(id, arch) {
+    const c = ARCH_COLOR[arch] || ['#7aa0b0', '#4f6f7f'], c1 = c[0], c2 = c[1], h = hashId(id), shape = h % 3;
+    const body = shape === 0
+      ? `<circle cx="50" cy="56" r="30" fill="${c1}" stroke="${c2}" stroke-width="2"/>`
+      : shape === 1
+        ? `<rect x="22" y="30" width="56" height="52" rx="15" fill="${c1}" stroke="${c2}" stroke-width="2"/>`
+        : `<path d="M50 26 C74 26 82 46 78 62 C74 82 56 86 50 86 C44 86 26 82 22 62 C18 46 26 26 50 26 Z" fill="${c1}" stroke="${c2}" stroke-width="2"/>`;
+    const antenna = (h >> 2) % 2 ? `<line x1="50" y1="30" x2="50" y2="17" stroke="${c2}" stroke-width="3"/><circle cx="50" cy="15" r="4" fill="${c1}"/>` : '';
+    const ear = (h >> 3) % 2 ? `<circle cx="30" cy="34" r="7" fill="${c1}" stroke="${c2}" stroke-width="2"/><circle cx="70" cy="34" r="7" fill="${c1}" stroke="${c2}" stroke-width="2"/>` : '';
+    return `<ellipse cx="50" cy="92" rx="24" ry="5" fill="#0006"/>${antenna}${ear}${body}
+      <circle cx="42" cy="54" r="5" fill="#fff"/><circle cx="43" cy="55" r="2.6" fill="#11202a"/>
+      <circle cx="58" cy="54" r="5" fill="#fff"/><circle cx="59" cy="55" r="2.6" fill="#11202a"/>
+      <path d="M42 68 q8 6 16 0" stroke="${c2}" stroke-width="2.5" fill="none" stroke-linecap="round"/>`;
+  }
   function malSprite(id, opt) {
     opt = opt || {};
-    const m = mal[id]; if (!m) return '';
+    const m = mal[id];
+    let body, eyes;
+    if (m) { body = m.body; eyes = m.eyes; }
+    else { // 手描きが無い＝自動生成キャラ（新ユニット/将来のコンテンツにも対応）
+      const mm = (typeof malById === 'function') ? malById(id) : null;
+      body = genericMal(id, mm && mm.archetype); eyes = [[42, 54], [58, 54]];
+    }
     let inject = '';
-    if (opt.expr === 'attack') inject += attackOverlay(m.eyes);
-    else if (opt.expr === 'hurt') inject += hurtOverlay(m.eyes);
+    if (opt.expr === 'attack') inject += attackOverlay(eyes);
+    else if (opt.expr === 'hurt') inject += hurtOverlay(eyes);
     inject += genOverlay(opt.gen || 0);
-    return `<svg viewBox="0 0 100 100">${m.body}${inject}</svg>`;
+    return `<svg viewBox="0 0 100 100">${body}${inject}</svg>`;
   }
 
   // ---- 敵ノード ----
@@ -2162,22 +2218,51 @@ if (typeof document !== 'undefined' && document.getElementById) {
     if (ob) ob.addEventListener('click', () => { Sound.play('select'); codexOwned = !codexOwned; renderCodex(); });
   }
 
-  // 母港ハブ: 編成サマリ＋進捗＋母港バフ
+  // 母港ハブ: マルウェアが屯するサークル風シーン＋進捗＋母港バフ
+  function showHubInfo(id) {
+    const pop = $('hub-pop'); if (!pop) return;
+    const m = malById(id); const L = levels[id] || 0; const s = MALCORE.malStats(m, L);
+    const inParty = party.includes(id);
+    pop.innerHTML = '<div class="hub-pop-card"><div class="hub-pop-top">' +
+      '<span class="hub-pop-spr">' + SPRITES.mal(id, { gen: L }) + '</span>' +
+      '<span class="hub-pop-name"><b>' + m.name + (['', '改', '改弐'][L] || '') + '</b>' +
+      '<small>' + (m.archetype || '') + ' ・ 世代' + m.gen + '</small></span>' +
+      '<button class="hub-pop-toggle' + (inParty ? ' on' : '') + '" data-toggle="' + id + '">' +
+      (inParty ? '✅ 出撃中' : '➕ 出撃に加える') + '</button></div>' +
+      '<div class="hub-pop-cia">🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</div>' +
+      (m.waza ? '<div class="hub-pop-waza">⚡ ' + m.waza.name.replace(/！+$/, '') + '</div>' : '') +
+      '<div class="cc-desc">' + m.desc + '</div></div>';
+    const tg = pop.querySelector('.hub-pop-toggle');
+    if (tg) tg.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); toggleParty(id); renderHome(); showHubInfo(id); });
+  }
   function renderHome() {
-    const partyHtml = party.map(id => {
+    // マルウェアを母港に散りばめる（屯している雰囲気。出撃メンバーは大きく前面に）
+    const scene = ROSTER.map((id, i) => {
       const m = malById(id); const L = levels[id] || 0;
-      return '<span class="home-unit">' + SPRITES.mal(id, { gen: L }) +
-        '<small>' + m.name + (['', '改', '改弐'][L] || '') + '</small></span>';
+      const inParty = party.includes(id);
+      const col = i % 4, row = Math.floor(i / 4);
+      let left = 12 + col * 25 + (i % 2 ? 4 : -3);
+      let top = 16 + row * 27 + (((i % 3) - 1) * 5);
+      left = Math.max(6, Math.min(88, left)); top = Math.max(8, Math.min(82, top));
+      const delay = ((i % 5) * 0.4).toFixed(1);
+      return '<button class="hub-mal' + (inParty ? ' party' : '') + '" data-hubmal="' + id + '" ' +
+        'style="left:' + left + '%;top:' + top + '%;animation-delay:' + delay + 's">' +
+        SPRITES.mal(id, { gen: L }) + (inParty ? '<span class="hub-badge">出撃</span>' : '') +
+        '<span class="hub-name">' + m.name + '</span></button>';
     }).join('');
     const owned = PORT_BUFFS.filter(b => (portBuffs[b.key] || 0) > 0);
     const buffLine = owned.length ? owned.map(b => b.icon + b.name + ' Lv' + portBuffs[b.key]).join(' ／ ') : 'なし（開発で強化）';
     $('home-body').innerHTML =
-      '<div class="home-card"><h2 class="sub">現在の編成</h2><div class="home-party">' + partyHtml + '</div>' +
+      '<div class="hub-scene"><div class="hub-floor"></div>' + scene + '</div>' +
+      '<p class="hub-hint">タップでマルウェアの詳細・出撃メンバーの入替。出撃 ' + party.length + '/3</p>' +
+      '<div id="hub-pop"></div>' +
+      '<div class="home-card">' +
       '<p class="home-meta">🛠️ 開発P <b>' + devP + '</b> ／ 🗺️ 解放ステージ ' + unlockedStages + '/' + STAGES.length +
       ' ／ 📖 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</p>' +
       '<p class="home-meta">🏅 母港バフ: ' + buffLine + '</p></div>' +
-      '<button id="home-sortie" class="big-btn">⚔️ 出撃（ステージ選択）</button>' +
-      '<p class="intro">下のタブで 📖図鑑・🛠️開発（母港バフ）・⚔️出撃 に移動できます。</p>';
+      '<button id="home-sortie" class="big-btn">⚔️ 出撃（ステージ選択）</button>';
+    $('home-body').querySelectorAll('.hub-mal').forEach(b =>
+      b.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); showHubInfo(b.dataset.hubmal); }));
     const hs = $('home-sortie');
     if (hs) hs.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); renderStageSelect(); show('stage-screen'); });
   }

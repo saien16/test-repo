@@ -334,12 +334,40 @@ body {
 .tabbar-btn.on { color: #7CFFB2; }
 .tabbar-btn:active { transform: translateY(1px); }
 
-/* 母港ハブ */
+/* 母港ハブ（マルウェアが屯するサークル風シーン） */
+.hub-scene { position: relative; height: 320px; border-radius: 14px; overflow: hidden; margin-bottom: 6px;
+  background: radial-gradient(130% 100% at 50% 0%, #163026 0%, #0b1713 55%, #060d0b 100%); border: 1px solid #1f3a30; }
+.hub-floor { position: absolute; left: 0; right: 0; bottom: 0; height: 38%;
+  background: linear-gradient(#0b1a15, #060f0c); border-top: 1px solid #1a3128;
+  box-shadow: inset 0 8px 24px rgba(0,0,0,.4); }
+.hub-mal { position: absolute; transform: translate(-50%, -50%); background: none; border: none; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 0;
+  animation: hubBob 3.2s ease-in-out infinite; z-index: 2; touch-action: manipulation; }
+.hub-mal svg { width: 42px; height: 42px; filter: drop-shadow(0 4px 5px rgba(0,0,0,.55)); }
+.hub-mal:not(.party) svg { opacity: .82; }
+.hub-mal.party { z-index: 5; }
+.hub-mal.party svg { width: 58px; height: 58px; filter: drop-shadow(0 0 8px rgba(72,255,160,.35)) drop-shadow(0 4px 5px rgba(0,0,0,.55)); }
+.hub-mal:active { filter: brightness(1.2); }
+.hub-name { font-size: 9px; color: #cffbe4; white-space: nowrap; background: rgba(6,16,12,.72);
+  padding: 0 4px; border-radius: 4px; opacity: 0; transition: opacity .2s; }
+.hub-mal.party .hub-name, .hub-mal:hover .hub-name { opacity: 1; }
+.hub-badge { position: absolute; top: -4px; right: -8px; font-size: 8px; background: #47d08a; color: #06140d;
+  border-radius: 999px; padding: 0 4px; font-weight: 800; }
+@keyframes hubBob { 0%,100% { transform: translate(-50%,-50%); } 50% { transform: translate(-50%, calc(-50% - 6px)); } }
+.hub-hint { font-size: 11px; color: #7fb89c; text-align: center; margin: 0 0 8px; }
+.hub-pop-card { background: #0f1b18; border: 1px solid #2f9e63; border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+.hub-pop-top { display: flex; align-items: center; gap: 8px; }
+.hub-pop-spr svg { width: 40px; height: 40px; }
+.hub-pop-name { display: flex; flex-direction: column; min-width: 0; }
+.hub-pop-name b { font-size: 13px; }
+.hub-pop-name small { font-size: 10px; color: #9fe0c4; }
+.hub-pop-toggle { margin-left: auto; flex: none; padding: 7px 10px; border-radius: 8px; font-size: 11px; font-weight: 700;
+  background: #14263a; border: 1px solid #2f6a8a; color: #bfe0ff; cursor: pointer; touch-action: manipulation; }
+.hub-pop-toggle.on { background: #1c3a2c; border-color: #47d08a; color: #d6ffe8; }
+.hub-pop-cia { font-size: 13px; margin: 6px 0 2px; }
+.hub-pop-waza { font-size: 11px; color: #ffd34a; margin-bottom: 3px; }
+
 .home-card { background: #0f1b18; border: 1px solid #1f3a30; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
-.home-party { display: flex; gap: 14px; justify-content: center; margin: 8px 0; }
-.home-unit { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.home-unit svg { width: 46px; height: 46px; }
-.home-unit small { font-size: 10px; color: #aef0c9; }
 .home-meta { font-size: 12px; color: #9fb3c2; margin: 6px 0 0; }
 .home-meta b { color: #7CFFB2; }
 

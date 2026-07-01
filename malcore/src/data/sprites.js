@@ -86,14 +86,42 @@ const SPRITES = (() => {
     return s;
   }
 
+  // アーキタイプ別の配色（手描きスプライトが無いユニットの自動生成に使う）
+  const ARCH_COLOR = {
+    '機密特化': ['#4aa3ff', '#2c7fd0'], '完全DoT': ['#44d07b', '#2c9c58'],
+    '可用DoS': ['#ffb03a', '#d0821f'], '装置破壊': ['#ff6b6b', '#c04040'],
+    '横展開': ['#b98cff', '#8a5fd0'], 'バフ支援': ['#5fe0d0', '#2ca79c'], '貫通': ['#ff8ac0', '#d05a90'],
+  };
+  function hashId(id) { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffff; return h; }
+  // 手描きが無いマルウェアの自動生成キャラ（アーキタイプ配色＋idハッシュで形が変わる）
+  function genericMal(id, arch) {
+    const c = ARCH_COLOR[arch] || ['#7aa0b0', '#4f6f7f'], c1 = c[0], c2 = c[1], h = hashId(id), shape = h % 3;
+    const body = shape === 0
+      ? `<circle cx="50" cy="56" r="30" fill="${c1}" stroke="${c2}" stroke-width="2"/>`
+      : shape === 1
+        ? `<rect x="22" y="30" width="56" height="52" rx="15" fill="${c1}" stroke="${c2}" stroke-width="2"/>`
+        : `<path d="M50 26 C74 26 82 46 78 62 C74 82 56 86 50 86 C44 86 26 82 22 62 C18 46 26 26 50 26 Z" fill="${c1}" stroke="${c2}" stroke-width="2"/>`;
+    const antenna = (h >> 2) % 2 ? `<line x1="50" y1="30" x2="50" y2="17" stroke="${c2}" stroke-width="3"/><circle cx="50" cy="15" r="4" fill="${c1}"/>` : '';
+    const ear = (h >> 3) % 2 ? `<circle cx="30" cy="34" r="7" fill="${c1}" stroke="${c2}" stroke-width="2"/><circle cx="70" cy="34" r="7" fill="${c1}" stroke="${c2}" stroke-width="2"/>` : '';
+    return `<ellipse cx="50" cy="92" rx="24" ry="5" fill="#0006"/>${antenna}${ear}${body}
+      <circle cx="42" cy="54" r="5" fill="#fff"/><circle cx="43" cy="55" r="2.6" fill="#11202a"/>
+      <circle cx="58" cy="54" r="5" fill="#fff"/><circle cx="59" cy="55" r="2.6" fill="#11202a"/>
+      <path d="M42 68 q8 6 16 0" stroke="${c2}" stroke-width="2.5" fill="none" stroke-linecap="round"/>`;
+  }
   function malSprite(id, opt) {
     opt = opt || {};
-    const m = mal[id]; if (!m) return '';
+    const m = mal[id];
+    let body, eyes;
+    if (m) { body = m.body; eyes = m.eyes; }
+    else { // 手描きが無い＝自動生成キャラ（新ユニット/将来のコンテンツにも対応）
+      const mm = (typeof malById === 'function') ? malById(id) : null;
+      body = genericMal(id, mm && mm.archetype); eyes = [[42, 54], [58, 54]];
+    }
     let inject = '';
-    if (opt.expr === 'attack') inject += attackOverlay(m.eyes);
-    else if (opt.expr === 'hurt') inject += hurtOverlay(m.eyes);
+    if (opt.expr === 'attack') inject += attackOverlay(eyes);
+    else if (opt.expr === 'hurt') inject += hurtOverlay(eyes);
     inject += genOverlay(opt.gen || 0);
-    return `<svg viewBox="0 0 100 100">${m.body}${inject}</svg>`;
+    return `<svg viewBox="0 0 100 100">${body}${inject}</svg>`;
   }
 
   // ---- 敵ノード ----
