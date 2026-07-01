@@ -527,7 +527,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
       (g.cut.hHack > 0 ? '<span class="badge ci">🛠️H-20(' + g.cut.hHack + 'T)</span>' : '') +
       (g.cut.vDiag > 0 ? '<span class="badge ci">🧪V+25(' + g.cut.vDiag + 'T)</span>' : '');
 
-    const acts = listActions(g).map(a => {
+    // 行動をカテゴリ分けしてタブ化（コンテンツが増えてもボタンの壁にしない）
+    const renderBtn = (a) => {
       const kind = a.id.startsWith('card:') ? ' card' : (a.id.startsWith('strike:') ? ' strike' : '');
       let spr = '';
       if (a.id.startsWith('strike:')) {
@@ -539,7 +540,33 @@ if (typeof document !== 'undefined' && document.getElementById) {
       return '<button class="act' + kind + ' ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
         (a.enabled ? '' : 'disabled title="' + a.reason + '"') + '>' +
         spr + '<span class="act-txt"><b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></span></button>';
+    };
+    const ACT_CATS = [
+      { key: 'intrude', label: '🚪 侵入', match: a => a.id === 'recon' || a.id === 'breach' || a.id === 'botnet' },
+      { key: 'pivot', label: '↔️ 横展開', match: a => a.id === 'pivot' || a.id.startsWith('evade:') || a.id.startsWith('break:') },
+      { key: 'support', label: '🛠️ 支援', match: a => a.id === 'ci_recon' || a.id === 'ci_diag' },
+      { key: 'strike', label: '⚔️ 撃破', match: a => a.id.startsWith('strike:') },
+      { key: 'card', label: '🃏 カード', match: a => a.id.startsWith('card:') },
+    ];
+    const allActs = listActions(g);
+    const cats = ACT_CATS.map(c => ({ key: c.key, label: c.label, acts: allActs.filter(c.match) })).filter(c => c.acts.length);
+    // アクティブタブ決定（保持しつつ、無効なら自動選択：本命到達後は撃破優先、なければ有効な行動を持つ最初）
+    let curTab = actTab;
+    if (!curTab || !cats.some(c => c.key === curTab)) {
+      const withEnabled = cats.filter(c => c.acts.some(a => a.enabled));
+      const pick = (reachedBoss(g) && withEnabled.find(c => c.key === 'strike')) || withEnabled[0] || cats[0];
+      curTab = pick ? pick.key : null;
+    }
+    const tabRow = cats.map(c => {
+      const en = c.acts.filter(a => a.enabled).length;
+      return '<button class="acttab' + (c.key === curTab ? ' on' : '') + '" data-acttab="' + c.key + '">' +
+        c.label + (en ? '<span class="tabbadge">' + en + '</span>' : '') + '</button>';
     }).join('');
+    const activeCat = cats.find(c => c.key === curTab);
+    const actList = activeCat ? activeCat.acts.map(renderBtn).join('') : '';
+    const actDock = cats.length
+      ? '<div class="acttabs">' + tabRow + '</div><div class="acts">' + actList + '</div>'
+      : '<div class="acts"></div>';
 
     $('battle-root').innerHTML =
       '<div class="hud">' +
@@ -571,8 +598,11 @@ if (typeof document !== 'undefined' && document.getElementById) {
         bar('🟡 可用性 A', d.A, d.initA, 'a', sh.A) +
         defensePanel(g) +
       '</div>' +
-      '<div class="acts">' + acts + '</div>' +
+      actDock +
       '<div class="logbox">' + g.log.slice(-6).reverse().map(l => '<div>' + l + '</div>').join('') + '</div>';
+
+    $('battle-root').querySelectorAll('.acttab').forEach(t =>
+      t.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); actTab = t.dataset.acttab; renderBattle(); }));
 
     $('battle-root').querySelectorAll('.act:not(.off)').forEach(b =>
       b.addEventListener('click', () => {
@@ -701,6 +731,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
   let equipped = []; // 装備中の攻撃手法カード（最大3）
   let party = ['zeus', 'iloveyou', 'mydoom']; // 出撃マルウェア（最大3）
   let selectedStage = 0;
+  let briefTab = 'party';   // ブリーフィングのサブタブ: 'party'|'equip'
+  let actTab = null;        // バトルの行動カテゴリ: intrude|pivot|support|strike|card（nullで自動選択）
 
   // 世代進化の永続状態（localStorage、無ければデモ用に開発P=4で開始）
   let levels = loadJSON('malcore.levels', {});
@@ -710,7 +742,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function isUnlocked(id) { return unlockedCards.indexOf(id) >= 0; }
   // 解放済みステージ数（初期1。勝利で次が解放）
   let unlockedStages = loadJSON('malcore.unlocked', 1);
-  const ROSTER = ['zeus', 'iloveyou', 'mydoom', 'blaster'];
+  const ROSTER = MAL.map(m => m.id); // 全マルウェアを編成候補に（新ユニットは自動で並ぶ）
 
   function renderStageSelect() {
     const html = STAGES.map((s, i) => {
@@ -744,6 +776,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
 
   function startGame() {
     G = createGame(STAGES[selectedStage], equipped, levels, party);
+    actTab = null; // カテゴリタブを初期化（自動で侵入から）
     Sound.bgm(); show('battle-screen'); renderBattle();
     playDefenseIntro(defenseIntro(G)); // 敵の防御を開幕カットインで提示（多いほど手強い印象）
   }
@@ -819,12 +852,18 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<b>' + ownIcon(c) + c.name + '</b><small>' + gaugeMark(c) + ' ' + costLabel(c.cost) +
         (c.special === 'ignoreH' ? ' / 貫通' : '') + '</small></button>';
     }).join('');
+    const tabs = '<div class="brieftabs">' +
+      '<button class="brieftab' + (briefTab === 'party' ? ' on' : '') + '" data-brief="party">🦠 編成 ' + party.length + '/3</button>' +
+      '<button class="brieftab' + (briefTab === 'equip' ? ' on' : '') + '" data-brief="equip">🃏 装備 ' + equipped.length + '/3</button></div>';
+    const body = briefTab === 'equip'
+      ? '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3 ・ 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</small></h2>' +
+        '<div class="equips">' + equipHtml + '</div>'
+      : '<h2 class="sub">編成（出撃 ' + party.length + '/3）<small>🛠️ 開発P ' + devP + '</small></h2>' +
+        '<div class="cards">' + handHtml + '</div>';
     $('briefing-body').innerHTML =
-      '<p class="intro">' + stage.intro + '</p>' +
-      '<h2 class="sub">編成（出撃 ' + party.length + '/3）<small>🛠️ 開発P ' + devP + '</small></h2>' +
-      '<div class="cards">' + handHtml + '</div>' +
-      '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3 ・ 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</small></h2>' +
-      '<div class="equips">' + equipHtml + '</div>';
+      '<p class="intro">' + stage.intro + '</p>' + tabs + body;
+    $('briefing-body').querySelectorAll('.brieftab').forEach(b =>
+      b.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); briefTab = b.dataset.brief; renderBriefing(); }));
     $('briefing-body').querySelectorAll('.party-btn').forEach(b =>
       b.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); toggleParty(b.dataset.party); renderBriefing(); }));
     $('briefing-body').querySelectorAll('.equip:not(.locked)').forEach(b =>

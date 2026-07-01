@@ -167,7 +167,7 @@ body {
 .bar-num { width: 34px; text-align: right; flex: none; color: #b9d6c7; }
 
 /* 経路 */
-.path { display: flex; align-items: flex-start; gap: 2px; justify-content: center; margin: 10px 0; flex-wrap: wrap; }
+.path { display: flex; align-items: flex-start; gap: 2px; justify-content: flex-start; margin: 10px 0; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
 .hop { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 6px; border-radius: 10px; border: 1px solid transparent; }
 .hop small { font-size: 10px; color: #6c8a7b; white-space: nowrap; }
 .hop.on { background: #12241c; border-color: #2f9e63; }
@@ -224,8 +224,17 @@ body {
   }
 }
 
+/* 行動カテゴリタブ（侵入/横展開/支援/撃破/カード） */
+.acttabs { display: flex; gap: 6px; margin: 10px 0 0; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+.acttab { flex: 0 0 auto; position: relative; padding: 7px 11px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: #101c17; border: 1px solid #274238; color: #9fc7b4; cursor: pointer; white-space: nowrap; touch-action: manipulation; }
+.acttab.on { background: #1c3a2c; border-color: #47d08a; color: #d6ffe8; }
+.acttab:active { transform: translateY(1px); }
+.tabbadge { display: inline-block; min-width: 16px; margin-left: 5px; padding: 0 4px; border-radius: 999px;
+  font-size: 10px; line-height: 16px; text-align: center; background: #47d08a; color: #06140d; font-weight: 800; }
+
 /* 行動ボタン */
-.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 10px; }
 .act { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px; border-radius: 10px; background: #122019; border: 1px solid #2a4a3a; color: #d6f0e0; cursor: pointer; }
 .act .act-txt { display: flex; flex-direction: column; }
 .act b { display: block; font-size: 13px; }
@@ -236,6 +245,13 @@ body {
 .act.strike b { color: #ffd34a; }
 .act.card { border-color: #6a2a4a; background: #1d1018; }
 .act.card b { color: #ff8ac0; }
+
+/* ブリーフィングのサブタブ（編成/装備） */
+.brieftabs { display: flex; gap: 8px; margin: 12px 0 4px; }
+.brieftab { flex: 1; padding: 9px 8px; border-radius: 10px 10px 0 0; font-size: 13px; font-weight: 700;
+  background: #0f1b18; border: 1px solid #1f3a30; border-bottom: none; color: #8fb6a3; cursor: pointer; touch-action: manipulation; }
+.brieftab.on { background: #1c3a2c; border-color: #47d08a; color: #d6ffe8; }
+.brieftab:active { transform: translateY(1px); }
 
 /* 装備技カード選択 */
 .equips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

@@ -176,7 +176,7 @@ body {
 .bar-num { width: 34px; text-align: right; flex: none; color: #b9d6c7; }
 
 /* 経路 */
-.path { display: flex; align-items: flex-start; gap: 2px; justify-content: center; margin: 10px 0; flex-wrap: wrap; }
+.path { display: flex; align-items: flex-start; gap: 2px; justify-content: flex-start; margin: 10px 0; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
 .hop { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 6px; border-radius: 10px; border: 1px solid transparent; }
 .hop small { font-size: 10px; color: #6c8a7b; white-space: nowrap; }
 .hop.on { background: #12241c; border-color: #2f9e63; }
@@ -233,8 +233,17 @@ body {
   }
 }
 
+/* 行動カテゴリタブ（侵入/横展開/支援/撃破/カード） */
+.acttabs { display: flex; gap: 6px; margin: 10px 0 0; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+.acttab { flex: 0 0 auto; position: relative; padding: 7px 11px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: #101c17; border: 1px solid #274238; color: #9fc7b4; cursor: pointer; white-space: nowrap; touch-action: manipulation; }
+.acttab.on { background: #1c3a2c; border-color: #47d08a; color: #d6ffe8; }
+.acttab:active { transform: translateY(1px); }
+.tabbadge { display: inline-block; min-width: 16px; margin-left: 5px; padding: 0 4px; border-radius: 999px;
+  font-size: 10px; line-height: 16px; text-align: center; background: #47d08a; color: #06140d; font-weight: 800; }
+
 /* 行動ボタン */
-.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+.acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 10px; }
 .act { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px; border-radius: 10px; background: #122019; border: 1px solid #2a4a3a; color: #d6f0e0; cursor: pointer; }
 .act .act-txt { display: flex; flex-direction: column; }
 .act b { display: block; font-size: 13px; }
@@ -245,6 +254,13 @@ body {
 .act.strike b { color: #ffd34a; }
 .act.card { border-color: #6a2a4a; background: #1d1018; }
 .act.card b { color: #ff8ac0; }
+
+/* ブリーフィングのサブタブ（編成/装備） */
+.brieftabs { display: flex; gap: 8px; margin: 12px 0 4px; }
+.brieftab { flex: 1; padding: 9px 8px; border-radius: 10px 10px 0 0; font-size: 13px; font-weight: 700;
+  background: #0f1b18; border: 1px solid #1f3a30; border-bottom: none; color: #8fb6a3; cursor: pointer; touch-action: manipulation; }
+.brieftab.on { background: #1c3a2c; border-color: #47d08a; color: #d6ffe8; }
+.brieftab:active { transform: translateY(1px); }
 
 /* 装備技カード選択 */
 .equips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -346,12 +362,15 @@ body {
 <script>
 
 /* ===== src/data/malware.js ===== */
-/* data/malware.js — マルこれ 世代0マルウェア（MVP用の初期編成サブセット）
+/* data/malware.js — マルこれ 収集マルウェア（世代0〜1）
    C/I/A攻撃力・ロールは docs/MALCORE_BALANCE.md §7 準拠。
+   archetype: UIグルーピング＆バランスのためのロール分類（機密特化/完全DoT/可用DoS/装置破壊/横展開/バフ支援/貫通）。
+   role/sub の日本語キーワード（偵察/侵入/足場/装置破壊）は経路技の担当判定(pathPerformer)に使う。
    ※挙動の抽象表現。実コード・悪用手順は含まない（docs/MALCORE_CONCEPT.md §2）。 */
 const MAL = [
+  // ===== 世代0（2000年代） =====
   {
-    id: 'zeus', name: 'Zeus/Zbot', year: 2007, gen: 0,
+    id: 'zeus', name: 'Zeus/Zbot', year: 2007, gen: 0, archetype: '機密特化',
     C: 95, I: 45, A: 15,
     role: '撃破(C特化)', sub: '偵察', recon: true, breaker: false,
     desc: 'バンキング型トロイ。認証情報を窃取し機密性(🔵)を一気に抜く本命撃破役。',
@@ -359,7 +378,7 @@ const MAL = [
             defense: 'MFAと取引署名で、単独の認証情報漏えいを無効化する。' },
   },
   {
-    id: 'iloveyou', name: 'ILOVEYOU', year: 2000, gen: 0,
+    id: 'iloveyou', name: 'ILOVEYOU', year: 2000, gen: 0, archetype: '完全DoT',
     C: 55, I: 85, A: 60,
     role: '撃破(I)', sub: '侵入', recon: false, breaker: false,
     desc: 'メール感染ワーム。ファイルを上書き破壊し完全性(🟢)を激しく削る。',
@@ -367,7 +386,7 @@ const MAL = [
             defense: '添付スクリプトの実行制限と、重要データのバックアップ。' },
   },
   {
-    id: 'mydoom', name: 'MyDoom', year: 2004, gen: 0,
+    id: 'mydoom', name: 'MyDoom', year: 2004, gen: 0, archetype: '可用DoS',
     C: 55, I: 25, A: 85,
     role: '足場/ボット', sub: '撃破(A)', recon: false, breaker: false,
     desc: 'バックドアを開き踏み台をボット化。可用性(🟡)も高い。',
@@ -375,12 +394,77 @@ const MAL = [
             defense: '外向き接続と開放ポートの監視（egress filtering）。' },
   },
   {
-    id: 'blaster', name: 'Blaster', year: 2003, gen: 0,
+    id: 'blaster', name: 'Blaster', year: 2003, gen: 0, archetype: '装置破壊',
     C: 10, I: 25, A: 85,
     role: '撃破(A)', sub: '装置破壊', recon: false, breaker: true,
     desc: 'RPC型ワーム。機器をクラッシュさせ防御装置(境界FW等)を破壊できる。',
     waza: { name: 'バッファ・オーバーフロー！！', en: 'Buffer Overflow', gauge: 'A',
             defense: 'パッチ適用とDEP/ASLR、RPCポートの遮断。' },
+  },
+  {
+    id: 'nimda', name: 'Nimda', year: 2001, gen: 0, archetype: '横展開',
+    C: 60, I: 65, A: 70,
+    role: '横展開', sub: '侵入', recon: false, breaker: false,
+    desc: '多経路感染ワーム。穴を選ばず広がる万能型。どのゲージも平均的に削る。',
+    waza: { name: 'マルチベクター・プロパゲーション！！', en: 'Multi-Vector Propagation', gauge: 'I',
+            defense: '不要サービスの停止とパッチ、共有・メール・Web各経路の同時対策。' },
+  },
+  {
+    id: 'slammer', name: 'SQL Slammer', year: 2003, gen: 0, archetype: '可用DoS',
+    C: 5, I: 5, A: 98,
+    role: '撃破(A特化)', sub: '過負荷', recon: false, breaker: false,
+    desc: '単一パケットで急拡散し、回線を溢れさせる純・可用性破壊。機密/完全性はほぼ削れない。',
+    waza: { name: 'シングルパケット・フラッド！！', en: 'Single-Packet Flood', gauge: 'A',
+            defense: 'パッチとUDP/1434の遮断、レート制限で拡散を封じる。' },
+  },
+  {
+    id: 'codered', name: 'Code Red', year: 2001, gen: 0, archetype: '可用DoS',
+    C: 15, I: 50, A: 80,
+    role: '撃破(A)', sub: '改ざん', recon: false, breaker: false,
+    desc: 'Webサーバを改ざんしつつDoSを仕掛ける。完全性と可用性の複合削り。',
+    waza: { name: 'デフェイス・アンド・フラッド！！', en: 'Deface & Flood', gauge: 'A',
+            defense: 'IISパッチと整合性監視、上流でのDoS吸収。' },
+  },
+  {
+    id: 'sasser', name: 'Sasser', year: 2004, gen: 0, archetype: '装置破壊',
+    C: 10, I: 20, A: 78,
+    role: '撃破(A)', sub: '装置破壊', recon: false, breaker: true,
+    desc: '認証系をクラッシュさせ再起動ループに追い込む。防御装置の破壊が得意。',
+    waza: { name: 'LSASSクラッシュ・ループ！！', en: 'LSASS Crash Loop', gauge: 'A',
+            defense: 'パッチ適用と境界での該当ポート遮断、再起動の抑止。' },
+  },
+  {
+    id: 'conficker', name: 'Conficker', year: 2008, gen: 0, archetype: '横展開',
+    C: 70, I: 75, A: 65,
+    role: '足場/ボット', sub: '横展開', recon: false, breaker: false,
+    desc: '世代0のボス級ボットネット。防御を掻い潜り深部へ広がる高水準の万能型。',
+    waza: { name: 'ドメイン・ジェネレーション！！', en: 'Domain Generation Algorithm', gauge: 'C',
+            defense: 'パッチとアカウントロックアウト、DGA通信のシンクホール。' },
+  },
+  // ===== 世代1（2010年代） =====
+  {
+    id: 'cryptolocker', name: 'CryptoLocker', year: 2013, gen: 1, archetype: '完全DoT',
+    C: 10, I: 72, A: 80,
+    role: '撃破(I/A)', sub: '破壊', recon: false, breaker: false,
+    desc: 'ランサム本格化の祖。完全性と可用性を同時に奪う。復旧を人質に取る。',
+    waza: { name: 'クリプト・エクストーション！！', en: 'Crypto Extortion', gauge: 'A',
+            defense: 'オフラインバックアップと復旧手順、横展開の遮断。' },
+  },
+  {
+    id: 'emotet', name: 'Emotet', year: 2014, gen: 1, archetype: 'バフ支援',
+    C: 65, I: 40, A: 30,
+    role: '足場/運び屋', sub: '偵察', recon: true, breaker: false,
+    desc: '感染の運び屋。後続を招き入れる侵入・偵察特化。単体火力は控えめ。',
+    waza: { name: 'ローダー・デリバリー！！', en: 'Loader Delivery', gauge: 'C',
+            defense: 'マクロ無効化と添付サンドボックス、EDRでの初期挙動検知。' },
+  },
+  {
+    id: 'mirai', name: 'Mirai', year: 2016, gen: 1, archetype: '可用DoS',
+    C: 20, I: 15, A: 95,
+    role: '撃破(A特化)', sub: '過負荷', recon: false, breaker: false,
+    desc: 'IoT機器を大群化する巨大DDoS。可用性への暴力に特化。',
+    waza: { name: 'IoTボットネット・ストーム！！', en: 'IoT Botnet Storm', gauge: 'A',
+            defense: '初期パスワード変更とファーム更新、上流でのトラフィック吸収。' },
   },
 ];
 
@@ -416,6 +500,22 @@ const CARDS = [
     cia: { C: 75 }, type: '認証', tactic: 'ATT&CK Credential Access', gen: 2, cost: { info: 10, tech: 5 }, special: null,
     desc: 'サービスチケットを要求し、資格情報をオフラインで解く。',
     defense: '強い鍵とサービスアカウント監査、異常検知。' },
+  { id: 'phishing', name: 'スピアフィッシング', en: 'Spear Phishing', gauge: 'C',
+    cia: { C: 40 }, type: '窃取', tactic: 'ATT&CK Initial Access', gen: 0, cost: { info: 5 }, special: null,
+    desc: '標的を狙った偽メールで認証情報や足場を得る、初期アクセスの王道。',
+    defense: '添付サンドボックスとMFA、利用者教育で入口を絞る。' },
+  { id: 'password_spray', name: 'パスワードスプレー', en: 'Password Spraying', gauge: 'C',
+    cia: { C: 45 }, type: '認証', tactic: 'ATT&CK Credential Access', gen: 1, cost: { info: 8 }, special: null,
+    desc: '弱いパスワードを多数アカウントへ横断的に試行する。',
+    defense: 'アカウントロックアウトとMFA、パスワードポリシー強化。' },
+  { id: 'ssrf', name: 'サーバサイド・リクエスト・フォージェリ', en: 'SSRF', gauge: 'C',
+    cia: { C: 55 }, type: '窃取', tactic: 'OWASP A10', gen: 2, cost: { tech: 8 }, special: null,
+    desc: 'サーバに内部資産へリクエストさせ、到達できない情報へ届く。',
+    defense: 'egress制限とメタデータ保護、宛先の許可リスト化。' },
+  { id: 'c2_beacon', name: 'C2ビーコン', en: 'C2 Beaconing', gauge: 'C',
+    cia: { C: 35 }, type: '窃取', tactic: 'ATT&CK Command & Control', gen: 2, cost: { info: 6 }, special: null,
+    desc: '静かな間隔で外部へ通信し、少しずつ持ち出す低ノイズ持ち出し。',
+    defense: 'ビーコン間隔検知とDNS異常監視、egressの可視化。' },
   // 🟢 完全性(I)
   { id: 'csrf', name: 'クロスサイト・リクエスト・フォージェリ', en: 'CSRF', gauge: 'I',
     cia: { I: 55 }, type: '改ざん', tactic: 'OWASP', gen: 0, cost: { tech: 5 }, special: null,
@@ -429,6 +529,18 @@ const CARDS = [
     cia: { I: 50, C: 20 }, type: '改ざん', tactic: 'ATT&CK Persistence', gen: 1, cost: { tech: 5, info: 5 }, special: null,
     desc: '改ざん拠点を植え付け、遠隔から操作する。',
     defense: 'WAFと整合性監視、書き込み権限の最小化。' },
+  { id: 'dns_poison', name: 'DNSキャッシュポイズニング', en: 'DNS Cache Poisoning', gauge: 'I',
+    cia: { I: 60 }, type: '改ざん', tactic: 'ATT&CK Impact', gen: 1, cost: { tech: 8 }, special: null,
+    desc: '名前解決を書き換え、通信の宛先ごと偽装する。',
+    defense: 'DNSSECと解決結果の検証、キャッシュの保護。' },
+  { id: 'golden_ticket', name: 'ゴールデンチケット', en: 'Golden Ticket', gauge: 'I',
+    cia: { I: 75, C: 20 }, type: '認証', tactic: 'ATT&CK Credential Access', gen: 2, cost: { tech: 15, info: 10 }, special: null,
+    desc: '認証基盤の鍵を握り、正規に見える万能チケットを発行する。',
+    defense: 'KRBTGTの定期更新と特権分離、異常なチケット発行の監視。' },
+  { id: 'supplychain', name: 'サプライチェーン汚染', en: 'Supply-Chain Compromise', gauge: 'I',
+    cia: { I: 60, C: 40 }, type: '貫通', tactic: 'ATT&CK Initial Access', gen: 3, cost: { tech: 15, info: 10 }, special: 'ignoreH',
+    desc: '信頼された配布物を汚染し、多層防御を信頼ごと通過する上位技。',
+    defense: '署名検証とSBOM、ビルド供給元の完全性監視。' },
   { id: 'ikatako', name: 'イカタコ上書き', en: 'File-Overwrite Wiper (Ika-Tako/Harada, 2007–10)', gauge: 'I',
     cia: { I: 70, C: 10 }, type: '破壊', tactic: 'ATT&CK Impact (Data Destruction)', gen: 1, cost: { res: 5 }, special: null, icon: 'ikatako',
     desc: 'ファイルをイカ・タコの画像で上書きし、完全性を破壊する（日本の上書き型ウイルス）。暗号化ではなく“塗りつぶし”。',
@@ -438,6 +550,10 @@ const CARDS = [
     cia: { A: 65 }, type: '過負荷', tactic: 'DoS', gen: 1, cost: { res: 5 }, special: null,
     desc: '接続を小出しに保持し続け、枠を枯渇させる。',
     defense: '接続タイムアウトとリバースプロキシで吸収。' },
+  { id: 'forkbomb', name: 'フォークボム', en: 'Fork Bomb', gauge: 'A',
+    cia: { A: 55 }, type: '過負荷', tactic: 'ATT&CK Impact', gen: 0, cost: { res: 5 }, special: null,
+    desc: 'プロセスを自己増殖させ、計算資源を食い尽くす。',
+    defense: 'ulimit/cgroupsでプロセス数を制限し、資源を隔離。' },
   { id: 'amplification', name: 'リフレクション・アンプリフィケーション', en: 'Amplification DDoS', gauge: 'A',
     cia: { A: 85 }, type: '過負荷', tactic: 'DDoS', gen: 2, cost: { res: 10 }, special: null,
     desc: '増幅応答を踏み台に集中させ、回線を溢れさせる。',
@@ -1446,7 +1562,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
       (g.cut.hHack > 0 ? '<span class="badge ci">🛠️H-20(' + g.cut.hHack + 'T)</span>' : '') +
       (g.cut.vDiag > 0 ? '<span class="badge ci">🧪V+25(' + g.cut.vDiag + 'T)</span>' : '');
 
-    const acts = listActions(g).map(a => {
+    // 行動をカテゴリ分けしてタブ化（コンテンツが増えてもボタンの壁にしない）
+    const renderBtn = (a) => {
       const kind = a.id.startsWith('card:') ? ' card' : (a.id.startsWith('strike:') ? ' strike' : '');
       let spr = '';
       if (a.id.startsWith('strike:')) {
@@ -1458,7 +1575,33 @@ if (typeof document !== 'undefined' && document.getElementById) {
       return '<button class="act' + kind + ' ' + (a.enabled ? '' : 'off') + '" data-act="' + a.id + '" ' +
         (a.enabled ? '' : 'disabled title="' + a.reason + '"') + '>' +
         spr + '<span class="act-txt"><b>' + a.label + '</b><small>' + (a.enabled ? a.hint : a.reason) + '</small></span></button>';
+    };
+    const ACT_CATS = [
+      { key: 'intrude', label: '🚪 侵入', match: a => a.id === 'recon' || a.id === 'breach' || a.id === 'botnet' },
+      { key: 'pivot', label: '↔️ 横展開', match: a => a.id === 'pivot' || a.id.startsWith('evade:') || a.id.startsWith('break:') },
+      { key: 'support', label: '🛠️ 支援', match: a => a.id === 'ci_recon' || a.id === 'ci_diag' },
+      { key: 'strike', label: '⚔️ 撃破', match: a => a.id.startsWith('strike:') },
+      { key: 'card', label: '🃏 カード', match: a => a.id.startsWith('card:') },
+    ];
+    const allActs = listActions(g);
+    const cats = ACT_CATS.map(c => ({ key: c.key, label: c.label, acts: allActs.filter(c.match) })).filter(c => c.acts.length);
+    // アクティブタブ決定（保持しつつ、無効なら自動選択：本命到達後は撃破優先、なければ有効な行動を持つ最初）
+    let curTab = actTab;
+    if (!curTab || !cats.some(c => c.key === curTab)) {
+      const withEnabled = cats.filter(c => c.acts.some(a => a.enabled));
+      const pick = (reachedBoss(g) && withEnabled.find(c => c.key === 'strike')) || withEnabled[0] || cats[0];
+      curTab = pick ? pick.key : null;
+    }
+    const tabRow = cats.map(c => {
+      const en = c.acts.filter(a => a.enabled).length;
+      return '<button class="acttab' + (c.key === curTab ? ' on' : '') + '" data-acttab="' + c.key + '">' +
+        c.label + (en ? '<span class="tabbadge">' + en + '</span>' : '') + '</button>';
     }).join('');
+    const activeCat = cats.find(c => c.key === curTab);
+    const actList = activeCat ? activeCat.acts.map(renderBtn).join('') : '';
+    const actDock = cats.length
+      ? '<div class="acttabs">' + tabRow + '</div><div class="acts">' + actList + '</div>'
+      : '<div class="acts"></div>';
 
     $('battle-root').innerHTML =
       '<div class="hud">' +
@@ -1490,8 +1633,11 @@ if (typeof document !== 'undefined' && document.getElementById) {
         bar('🟡 可用性 A', d.A, d.initA, 'a', sh.A) +
         defensePanel(g) +
       '</div>' +
-      '<div class="acts">' + acts + '</div>' +
+      actDock +
       '<div class="logbox">' + g.log.slice(-6).reverse().map(l => '<div>' + l + '</div>').join('') + '</div>';
+
+    $('battle-root').querySelectorAll('.acttab').forEach(t =>
+      t.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); actTab = t.dataset.acttab; renderBattle(); }));
 
     $('battle-root').querySelectorAll('.act:not(.off)').forEach(b =>
       b.addEventListener('click', () => {
@@ -1620,6 +1766,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
   let equipped = []; // 装備中の攻撃手法カード（最大3）
   let party = ['zeus', 'iloveyou', 'mydoom']; // 出撃マルウェア（最大3）
   let selectedStage = 0;
+  let briefTab = 'party';   // ブリーフィングのサブタブ: 'party'|'equip'
+  let actTab = null;        // バトルの行動カテゴリ: intrude|pivot|support|strike|card（nullで自動選択）
 
   // 世代進化の永続状態（localStorage、無ければデモ用に開発P=4で開始）
   let levels = loadJSON('malcore.levels', {});
@@ -1629,7 +1777,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function isUnlocked(id) { return unlockedCards.indexOf(id) >= 0; }
   // 解放済みステージ数（初期1。勝利で次が解放）
   let unlockedStages = loadJSON('malcore.unlocked', 1);
-  const ROSTER = ['zeus', 'iloveyou', 'mydoom', 'blaster'];
+  const ROSTER = MAL.map(m => m.id); // 全マルウェアを編成候補に（新ユニットは自動で並ぶ）
 
   function renderStageSelect() {
     const html = STAGES.map((s, i) => {
@@ -1663,6 +1811,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
 
   function startGame() {
     G = createGame(STAGES[selectedStage], equipped, levels, party);
+    actTab = null; // カテゴリタブを初期化（自動で侵入から）
     Sound.bgm(); show('battle-screen'); renderBattle();
     playDefenseIntro(defenseIntro(G)); // 敵の防御を開幕カットインで提示（多いほど手強い印象）
   }
@@ -1738,12 +1887,18 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<b>' + ownIcon(c) + c.name + '</b><small>' + gaugeMark(c) + ' ' + costLabel(c.cost) +
         (c.special === 'ignoreH' ? ' / 貫通' : '') + '</small></button>';
     }).join('');
+    const tabs = '<div class="brieftabs">' +
+      '<button class="brieftab' + (briefTab === 'party' ? ' on' : '') + '" data-brief="party">🦠 編成 ' + party.length + '/3</button>' +
+      '<button class="brieftab' + (briefTab === 'equip' ? ' on' : '') + '" data-brief="equip">🃏 装備 ' + equipped.length + '/3</button></div>';
+    const body = briefTab === 'equip'
+      ? '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3 ・ 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</small></h2>' +
+        '<div class="equips">' + equipHtml + '</div>'
+      : '<h2 class="sub">編成（出撃 ' + party.length + '/3）<small>🛠️ 開発P ' + devP + '</small></h2>' +
+        '<div class="cards">' + handHtml + '</div>';
     $('briefing-body').innerHTML =
-      '<p class="intro">' + stage.intro + '</p>' +
-      '<h2 class="sub">編成（出撃 ' + party.length + '/3）<small>🛠️ 開発P ' + devP + '</small></h2>' +
-      '<div class="cards">' + handHtml + '</div>' +
-      '<h2 class="sub">装備技カード <small id="equip-count">' + equipped.length + '/3 ・ 図鑑 ' + unlockedCards.length + '/' + CARDS.length + '</small></h2>' +
-      '<div class="equips">' + equipHtml + '</div>';
+      '<p class="intro">' + stage.intro + '</p>' + tabs + body;
+    $('briefing-body').querySelectorAll('.brieftab').forEach(b =>
+      b.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); briefTab = b.dataset.brief; renderBriefing(); }));
     $('briefing-body').querySelectorAll('.party-btn').forEach(b =>
       b.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); toggleParty(b.dataset.party); renderBriefing(); }));
     $('briefing-body').querySelectorAll('.equip:not(.locked)').forEach(b =>
