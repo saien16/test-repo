@@ -57,16 +57,33 @@ body {
 
 /* ステージ選択 */
 .stages { display: flex; flex-direction: column; gap: 10px; }
-.stage-card { text-align: left; padding: 12px; border-radius: 12px; background: #0f1b18; border: 1px solid #2a4a3a; color: #d6f0e0; cursor: pointer; }
+/* 2ペイン: 左リスト → 右詳細 */
+.stage-select { display: flex; flex-direction: column; gap: 10px; }
+.stage-list { display: flex; flex-direction: column; gap: 8px; }
+.stage-detail { background: #0d1714; border: 1px solid #2a4a3a; border-radius: 12px; padding: 12px; min-height: 120px; }
+.stage-card { text-align: left; padding: 10px 12px; border-radius: 12px; background: #0f1b18; border: 1px solid #2a4a3a; color: #d6f0e0; cursor: pointer; }
 .stage-card:not(.locked):active { transform: translateY(1px); }
+.stage-card.active { background: #122a20; border-color: #7CFFB2; box-shadow: 0 0 0 1px #7CFFB2 inset; }
 .stage-card.locked { opacity: .55; cursor: not-allowed; background: #14141a; border-color: #33333c; }
 .st-top { display: flex; justify-content: space-between; align-items: baseline; }
-.st-top b { font-size: 16px; color: #7CFFB2; }
+.st-top b { font-size: 15px; color: #7CFFB2; }
 .stage-card.locked .st-top b { color: #9a9aa6; }
 .st-gen { font-size: 11px; color: #7fb89c; }
-.st-meta { font-size: 11px; color: #9fb3c2; margin-top: 4px; }
-.st-intro { font-size: 12px; color: #cfe9d8; margin-top: 4px; }
-.st-clear { font-size: 11px; color: #7CFFB2; margin-top: 4px; font-weight: 700; }
+.st-meta { font-size: 11px; color: #9fb3c2; margin-top: 3px; }
+.st-clear { font-size: 13px; color: #7CFFB2; font-weight: 700; }
+/* 右詳細ペイン */
+.sd-empty { color: #7fb89c; font-size: 13px; text-align: center; padding: 32px 8px; }
+.sd-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.sd-head b { font-size: 17px; color: #7CFFB2; }
+.sd-gen { font-size: 11px; color: #7fb89c; }
+.sd-intro { font-size: 12px; color: #cfe9d8; line-height: 1.5; margin-bottom: 8px; }
+.sd-sec { font-size: 12px; color: #d6f0e0; margin-top: 6px; }
+.sd-lbl { display: inline-block; font-size: 11px; color: #7fb89c; margin-right: 6px; }
+.sd-route { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 3px; }
+.sd-hop { background: #14241d; border: 1px solid #2a4a3a; border-radius: 6px; padding: 2px 7px; font-size: 11px; color: #cfe9d8; }
+.sd-hop.boss { border-color: #ffd34a; color: #ffe89a; }
+.sd-arrow { color: #7fb89c; font-size: 11px; }
+.stage-detail .big-btn { margin-top: 12px; }
 
 /* 出撃トグル */
 .card.inparty { border-color: #2f9e63; box-shadow: 0 0 10px rgba(47,158,99,.35); }
@@ -507,8 +524,12 @@ svg.spec { width: 17px; height: 17px; border-radius: 50%; box-shadow: 0 0 0 1px 
   .home-right .big-btn { margin-top: 10px; }
 
   /* 一覧系は3カラムで横幅を活かす */
-  .cxgrid, .cards, .equips, .stages { grid-template-columns: 1fr 1fr 1fr; }
+  .cxgrid, .cards, .equips { grid-template-columns: 1fr 1fr 1fr; }
   .acts { grid-template-columns: 1fr 1fr; }
+
+  /* ステージ選択: 左リスト | 右詳細 の2ペイン */
+  .stage-select { display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; align-items: start; }
+  .stage-detail { position: sticky; top: 8px; min-height: 240px; }
 
   /* 下部タブバーもワイド化 */
   .tabbar { max-width: 980px; }
@@ -518,5 +539,5 @@ svg.spec { width: 17px; height: 17px; border-radius: 50%; box-shadow: 0 0 0 1px 
 
 /* 横幅の広い端末（タブレット/PC）でさらに3〜4カラム */
 @media (orientation: landscape) and (min-width: 1100px) {
-  .cxgrid, .cards, .equips, .stages { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .cxgrid, .cards, .equips { grid-template-columns: 1fr 1fr 1fr 1fr; }
 }

@@ -5,7 +5,9 @@
    ゲート(FW/WAF: gate:true, between:[a,b])はその区間の横展開を塞ぐ。剥がすと防御力低下。
    数値は docs/MALCORE_*.md 準拠（草案）。 */
 
-const PC = { name: '社員PC（踏み台）', kind: 'pc' };
+// 最初の攻略対象（アタックサーフェス）。社員PCではなく公開サーバ/踏み台など。
+// entry = 初期アクセスの技名（stageごとに差し替え）。
+const PC = { name: '踏み台サーバ', kind: 'edge', entry: '踏み台奪取' };
 // 境界FW（区間ゲート）
 function fwGate(a, b, def, opt) {
   return Object.assign({ id: 'fw_' + a + '_' + b, name: '境界FW', gate: true, between: [a, b],
@@ -112,6 +114,18 @@ const STAGE_REWARDS = {
   clearing: { info: 74, tech: 58, res: 64 }, // 最終ボス=最大
 };
 STAGES.forEach(s => { s.reward = STAGE_REWARDS[s.id] || { info: 20, tech: 12, res: 15 }; });
+
+// 最初の攻略対象（社員PCではなく、公開サーバ/踏み台/保守経路など）をステージ別に。
+const STAGE_ENTRIES = {
+  machi: { name: '公開Webサーバ', entry: '公開Webエクスプロイト' },
+  zenith: { name: '踏み台サーバ', entry: '踏み台奪取' },
+  power: { name: '遠隔保守サーバ', entry: '保守経路の悪用' },
+  cyber: { name: '委託先の踏み台', entry: 'サプライ経由で踏み台奪取' },
+  medi: { name: '公開予約サーバ', entry: '公開サーバ・エクスプロイト' },
+  nsho: { name: '公開ポータル', entry: 'ポータル侵害' },
+  clearing: { name: '公開ゲートウェイ', entry: '境界GW突破' },
+};
+STAGES.forEach(s => { const e = STAGE_ENTRIES[s.id]; if (e && s.nodes.pc) s.nodes.pc = { name: e.name, kind: 'edge', entry: e.entry }; });
 
 const STAGE_ZENITH = STAGES[1]; // 後方互換（テスト/既定）
 

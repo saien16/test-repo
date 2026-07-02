@@ -270,8 +270,9 @@ function listActions(g) {
 
   can('recon', '🔍 ポートスキャニング' + perfSuffix(g, 'recon'), !g.reconDone, '偵察済み',
       '敵の🛡H/🎯Vを開示 🚨+3');
-  // 初期侵害: 外部 → 最初の内部ノード
-  can('breach', '🚪 スピアフィッシング' + perfSuffix(g, 'breach'), !inside, '侵害済み',
+  // 初期侵害: 外部 → 最初の内部ノード（アタックサーフェス。stageごとに技名が変わる）
+  const entryTech = (g.stage.nodes[g.stage.path[1]] || {}).entry || ACT_TECH.breach.name;
+  can('breach', '🚪 ' + entryTech + perfSuffix(g, 'breach'), !inside, '侵害済み',
       nodeName(g.stage.path[1]) + 'に侵入 🚨+3');
   can('botnet', '🏴 ボットネット編入' + perfSuffix(g, 'botnet'), inside && !g.botnet, inside ? '実施済み' : '踏み台が必要',
       '🟡火力+10% 🚨+4（君のスマホも踏み台かも）');
@@ -354,7 +355,8 @@ function applyAction(g, actionId) {
     msg = '⚡ ' + flashMsg(g.flash) + ': 本命 H' + g.db.baseH + ' / V' + g.db.baseV + 'を偵察';
   } else if (actionId === 'breach') {
     const first = g.stage.path[1]; g.footholds[first] = true; warn = 3;
-    g.flash = flashWith(g, ACT_TECH.breach, 'breach');
+    const et = (g.stage.nodes[first] || {}).entry || ACT_TECH.breach.name;
+    g.flash = flashWith(g, { name: et, en: ACT_TECH.breach.en }, 'breach');
     msg = '⚡ ' + flashMsg(g.flash) + ': ' + (g.stage.nodes[first].name) + 'に足場を確立';
   } else if (actionId === 'botnet') {
     g.botnet = true; warn = 4; g.flash = flashWith(g, ACT_TECH.botnet, 'botnet');
@@ -1036,30 +1038,71 @@ if (typeof document !== 'undefined' && document.getElementById) {
   let ROSTER = unlockedMal.slice(); // 編成候補＝解放済みマルウェア
   function refreshRoster() { ROSTER = unlockedMal.slice(); }
 
+  function stageThick(s) {
+    return ['C', 'I', 'A'].filter(k => (s.nodes.db.baseDef[k] || 0) >= 0.15)
+      .map(k => ({ C: '🔵', I: '🟢', A: '🟡' }[k])).join('') || '—';
+  }
+  function renderStageDetail(i) {
+    const el = $('stage-detail'); if (!el) return;
+    if (i == null || i >= unlockedStages) {
+      el.innerHTML = '<div class="sd-empty">← 左のマップから攻略対象を選んでください</div>';
+      return;
+    }
+    const s = STAGES[i];
+    const cleared = i < unlockedStages - 1;
+    // 侵攻ルート（侵入口→…→本命）
+    const route = s.path.slice(1).map((key, idx) => {
+      const n = s.nodes[key] || {}; const last = idx === s.path.length - 2;
+      return '<span class="sd-hop' + (last ? ' boss' : '') + '">' + (n.name || key) + '</span>';
+    }).join('<span class="sd-arrow">→</span>');
+    const entry = (s.nodes[s.path[1]] || {}).entry;
+    const defs = s.defenses.map(d => d.name).filter(Boolean);
+    if (s.edr) defs.push('EDR');
+    el.innerHTML =
+      '<div class="sd-head"><b>' + (i + 1) + '. ' + s.name + '</b>' +
+        '<span class="sd-gen">世代' + s.gen + ' ／ ⏳' + s.turnLimit + 'T' + (cleared ? ' ／ ✓攻略済' : '') + '</span></div>' +
+      '<div class="sd-intro">' + s.intro + '</div>' +
+      '<div class="sd-sec"><span class="sd-lbl">🚪 侵入口</span>' + (entry ? entry + '（' + (s.nodes[s.path[1]].name) + '）' : '—') + '</div>' +
+      '<div class="sd-sec"><span class="sd-lbl">🗺️ 侵攻ルート</span><div class="sd-route">' + route + '</div></div>' +
+      '<div class="sd-sec"><span class="sd-lbl">🎯 本命CIA</span>🔵' + s.nodes.db.C + ' 🟢' + s.nodes.db.I + ' 🟡' + s.nodes.db.A +
+        ' ・ 厚い ' + stageThick(s) + '</div>' +
+      '<div class="sd-sec"><span class="sd-lbl">🛡️ 防御</span>' + (defs.length ? defs.join(' ・ ') : '簡易のみ') + '</div>' +
+      '<button id="sd-sortie" class="big-btn">🦠 このステージへ出撃</button>';
+    const btn = $('sd-sortie');
+    if (btn) btn.addEventListener('click', () => {
+      Sound.unlock(); Sound.play('select');
+      selectedStage = i; renderBriefing(); show('briefing-screen');
+    });
+  }
   function renderStageSelect() {
-    const html = STAGES.map((s, i) => {
+    // 既定選択＝直近に解放されたステージ（未選択/ロック中なら補正）
+    if (selectedStage == null || selectedStage >= unlockedStages) selectedStage = unlockedStages - 1;
+    const list = STAGES.map((s, i) => {
       const open = i < unlockedStages;
       const cleared = i < unlockedStages - 1;
-      const thick = ['C', 'I', 'A'].filter(k => (s.nodes.db.baseDef[k] || 0) >= 0.15)
-        .map(k => ({ C: '🔵', I: '🟢', A: '🟡' }[k])).join('') || '—';
-      return '<button class="stage-card ' + (open ? '' : 'locked') + '" ' + (open ? 'data-stage="' + i + '"' : 'disabled') + '>' +
+      return '<button class="stage-card ' + (open ? '' : 'locked') + (i === selectedStage ? ' active' : '') + '" ' +
+        (open ? 'data-stage="' + i + '"' : 'disabled') + '>' +
         '<div class="st-top"><b>' + (open ? '' : '🔒 ') + (i + 1) + '. ' + s.name + '</b>' +
-        '<span class="st-gen">世代' + s.gen + ' / ' + s.turnLimit + 'T</span></div>' +
+        (cleared ? '<span class="st-clear">✓</span>' : open ? '<span class="st-gen">世代' + s.gen + '</span>' : '') + '</div>' +
         (open
-          ? '<div class="st-meta">本命CIA ' + s.nodes.db.C + '/' + s.nodes.db.I + '/' + s.nodes.db.A +
-            ' ・ 厚い ' + thick + (s.edr ? ' ・ EDR' : '') + ' ・ 対策' + s.defenses.length + '</div>' +
-            '<div class="st-intro">' + s.intro + '</div>' +
-            (cleared ? '<div class="st-clear">✓ 攻略済</div>' : '')
-          : '<div class="st-meta">前のステージを攻略すると解放</div>') +
+          ? '<div class="st-meta">⏳' + s.turnLimit + 'T ・ 厚い ' + stageThick(s) + (s.edr ? ' ・ EDR' : '') + '</div>'
+          : '<div class="st-meta">前のステージを攻略で解放</div>') +
         '</button>';
     }).join('');
-    $('stage-body').innerHTML = '<div class="stages">' + html + '</div>';
+    $('stage-body').innerHTML =
+      '<div class="stage-select">' +
+        '<div class="stage-list">' + list + '</div>' +
+        '<div id="stage-detail" class="stage-detail"></div>' +
+      '</div>';
     $('stage-body').querySelectorAll('.stage-card:not(.locked)').forEach(b =>
       b.addEventListener('click', () => {
         Sound.unlock(); Sound.play('select');
         selectedStage = parseInt(b.dataset.stage, 10);
-        renderBriefing(); show('briefing-screen');
+        $('stage-body').querySelectorAll('.stage-card').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        renderStageDetail(selectedStage);
       }));
+    renderStageDetail(selectedStage);
   }
   function loadJSON(key, def) {
     try { const v = localStorage.getItem(key); return v == null ? def : JSON.parse(v); } catch (e) { return def; }
