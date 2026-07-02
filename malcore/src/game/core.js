@@ -556,6 +556,30 @@ if (typeof document !== 'undefined' && document.getElementById) {
     });
   }
 
+  // ===== マルウェアの得意CIA（単一=1色 / 複合=2色 / 万能=3色を1アイコンで）＋最大攻撃力 =====
+  const CIA_COL = { C: '#4aa3ff', I: '#44d07b', A: '#ffd34a' };
+  function ciaSpecGauges(s) {
+    const arr = [['C', s.C || 0], ['I', s.I || 0], ['A', s.A || 0]];
+    const max = Math.max(arr[0][1], arr[1][1], arr[2][1]) || 1;
+    const inv = arr.filter(g => g[1] >= max * 0.70).map(g => g[0]); // 最大の70%以上を"得意"に
+    const top = arr.slice().sort((a, b) => b[1] - a[1])[0];
+    return { gauges: inv.length ? inv : [top[0]], max: max, maxGauge: top[0] };
+  }
+  function specIcon(gauges) {
+    const n = gauges.length, cx = 10, cy = 10, r = 9;
+    if (n === 1) return '<svg class="spec" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="' + CIA_COL[gauges[0]] + '"/></svg>';
+    let p = '';
+    for (let i = 0; i < n; i++) {
+      const a0 = (i / n) * 6.2832 - 1.5708, a1 = ((i + 1) / n) * 6.2832 - 1.5708;
+      const x0 = (cx + r * Math.cos(a0)).toFixed(2), y0 = (cy + r * Math.sin(a0)).toFixed(2);
+      const x1 = (cx + r * Math.cos(a1)).toFixed(2), y1 = (cy + r * Math.sin(a1)).toFixed(2);
+      p += '<path d="M' + cx + ' ' + cy + ' L' + x0 + ' ' + y0 + ' A' + r + ' ' + r + ' 0 0 1 ' + x1 + ' ' + y1 + ' Z" fill="' + CIA_COL[gauges[i]] + '"/>';
+    }
+    return '<svg class="spec" viewBox="0 0 20 20">' + p + '</svg>';
+  }
+  function ciaBadge(s) { const sp = ciaSpecGauges(s); return '<span class="cia-badge">' + specIcon(sp.gauges) + '<b>' + sp.max + '</b></span>'; } // 得意アイコン＋最大攻撃力だけ
+  function ciaFull(s) { return '🔵' + (s.C || 0) + ' 🟢' + (s.I || 0) + ' 🟡' + (s.A || 0); } // 詳細: 全CIA攻撃力
+
   // 本命の防御力（ゲージ別の実効緩和％）と、効いている対策を表示
   function defensePanel(g) {
     const pct = (gauge) => Math.round(gaugeMit(g, gauge) * 100);
@@ -1118,7 +1142,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       return '<div class="card' + (inParty ? ' inparty' : '') + '"><div class="card-top">' +
         '<span class="malspr evo' + L + '">' + SPRITES.mal(id, { gen: L }) + '</span>' +
         '<span class="card-name"><b>' + m.name + badge + '</b><span>' + m.year + ' / 世代Lv' + L + '</span></span></div>' +
-        '<div class="card-cia">🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</div>' +
+        '<div class="card-cia">' + ciaBadge(s) + '<span class="cia-role">' + (m.archetype || '') + '</span></div>' +
         '<div class="card-role">' + m.role + ' / ' + m.sub + '</div>' +
         (m.waza ? '<div class="card-waza">⚡ ' + MALCORE.wazaName(m, L) + '</div>' : '') +
         partyBtn + evoBtn + '</div>';
@@ -1216,7 +1240,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
           '<span class="cx-name"><b>' + m.name + '</b><span class="cx-meta">' +
           (own ? '<span class="cc-own">✓開発済</span>' : '<span class="cc-lock">🔒未開発</span>') + ' 世代' + m.gen + ' / ' + m.year + '</span></span>' +
           '<span class="cx-arch">' + (m.archetype || '') + '</span></div>' +
-          '<div class="cx-cia">🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</div>' +
+          '<div class="cx-cia">' + ciaBadge(s) + (codexExpanded[m.id] ? '<span class="cia-detail">攻撃力 ' + ciaFull(s) + '</span>' : '') + '</div>' +
           (m.waza ? '<div class="cx-waza">⚡ ' + m.waza.name.replace(/！+$/, '') + '</div>' : '') +
           intelBlock(m.id, m.intel, m.waza && m.waza.defense, (m.intel || {}).tag) + '</div>';
       }).join('');
@@ -1228,7 +1252,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
         '<span class="cx-spr">' + (c.icon && SPRITES.card(c.icon) ? SPRITES.card(c.icon) : GB[c.gauge] || '⚡') + '</span>' +
         '<span class="cx-name"><b>' + c.name + '</b><span class="cx-meta">' +
         (isUnlocked(c.id) ? '<span class="cc-own">✓所持</span>' : '<span class="cc-lock">🔒未入手</span>') + ' 世代' + c.gen + '</span></span></div>' +
-        '<div class="cx-cia">' + gaugeMark(c) + '</div>' +
+        '<div class="cx-cia">' + ciaBadge(c.cia || {}) + (codexExpanded[c.id] ? '<span class="cia-detail">攻撃力 ' + ciaFull(c.cia || {}) + '</span>' : '') + '</div>' +
         intelBlock(c.id, c.intel, c.defense, c.tactic) + '</div>'
       ).join('');
     }
@@ -1314,9 +1338,11 @@ if (typeof document !== 'undefined' && document.getElementById) {
       let top = 16 + row * 27 + (((i % 3) - 1) * 5);
       left = Math.max(6, Math.min(88, left)); top = Math.max(8, Math.min(82, top));
       const delay = ((i % 5) * 0.4).toFixed(1);
+      const sp = ciaSpecGauges(MALCORE.malStats(m, L));
       return '<button class="hub-mal' + (inParty ? ' party' : '') + '" data-hubmal="' + id + '" ' +
         'style="left:' + left + '%;top:' + top + '%;animation-delay:' + delay + 's">' +
         '<span class="hub-spr">' + SPRITES.mal(id, { gen: L }) + '</span>' +
+        '<span class="hub-spec">' + specIcon(sp.gauges) + '<i>' + sp.max + '</i></span>' +
         (inParty ? '<span class="hub-badge">出撃</span>' : '') +
         '<span class="hub-name">' + m.name + '</span></button>';
     }).join('');
@@ -1435,8 +1461,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const malRows = locked.length ? locked.map(m => {
       const cost = devCost(m), s = MALCORE.malStats(m, 0);
       return '<div class="dev-row"><span class="dev-mal-spr">' + SPRITES.mal(m.id, { gen: 0 }) + '</span>' +
-        '<div class="dev-info"><b>' + m.name + '</b>' +
-        '<small>' + (m.archetype || '') + '・世代' + m.gen + '・🔵' + s.C + ' 🟢' + s.I + ' 🟡' + s.A + '</small></div>' +
+        '<div class="dev-info"><b>' + m.name + '</b>' + ciaBadge(s) +
+        '<small>' + (m.archetype || '') + '・世代' + m.gen + '</small></div>' +
         '<button class="dev-mal-buy" data-devmal="' + m.id + '" ' + (stock.btc < cost ? 'disabled' : '') + '>⬆ ₿ ' + cost + '</button></div>';
     }).join('') : '<p class="home-meta">全マルウェア開発済み（' + MAL.length + '/' + MAL.length + '）</p>';
     $('develop-body').innerHTML =

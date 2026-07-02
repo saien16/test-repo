@@ -108,7 +108,18 @@ body {
 /* 本命DBが瀕死(crit)のとき小刻みに揺れる */
 .bossspr.crit { animation: hpShake .5s linear infinite; }
 @keyframes hpShake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-2px) rotate(-2deg)} 75%{transform:translateX(2px) rotate(2deg)} }
-.card-cia { font-size: 13px; margin: 4px 0; }
+.card-cia { font-size: 13px; margin: 4px 0; display: flex; align-items: center; gap: 8px; }
+/* 得意CIAの1アイコン（単一=1色/複合=2色/万能=3色）＋最大攻撃力 */
+.cia-badge { display: inline-flex; align-items: center; gap: 5px; }
+svg.spec { width: 17px; height: 17px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,.25) inset, 0 1px 2px rgba(0,0,0,.4); vertical-align: middle; }
+.cia-badge b { font-size: 15px; font-weight: 900; color: #eef7f1; }
+.cia-role { font-size: 10px; color: #8fb6a3; }
+.cia-detail { font-size: 11px; color: #cfe4f5; margin-left: 8px; }
+/* 母港の各キャラの得意CIAバッジ（右下） */
+.hub-spec { position: absolute; bottom: 12px; right: -4px; display: inline-flex; align-items: center; gap: 2px;
+  background: rgba(6,16,12,.82); border-radius: 999px; padding: 1px 5px 1px 2px; z-index: 6; }
+.hub-mal .hub-spec svg.spec { width: 12px; height: 12px; }
+.hub-spec i { font-size: 9px; font-weight: 800; color: #dfeee7; font-style: normal; }
 .card-role { font-size: 11px; color: #7fd0ff; }
 .card-waza { font-size: 12px; font-weight: 800; color: #ffd34a; margin: 4px 0 2px; text-shadow: 0 0 8px rgba(255,211,74,.4); }
 .card-desc { font-size: 11px; color: #9fb3c2; margin-top: 4px; }
