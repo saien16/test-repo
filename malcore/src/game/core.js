@@ -59,10 +59,10 @@ function payCost(g, cost) {
 function costLabel(cost) {
   if (!cost) return '';
   const p = [];
-  if (cost.info) p.push('情報' + cost.info);
-  if (cost.tech) p.push('技術' + cost.tech);
-  if (cost.res) p.push('資源' + cost.res);
-  return p.join('/');
+  if (cost.info) p.push('📡' + cost.info);
+  if (cost.tech) p.push('🧬' + cost.tech);
+  if (cost.res) p.push('💾' + cost.res);
+  return p.join(' ');
 }
 
 /* ===== 防御力（本体 + 有効な対策の寄与） ===== */
@@ -123,18 +123,18 @@ const ACT_TECH = {
    ・debuff は本命サーバの防御力低下（=装置破壊デバフ）。 */
 const GATE_VULNS = {
   filter_bypass: { name: 'フィルタリング・バイパス', en: 'Filtering Bypass', icon: '🌫️', warn: 3, weight: 3,
-    short: 'FWの防御を無効化して素通り', hint: 'ACLの穴を突きFW防御を無効化して侵攻。低リスク。 W+3' },
+    short: 'FWの防御を無効化して素通り', hint: 'ACLの穴を突きFW防御を無効化して侵攻。低リスク。 🚨+3' },
   config_disclosure: { name: 'コンフィグ・ディスクロージャー', en: 'Config Disclosure', icon: '📄', warn: 2, weight: 2,
     reveal: true, loot: { info: 12 }, short: '設定を吸い出し本命を偵察＋情報+12',
-    hint: '設定情報を開示させ侵攻＋本命を偵察＋情報+12。静か。 W+2' },
+    hint: '設定情報を開示させ侵攻＋本命を偵察＋情報+12。静か。 🚨+2' },
   traffic_leak: { name: 'トラフィック・データ漏洩', en: 'Traffic Data Leak', icon: '📡', warn: 4, weight: 2,
     steal: { C: 34 }, loot: { info: 8 }, short: '通過しつつ機密性を削る＋情報+8',
-    hint: '流れるデータを抜き侵攻＋本命の機密性(🔵)を削る。 W+4' },
+    hint: '流れるデータを抜き侵攻＋本命の機密性(🔵)を削る。 🚨+4' },
   rce: { name: '任意コード実行(RCE)', en: 'Remote Code Execution', icon: '🧬', warn: 6, weight: 2,
     debuff: { C: 0.05, I: 0.05, A: 0.05 }, short: '本命の防御力を全体的に低下',
-    hint: '機器上でコード実行し侵攻＋本命の防御力を低下（装置破壊デバフ）。 W+6' },
+    hint: '機器上でコード実行し侵攻＋本命の防御力を低下（装置破壊デバフ）。 🚨+6' },
   crash: { name: 'クラッシュ（強制ダウン）', en: 'Crash', icon: '💥', warn: 14, weight: 1,
-    short: '強行突破だが警戒度が大幅増', hint: '機器を落として強引に侵攻。防御↓だが W+14（大幅）' },
+    short: '強行突破だが警戒度が大幅増', hint: '機器を落として強引に侵攻。防御↓だが 🚨+14（大幅）' },
 };
 // 脆弱性を重み付きで1つ抽選（何が見つかるかはその時々）
 function rollVuln() {
@@ -266,14 +266,15 @@ function listActions(g) {
   const inside = reachedIdx(g) >= 1;     // 最初の内部ノードに到達済みか
   const atBoss = reachedBoss(g);
   const can = (id, label, ok, reason, hint) => A.push({ id, label, enabled: ok, reason, hint });
+  const gmark = (s) => (s.C ? '🔵' + s.C + ' ' : '') + (s.I ? '🟢' + s.I + ' ' : '') + (s.A ? '🟡' + s.A + ' ' : ''); // 0のゲージは出さない
 
   can('recon', '🔍 ポートスキャニング' + perfSuffix(g, 'recon'), !g.reconDone, '偵察済み',
-      '本命の防御を偵察で開示。CIカットインの前提。 W+3');
+      '敵の🛡H/🎯Vを開示 🚨+3');
   // 初期侵害: 外部 → 最初の内部ノード
   can('breach', '🚪 スピアフィッシング' + perfSuffix(g, 'breach'), !inside, '侵害済み',
-      nodeName(g.stage.path[1]) + 'を初期侵害し足場確立。 W+3');
+      nodeName(g.stage.path[1]) + 'に侵入 🚨+3');
   can('botnet', '🏴 ボットネット編入' + perfSuffix(g, 'botnet'), inside && !g.botnet, inside ? '実施済み' : '踏み台が必要',
-      '踏み台をボット化。可用性火力+10%。 W+4（※あなたのスマホも、誰かの踏み台かも）');
+      '🟡火力+10% 🚨+4（君のスマホも踏み台かも）');
   const hasBreaker = g.hand.some(id => (malById(id) || {}).breaker);
   activeDefenses(g).forEach(d => {
     const act = defActionable(g, d);
@@ -283,25 +284,25 @@ function listActions(g) {
       const found = g.gateScan[d.id];
       const sc = scanCost(g);
       can('scan:' + d.id, '🔎 脆弱性スキャン: ' + d.name, act && canAfford(g, { info: sc }),
-          act ? '情報' + sc + 'が必要' : '手前に到達が必要',
-          (found ? '再スキャンで別の脆弱性を探す' : d.name + 'の弱点を探る（何が出るかは運）') + ' 情報' + sc + ' / W+2');
+          act ? '📡' + sc + ' 不足' : '手前ノードまで進め',
+          (found ? '別の弱点を引き直す🎲' : '弱点を探す🎲') + ' 📡' + sc + ' 🚨+2');
       if (found) {
         const v = GATE_VULNS[found];
-        can('exploit:' + d.id, v.icon + ' ' + v.name + ' → ' + b, act, '手前に到達が必要', v.hint);
+        can('exploit:' + d.id, v.icon + ' ' + v.name + ' → ' + b, act, '手前ノードまで進め', v.hint);
       }
-      can('penetrate:' + d.id, '💥 貫通攻撃: ' + d.name + ' → ' + b + perfSuffix(g, 'brk'), act, '手前に到達が必要',
-          '脆弱性なしで強引に侵攻。本命防御↓だが W+15（派手）');
+      can('penetrate:' + d.id, '💥 貫通攻撃: ' + d.name + ' → ' + b + perfSuffix(g, 'brk'), act, '手前ノードまで進め',
+          '強行突破。敵防御↓ 🚨+15');
     } else {
       // 監視系(DLP/IPS/FIM/EDR): 回避/破壊
       if (d.evade) {
         can('evade:' + d.id, '🌫️ ' + d.name + 'を回避', act && canAfford(g, d.evade),
-            act ? '資源不足(' + costLabel(d.evade) + ')' : '内部に到達が必要',
-            '正規に偽装し無効化。防御力↓＆検知↓。' + costLabel(d.evade) + ' / W+2');
+            act ? costLabel(d.evade) + ' 不足' : '内部まで進め',
+            '偽装で無効化。防御↓検知↓ ' + costLabel(d.evade) + ' 🚨+2');
       }
       if (d.breakable) {
         can('break:' + d.id, '💥 ' + d.name + 'を破壊' + perfSuffix(g, 'brk'), act && hasBreaker,
-            act ? '装置破壊ロールが必要' : '内部に到達が必要',
-            '装置破壊ロールで無効化＋本命防御↓。だが W+25（派手）');
+            act ? '装置破壊ロールが必要' : '内部まで進め',
+            '破壊で無効化＋敵防御↓ 🚨+25');
       }
     }
   });
@@ -309,12 +310,12 @@ function listActions(g) {
   const nxt = nextNodeId(g);
   if (inside && nxt && segmentOpen(g, currentNodeId(g), nxt) && !g.footholds[nxt]) {
     can('pivot', '↔️ ラテラルムーブメント → ' + nodeName(nxt), true, '',
-        'パス・ザ・ハッシュで ' + nodeName(nxt) + ' へ横展開。 W+3');
+        nodeName(nxt) + 'へ横展開 🚨+3');
   }
-  can('ci_recon', '🛠️ アタックサーフェス・マッピング（H -20/3T）', g.reconDone && g.res.info >= 20, g.reconDone ? '情報20が必要' : '先に偵察が必要',
-      'ハードニングを下げ通りやすくする。情報-20 / W+5');
-  can('ci_diag', '🧪 ヴァルネラビリティ・スキャン（V +25/3T）', g.res.tech >= 15, '技術15が必要',
-      '脆弱性を露出させ命中・会心UP。技術-15 / W+5');
+  can('ci_recon', '🛠️ アタックサーフェス・マッピング（H-20/3T）', g.reconDone && g.res.info >= 20, g.reconDone ? '📡20 不足' : '先に偵察',
+      '📡20 🚨+5');
+  can('ci_diag', '🧪 ヴァルネラビリティ・スキャン（V+25/3T）', g.res.tech >= 15, '🧬15 不足',
+      '🧬15 🚨+5');
 
   // 撃破（本命に到達後、手持ちのマルウェア固有技ごと。世代進化を反映）
   g.hand.forEach(id => {
@@ -324,18 +325,17 @@ function listActions(g) {
     const tag = L > 0 ? EVO_SUFFIX[L].replace('・', '') + ' ' : '';
     const w = strikeWarn(g, primGauge(s), L);
     can('strike:' + id, '⚔️ ' + tag + (m.waza ? m.waza.name.replace(/！+$/, '') : m.name), atBoss, '本命未到達',
-        'C' + s.C + '/I' + s.I + '/A' + s.A + ' で攻撃。 W+' + w);
+        gmark(s) + '🚨+' + w);
   });
   // 装備技カード（本命到達後・資源を満たすとき）
   (g.equipped || []).forEach(id => {
     const c = cardById(id); if (!c) return;
     const ok = atBoss && canAfford(g, c.cost);
-    const reason = !atBoss ? '本命未到達' : '資源不足(' + costLabel(c.cost) + ')';
+    const reason = !atBoss ? '本命未到達' : costLabel(c.cost) + ' 不足';
     const cia = c.cia || {};
     const w = strikeWarn(g, c.gauge || primGauge(cia), 0, 5);
     can('card:' + id, '🃏 ' + c.name, ok, reason,
-        'C' + (cia.C || 0) + '/I' + (cia.I || 0) + '/A' + (cia.A || 0) +
-        (c.special === 'ignoreH' ? ' 貫通' : '') + ' ' + costLabel(c.cost) + ' W+' + w);
+        gmark(cia) + (c.special === 'ignoreH' ? '⤵貫通 ' : '') + costLabel(c.cost) + ' 🚨+' + w);
   });
   return A;
 }
@@ -477,14 +477,12 @@ function checkEnd(g) {
 /* ===== 防御官の総評（攻撃と対策はセット、という学び） ===== */
 function debrief(g) {
   if (g.result === 'win') {
-    return '攻略成功。だが現実なら——機密性を抜かれたのは多要素認証と取引の異常検知が甘かったから。' +
-           'カットイン（偵察・診断）に崩されたのは、攻撃者に弱点を先に診断され尽くした証だ。';
+    return '攻略成功。守る側の教訓——<br>・MFAと異常検知の甘さが🔵を漏らした<br>・弱点は攻撃者に先へ診断される';
   }
   if (g.result === 'lose_turn') {
-    return 'タイムオーバー。ブルーチームの封じ込めが間に合った。' +
-           '＝ネットワーク分離とログ監視で攻撃者の滞留時間を稼ぎ、素早く追い出した防御の勝利だ。';
+    return '時間切れ＝防御の勝ち。ネットワーク分離とログ監視が滞留時間を稼いだ。';
   }
-  return '警戒度MAXで足場を一斉駆除された。派手に動きすぎ＝EDR/IDSに検知された。静かな攻撃ほど怖い、という教訓だ。';
+  return '騒ぎすぎてEDR/IDSに捕まった。静かな攻撃ほど怖い。';
 }
 
 /* ===== エクスポート（テスト/UI共用） ===== */
@@ -703,10 +701,10 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const warnNote = (function () {
       const alert = (g.stage.blue || {}).alert || 40;
       let cls, txt;
-      if (isStealth(g)) { cls = 'stealth'; txt = '🥷 潜伏中: 攻撃+' + Math.round((STEALTH_MUL - 1) * 100) + '%・ブルーは動かない'; }
-      else if (g.warning < alert) { cls = 'calm'; txt = '🟢 未察知: ブルーはまだ動いていない'; }
-      else if (g.warning < g.stage.diag.warnThreshold) { cls = 'alert'; txt = '🟡 警戒: ブルーチームが動き始めた（介入が増える）'; }
-      else { cls = 'danger'; txt = '🔴 危険: ブルーが頻繁に介入（100で駆除）'; }
+      if (isStealth(g)) { cls = 'stealth'; txt = '🥷 潜伏中 ⚔️+' + Math.round((STEALTH_MUL - 1) * 100) + '%'; }
+      else if (g.warning < alert) { cls = 'calm'; txt = '🟢 未察知'; }
+      else if (g.warning < g.stage.diag.warnThreshold) { cls = 'alert'; txt = '🟡 ブルー始動'; }
+      else { cls = 'danger'; txt = '🔴 介入頻発 ／ 100で駆除'; }
       return '<div class="warn-note ' + cls + '">' + txt + '</div>';
     })();
     // 横画面で2カラムに組み替えられるよう bt-top / bt-main(bt-left/bt-right) に分割
@@ -714,9 +712,9 @@ if (typeof document !== 'undefined' && document.getElementById) {
       '<div class="bt-top">' +
         '<div class="hud">' +
           '<span class="pill turn">⏳ T ' + g.turn + ' / ' + g.maxTurn + '</span>' +
-          '<span class="pill info">📡 情報 ' + g.res.info + '</span>' +
-          '<span class="pill tech">🧬 技術 ' + g.res.tech + '</span>' +
-          '<span class="pill resr">⚙️ 資源 ' + g.res.res + '</span>' +
+          '<span class="pill info">📡 ' + g.res.info + '</span>' +
+          '<span class="pill tech">🧬 ' + g.res.tech + '</span>' +
+          '<span class="pill resr">💾 ' + g.res.res + '</span>' +
         '</div>' +
         bar('🚨 発覚度', g.warning, 100, 'warn', sh.warn) + warnNote +
       '</div>' +
@@ -922,17 +920,16 @@ if (typeof document !== 'undefined' && document.getElementById) {
     if (win) {
       const loot = G._loot || grantWin(); // 通常は showFinish で確定済み
       if (loot.stageName) reward += '<div class="reward unlock">🗺️ 新ステージ解放！「' + loot.stageName + '」</div>';
-      // 制圧報酬: 本命から溢れ出た 情報/技術/リソース（次の出撃で使える）
-      reward += '<div class="reward loot">💥 制圧報酬が溢れ出た！ 📡情報+' + loot.reward.info +
-        ' 🧬技術+' + loot.reward.tech + ' 💾リソース+' + loot.reward.res + '（ストックへ → 次の出撃で投入）</div>';
-      reward += '<div class="reward">🛠️ 開発P +' + loot.devP + '（所持 ' + devP + '）— 母港バフに使える</div>';
-      reward += '<div class="reward">⛏️ コインマイナー設置！「' + STAGES[selectedStage].name +
-        '」で ' + loot.minerLeft + '回の出撃までビットコイン等を採掘' +
-        '<br><span class="realnote">※これ実在の"クリプトジャッキング"。あなたのCPUで勝手に採掘されてたら…？</span></div>';
-      if (loot.card) reward += '<div class="reward unlock">🃏 攻撃カード・ドロップ！「' + loot.card +
-        '」（図鑑 ' + unlockedCards.length + '/' + CARDS.length + '）</div>';
-      if (loot.malware) reward += '<div class="reward unlock">🦠 マルウェア・ドロップ！「' + loot.malware +
-        '」が仲間に（母港 ' + unlockedMal.length + '/' + MAL.length + '）</div>';
+      // 制圧報酬: 本命から溢れ出た 情報/技術/資源（次の出撃で使える）
+      reward += '<div class="reward loot">💥 制圧報酬 📡+' + loot.reward.info +
+        ' 🧬+' + loot.reward.tech + ' 💾+' + loot.reward.res + ' → 次の出撃へ</div>';
+      reward += '<div class="reward">🛠️ 開発P +' + loot.devP + '（計 ' + devP + '）</div>';
+      reward += '<div class="reward">⛏️ マイナー設置「' + STAGES[selectedStage].name + '」 ₿採掘 ×' + loot.minerLeft + '出撃' +
+        '<br><span class="realnote">※実在の"クリプトジャッキング"。君のCPUでも起きうる。</span></div>';
+      if (loot.card) reward += '<div class="reward unlock">🃏 NEW「' + loot.card +
+        '」 図鑑' + unlockedCards.length + '/' + CARDS.length + '</div>';
+      if (loot.malware) reward += '<div class="reward unlock">🦠 NEW「' + loot.malware +
+        '」が仲間に 母港' + unlockedMal.length + '/' + MAL.length + '</div>';
       G._loot = null;
     }
     // 二段オチ: 攻撃側マルウェアのボヤキ（=対策の裏返し）→ 防御官のツッコミ（=学び）
@@ -943,8 +940,8 @@ if (typeof document !== 'undefined' && document.getElementById) {
     $('result-body').innerHTML =
       '<div class="verdict ' + (win ? 'win' : 'lose') + '">' +
         (win ? '🏆 攻略成功' : (G.result === 'lose_turn' ? '⏳ タイムオーバー' : '🚨 駆除された')) + '</div>' +
-      '<div class="stat">残りCIA合計 ' + Math.round(G.db.C + G.db.I + G.db.A) +
-        ' ／ 使用 ' + (G.turn) + 'T ／ 警戒度 ' + G.warning + '</div>' +
+      '<div class="stat">CIA ' + Math.round(G.db.C + G.db.I + G.db.A) +
+        ' ／ ⏳' + (G.turn) + 'T ／ 🚨' + G.warning + '</div>' +
       reward +
       '<div class="debrief">' + boyaHtml + '<b>👮 防御官のツッコミ</b><p>' + debrief(G) + '</p></div>';
   }
@@ -1075,12 +1072,12 @@ if (typeof document !== 'undefined' && document.getElementById) {
     // 回収済みストックの情報/技術/資源を今回の出撃に注ぎ込む（ビットコインは改良/開発用に残す）
     if (stock.info || stock.tech || stock.res) {
       G.res.info += stock.info; G.res.tech += stock.tech; G.res.res += stock.res;
-      G.log.push('📦 回収済み補給を投入: 情報+' + stock.info + ' 技術+' + stock.tech + ' 資源+' + stock.res);
+      G.log.push('📦 補給投入 📡+' + stock.info + ' 🧬+' + stock.tech + ' 💾+' + stock.res);
       stock.info = 0; stock.tech = 0; stock.res = 0; saveStock();
     }
-    if (rep.sites) G.log.push('⛏️ マイナー' + rep.sites + '拠点が採掘中（母港で回収できる）' +
-      (rep.cleaned.length ? ' ／ 🧹 ' + rep.cleaned.map(id => (STAGES.find(s => s.id === id) || {}).name).join('・') + 'のマイナーは駆除された' : ''));
-    if (!onboarded) G.log.push('🔰 まずは光っている「👉おすすめ」の手を順番に押していけばOK。まず🔍偵察で敵を調べよう。');
+    if (rep.sites) G.log.push('⛏️ ' + rep.sites + '拠点が採掘 → 母港で回収' +
+      (rep.cleaned.length ? ' ／ 🧹 ' + rep.cleaned.map(id => (STAGES.find(s => s.id === id) || {}).name).join('・') + 'のマイナー駆除' : ''));
+    if (!onboarded) G.log.push('🔰 光る「👉おすすめ」を順に押そう');
     actTab = null; // カテゴリタブを初期化（自動で侵入から）
     Sound.bgm(); show('battle-screen'); renderBattle();
     playDefenseIntro(defenseIntro(G)); // 敵の防御を開幕カットインで提示（多いほど手強い印象）
@@ -1359,7 +1356,7 @@ if (typeof document !== 'undefined' && document.getElementById) {
       }
     }
     const firstTip = !onboarded
-      ? '<div class="home-card firsttip">🔰 <b>はじめての方へ</b><br>あなたは<b>悪の秘密基地の主</b>。手下（マルウェア）を率いて敵サーバを乗っ取ろう。まずは下の<b>⚔️出撃</b>を押すだけ。戦闘は光る「👉おすすめ」を順に押せばOK！</div>'
+      ? '<div class="home-card firsttip">🔰 あなたは<b>悪の秘密基地の主</b>。<b>⚔️出撃</b> → 光る<b>👉おすすめ</b>を押すだけ！</div>'
       : '';
     // ダッシュボードのバッジ計算
     const pend = pendingTotal();
