@@ -1452,6 +1452,16 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
 
   function initUI() {
+    // 横画面ロック（フルスクリーン/インストール済みPWAではOSレベルで landscape 固定。
+    // それ以外のブラウザは screen.orientation.lock が使えないため、CSSの回転案内で担保）。
+    try {
+      if (typeof screen !== 'undefined' && screen.orientation && screen.orientation.lock) {
+        document.addEventListener('click', function lockOnce() {
+          document.removeEventListener('click', lockOnce);
+          try { const p = screen.orientation.lock('landscape'); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+        }, { once: true });
+      }
+    } catch (e) {}
     // click だけでなく touchend も拾う（スマホでの取りこぼし防止）
     const tap = (id, fn) => {
       const el = $(id); if (!el) return;

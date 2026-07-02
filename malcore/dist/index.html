@@ -472,9 +472,21 @@ body {
 .cxentry.locked { opacity: .74; }
 .cxentry.locked .cx-spr svg { filter: grayscale(.55) brightness(.72); }
 
+/* ===== 横画面ロック（マルこれは横画面専用） ===== */
+.rotate-lock { display: none; }
+@media (orientation: portrait) {
+  .rotate-lock { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(120% 80% at 50% 30%, #0e161b, #05080a); text-align: center; padding: 24px; }
+  .rl-icon { font-size: 68px; display: inline-block; animation: rotateHint 1.9s ease-in-out infinite; }
+  .rl-title { font-size: 21px; font-weight: 900; color: #7CFFB2; margin-top: 16px; text-shadow: 0 0 16px rgba(72,255,160,.4); }
+  .rl-sub { font-size: 13px; color: #9fb3c2; margin-top: 8px; line-height: 1.7; }
+  .rl-sub b { color: #ffd34a; }
+  @keyframes rotateHint { 0%,15% { transform: rotate(0); } 55%,100% { transform: rotate(90deg); } }
+}
+
 /* ===== 横画面（ランドスケープ）最適化 ===== */
-/* 縦でも動くが、横回転すると2カラムの戦闘盤・母港に組み替える。 */
-@media (orientation: landscape) and (min-width: 700px) {
+/* 横画面専用。横回転すると2カラムの戦闘盤・母港に組み替える。 */
+@media (orientation: landscape) and (min-width: 560px) {
   #app { max-width: 980px; }
   .screen { padding: 14px 20px; padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
 
@@ -580,6 +592,15 @@ body {
     <button class="tabbar-btn" data-tab="develop-screen">🛠️<span>開発</span></button>
     <button class="tabbar-btn" data-tab="stage-screen">⚔️<span>出撃</span></button>
   </nav>
+
+  <!-- 横画面ロック: 縦のときだけ表示して回転を促す（マルこれは横画面専用） -->
+  <div class="rotate-lock">
+    <div class="rl-inner">
+      <div class="rl-icon">📱</div>
+      <div class="rl-title">画面を横にしてください</div>
+      <div class="rl-sub">マルこれは<b>横画面専用</b>です。<br>端末を横向きにするとプレイできます。</div>
+    </div>
+  </div>
 
 </div>
 <script>
@@ -2940,6 +2961,16 @@ if (typeof document !== 'undefined' && document.getElementById) {
   }
 
   function initUI() {
+    // 横画面ロック（フルスクリーン/インストール済みPWAではOSレベルで landscape 固定。
+    // それ以外のブラウザは screen.orientation.lock が使えないため、CSSの回転案内で担保）。
+    try {
+      if (typeof screen !== 'undefined' && screen.orientation && screen.orientation.lock) {
+        document.addEventListener('click', function lockOnce() {
+          document.removeEventListener('click', lockOnce);
+          try { const p = screen.orientation.lock('landscape'); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+        }, { once: true });
+      }
+    } catch (e) {}
     // click だけでなく touchend も拾う（スマホでの取りこぼし防止）
     const tap = (id, fn) => {
       const el = $(id); if (!el) return;

@@ -463,9 +463,21 @@ body {
 .cxentry.locked { opacity: .74; }
 .cxentry.locked .cx-spr svg { filter: grayscale(.55) brightness(.72); }
 
+/* ===== 横画面ロック（マルこれは横画面専用） ===== */
+.rotate-lock { display: none; }
+@media (orientation: portrait) {
+  .rotate-lock { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(120% 80% at 50% 30%, #0e161b, #05080a); text-align: center; padding: 24px; }
+  .rl-icon { font-size: 68px; display: inline-block; animation: rotateHint 1.9s ease-in-out infinite; }
+  .rl-title { font-size: 21px; font-weight: 900; color: #7CFFB2; margin-top: 16px; text-shadow: 0 0 16px rgba(72,255,160,.4); }
+  .rl-sub { font-size: 13px; color: #9fb3c2; margin-top: 8px; line-height: 1.7; }
+  .rl-sub b { color: #ffd34a; }
+  @keyframes rotateHint { 0%,15% { transform: rotate(0); } 55%,100% { transform: rotate(90deg); } }
+}
+
 /* ===== 横画面（ランドスケープ）最適化 ===== */
-/* 縦でも動くが、横回転すると2カラムの戦闘盤・母港に組み替える。 */
-@media (orientation: landscape) and (min-width: 700px) {
+/* 横画面専用。横回転すると2カラムの戦闘盤・母港に組み替える。 */
+@media (orientation: landscape) and (min-width: 560px) {
   #app { max-width: 980px; }
   .screen { padding: 14px 20px; padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
 
