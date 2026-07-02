@@ -462,3 +462,38 @@ body {
 .dev-mal-buy:disabled { opacity: .5; cursor: not-allowed; }
 .cxentry.locked { opacity: .74; }
 .cxentry.locked .cx-spr svg { filter: grayscale(.55) brightness(.72); }
+
+/* ===== 横画面（ランドスケープ）最適化 ===== */
+/* 縦でも動くが、横回転すると2カラムの戦闘盤・母港に組み替える。 */
+@media (orientation: landscape) and (min-width: 700px) {
+  #app { max-width: 980px; }
+  .screen { padding: 14px 20px; padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
+
+  /* 戦闘: 上部(HUD/発覚度)フル幅 → 下は 本命 | 行動 の2カラム */
+  .bt-main { display: grid; grid-template-columns: 1.05fr .95fr; gap: 16px; align-items: start; }
+  .bt-left, .bt-right { min-width: 0; }
+  .acttabs { margin-top: 0; }
+  .logbox { max-height: 92px; }
+  .path { justify-content: flex-start; }
+
+  /* 母港: シーン | ダッシュボード の2カラム */
+  #home-body { display: grid; grid-template-columns: 1.15fr .85fr; gap: 20px; align-items: start; }
+  .home-left, .home-right { min-width: 0; }
+  .hub-scene { height: 66vh; max-height: 440px; }
+  .home-right .big-btn, .home-right .home-actions { max-width: none; margin-left: 0; margin-right: 0; }
+  .home-right .big-btn { margin-top: 10px; }
+
+  /* 一覧系は3カラムで横幅を活かす */
+  .cxgrid, .cards, .equips, .stages { grid-template-columns: 1fr 1fr 1fr; }
+  .acts { grid-template-columns: 1fr 1fr; }
+
+  /* 下部タブバーもワイド化 */
+  .tabbar { max-width: 980px; }
+
+  /* 決着/カットインは中央寄せのまま（fixed）で問題なし */
+}
+
+/* 横幅の広い端末（タブレット/PC）でさらに3〜4カラム */
+@media (orientation: landscape) and (min-width: 1100px) {
+  .cxgrid, .cards, .equips, .stages { grid-template-columns: 1fr 1fr 1fr 1fr; }
+}

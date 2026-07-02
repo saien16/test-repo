@@ -676,38 +676,47 @@ if (typeof document !== 'undefined' && document.getElementById) {
       ? '<div class="acttabs">' + tabRow + '</div><div class="acts">' + actList + '</div>'
       : '<div class="acts"></div>';
 
+    const warnNote = (function () {
+      const alert = (g.stage.blue || {}).alert || 40;
+      let cls, txt;
+      if (isStealth(g)) { cls = 'stealth'; txt = '🥷 潜伏中: 攻撃+' + Math.round((STEALTH_MUL - 1) * 100) + '%・ブルーは動かない'; }
+      else if (g.warning < alert) { cls = 'calm'; txt = '🟢 未察知: ブルーはまだ動いていない'; }
+      else if (g.warning < g.stage.diag.warnThreshold) { cls = 'alert'; txt = '🟡 警戒: ブルーチームが動き始めた（介入が増える）'; }
+      else { cls = 'danger'; txt = '🔴 危険: ブルーが頻繁に介入（100で駆除）'; }
+      return '<div class="warn-note ' + cls + '">' + txt + '</div>';
+    })();
+    // 横画面で2カラムに組み替えられるよう bt-top / bt-main(bt-left/bt-right) に分割
     $('battle-root').innerHTML =
-      '<div class="hud">' +
-        '<span class="pill turn">⏳ T ' + g.turn + ' / ' + g.maxTurn + '</span>' +
-        '<span class="pill info">📡 情報 ' + g.res.info + '</span>' +
-        '<span class="pill tech">🧬 技術 ' + g.res.tech + '</span>' +
-        '<span class="pill resr">⚙️ 資源 ' + g.res.res + '</span>' +
+      '<div class="bt-top">' +
+        '<div class="hud">' +
+          '<span class="pill turn">⏳ T ' + g.turn + ' / ' + g.maxTurn + '</span>' +
+          '<span class="pill info">📡 情報 ' + g.res.info + '</span>' +
+          '<span class="pill tech">🧬 技術 ' + g.res.tech + '</span>' +
+          '<span class="pill resr">⚙️ 資源 ' + g.res.res + '</span>' +
+        '</div>' +
+        bar('🚨 発覚度', g.warning, 100, 'warn', sh.warn) + warnNote +
       '</div>' +
-      bar('🚨 発覚度', g.warning, 100, 'warn', sh.warn) +
-      (function () {
-        const alert = (g.stage.blue || {}).alert || 40;
-        let cls, txt;
-        if (isStealth(g)) { cls = 'stealth'; txt = '🥷 潜伏中: 攻撃+' + Math.round((STEALTH_MUL - 1) * 100) + '%・ブルーは動かない'; }
-        else if (g.warning < alert) { cls = 'calm'; txt = '🟢 未察知: ブルーはまだ動いていない'; }
-        else if (g.warning < g.stage.diag.warnThreshold) { cls = 'alert'; txt = '🟡 警戒: ブルーチームが動き始めた（介入が増える）'; }
-        else { cls = 'danger'; txt = '🔴 危険: ブルーが頻繁に介入（100で駆除）'; }
-        return '<div class="warn-note ' + cls + '">' + txt + '</div>';
-      })() +
-      '<div class="path">' + pathHtml + '</div>' +
-      '<div class="boss">' +
-        '<div class="boss-head"><span class="bossspr ' + dbState + '">' + SPRITES.node('db', { state: dbState }) + '</span>' +
-          '<span class="boss-title">★ ' + g.stage.nodes.db.name +
-          '<span class="hv">H ' + effH(g) + ' / V ' + effV(g) + ' ' + cutBadges + '</span></span></div>' +
-        '<div class="goal-chip">🎯 このサーバを乗っ取れ！ 守り(CIA) <b class="ci-total" data-from="' + Math.round(shTotal) +
-          '" data-to="' + Math.round(d.C + d.I + d.A) + '">' + Math.round(shTotal) + '</b>' +
-          ' を <b>' + Math.round(d.initTotal * g.stage.win.ratio) + '以下</b>まで削ればクリア</div>' +
-        bar('🔵 機密性 C', d.C, d.initC, 'c', sh.C) +
-        bar('🟢 完全性 I', d.I, d.initI, 'i', sh.I) +
-        bar('🟡 可用性 A', d.A, d.initA, 'a', sh.A) +
-        defensePanel(g) +
-      '</div>' +
-      actDock +
-      '<div class="logbox">' + g.log.slice(-6).reverse().map(l => '<div>' + l + '</div>').join('') + '</div>';
+      '<div class="bt-main">' +
+        '<div class="bt-left">' +
+          '<div class="path">' + pathHtml + '</div>' +
+          '<div class="boss">' +
+            '<div class="boss-head"><span class="bossspr ' + dbState + '">' + SPRITES.node('db', { state: dbState }) + '</span>' +
+              '<span class="boss-title">★ ' + g.stage.nodes.db.name +
+              '<span class="hv">H ' + effH(g) + ' / V ' + effV(g) + ' ' + cutBadges + '</span></span></div>' +
+            '<div class="goal-chip">🎯 このサーバを乗っ取れ！ 守り(CIA) <b class="ci-total" data-from="' + Math.round(shTotal) +
+              '" data-to="' + Math.round(d.C + d.I + d.A) + '">' + Math.round(shTotal) + '</b>' +
+              ' を <b>' + Math.round(d.initTotal * g.stage.win.ratio) + '以下</b>まで削ればクリア</div>' +
+            bar('🔵 機密性 C', d.C, d.initC, 'c', sh.C) +
+            bar('🟢 完全性 I', d.I, d.initI, 'i', sh.I) +
+            bar('🟡 可用性 A', d.A, d.initA, 'a', sh.A) +
+            defensePanel(g) +
+          '</div>' +
+        '</div>' +
+        '<div class="bt-right">' +
+          actDock +
+          '<div class="logbox">' + g.log.slice(-6).reverse().map(l => '<div>' + l + '</div>').join('') + '</div>' +
+        '</div>' +
+      '</div>';
 
     $('battle-root').querySelectorAll('.acttab').forEach(t =>
       t.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); actTab = t.dataset.acttab; renderBattle(); }));
@@ -1347,17 +1356,21 @@ if (typeof document !== 'undefined' && document.getElementById) {
       '<button class="home-act" data-go="develop">🛠️ 強化する' + (devReady ? '<span class="act-badge dot">!</span>' : '') +
       '<small>改良・新規開発・母港バフ</small></button></div>';
     $('home-body').innerHTML =
-      '<div class="hub-scene' + (mining ? ' mining' : '') + '">' + SPRITES.hubBg() + siphon + scene + '</div>' +
-      '<p class="hub-hint">タップでマルウェアの詳細・出撃メンバーの入替（出撃 ' + party.length + '/3' +
-      (mining ? ' ／ ⛏️ 採掘中 ' + mining + '拠点' : '') + '）</p>' +
-      firstTip +
-      '<div id="hub-pop"></div>' +
-      dash +
-      '<div class="home-card">' +
-      '<p class="home-meta">₿ <b>' + stock.btc + '</b>（改良・開発に使用） ／ 🛠️ 開発P <b>' + devP + '</b> ／ 🦠 母港 ' + unlockedMal.length + '/' + MAL.length + '</p>' +
-      '<p class="home-meta">🗺️ 解放ステージ ' + unlockedStages + '/' + STAGES.length + ' ／ 📖 図鑑 ' + unlockedCards.length + '/' + CARDS.length +
-      ' ／ ⛏️ 採掘拠点 ' + mining + '</p>' +
-      '<p class="home-meta">🏅 母港バフ: ' + buffLine + '</p></div>';
+      '<div class="home-left">' +
+        '<div class="hub-scene' + (mining ? ' mining' : '') + '">' + SPRITES.hubBg() + siphon + scene + '</div>' +
+        '<p class="hub-hint">タップでマルウェアの詳細・出撃メンバーの入替（出撃 ' + party.length + '/3' +
+        (mining ? ' ／ ⛏️ 採掘中 ' + mining + '拠点' : '') + '）</p>' +
+        firstTip +
+      '</div>' +
+      '<div class="home-right">' +
+        '<div id="hub-pop"></div>' +
+        dash +
+        '<div class="home-card">' +
+        '<p class="home-meta">₿ <b>' + stock.btc + '</b>（改良・開発に使用） ／ 🛠️ 開発P <b>' + devP + '</b> ／ 🦠 母港 ' + unlockedMal.length + '/' + MAL.length + '</p>' +
+        '<p class="home-meta">🗺️ 解放ステージ ' + unlockedStages + '/' + STAGES.length + ' ／ 📖 図鑑 ' + unlockedCards.length + '/' + CARDS.length +
+        ' ／ ⛏️ 採掘拠点 ' + mining + '</p>' +
+        '<p class="home-meta">🏅 母港バフ: ' + buffLine + '</p></div>' +
+      '</div>';
     $('home-body').querySelectorAll('.hub-mal').forEach(b =>
       b.addEventListener('click', () => {
         Sound.unlock(); Sound.play('select');
