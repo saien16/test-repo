@@ -41,6 +41,25 @@ body {
 .big-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 #1d6b41; }
 .big-btn.retry { background: linear-gradient(180deg,#ffd479,#f0a93a); box-shadow: 0 6px 0 #9c6a14; }
 .big-btn.ghost { background: #12201a; color: #9fe7c1; box-shadow: 0 6px 0 #0c1712; border: 1px solid #2a4a3a; }
+/* 採掘物の回収ボタン（金・目立つ・脈打つ） */
+.big-btn.collect { background: linear-gradient(180deg,#ffe08a,#e0a933); color: #3a2a00; box-shadow: 0 6px 0 #9c6a14;
+  font-size: 16px; animation: collectPulse 1.4s ease-in-out infinite; }
+@keyframes collectPulse { 0%,100% { box-shadow: 0 6px 0 #9c6a14, 0 0 0 rgba(255,211,74,0); } 50% { box-shadow: 0 6px 0 #9c6a14, 0 0 16px rgba(255,211,74,.55); } }
+/* 母港ダッシュボードのアクションカード */
+.home-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 320px; margin: 10px auto 0; }
+.home-act { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 12px; border-radius: 12px; background: #12201a; border: 1px solid #2a4a3a; color: #d6f0e0;
+  font-size: 15px; font-weight: 800; cursor: pointer; text-align: left; touch-action: manipulation; box-shadow: 0 4px 0 #0c1712; }
+.home-act:active { transform: translateY(2px); box-shadow: 0 2px 0 #0c1712; }
+.home-act small { font-size: 10px; font-weight: 500; color: #8fb6a3; }
+.act-badge { position: absolute; top: -7px; right: -6px; font-size: 10px; font-weight: 800; color: #06140d;
+  background: #ff6b6b; color: #fff; border-radius: 999px; padding: 1px 7px; box-shadow: 0 2px 4px rgba(0,0,0,.4); }
+.act-badge.dot { background: #ffd34a; color: #3a2a00; min-width: 18px; text-align: center; padding: 1px 5px; }
+/* 軽量トースト */
+.toast { position: fixed; left: 50%; bottom: 92px; transform: translate(-50%, 12px); z-index: 80; pointer-events: none;
+  background: #101c17; border: 1px solid #47d08a; color: #d6ffe8; font-size: 13px; font-weight: 700;
+  border-radius: 999px; padding: 8px 14px; opacity: 0; transition: opacity .3s, transform .3s; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 .sub { font-size: 14px; color: #9fe7c1; margin: 16px 0 6px; border-bottom: 1px solid #1f3a30; padding-bottom: 4px; }
 .sub small { color: #7fb89c; font-weight: 400; }
@@ -2240,13 +2259,13 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const lockedC = CARDS.filter(c => !isUnlocked(c.id));
     if (lockedC.length && _rng() < 0.30) {
       const nc = lockedC[Math.floor(_rng() * lockedC.length) % lockedC.length];
-      unlockedCards.push(nc.id); saveJSON('malcore.cards', unlockedCards); loot.card = nc.name;
+      unlockedCards.push(nc.id); saveJSON('malcore.cards', unlockedCards); markNew(nc.id); loot.card = nc.name;
     }
     // 低確率ドロップ: マルウェア（12%）
     const lockedM = MAL.filter(m => !malUnlocked(m.id));
     if (lockedM.length && _rng() < 0.12) {
       const nm = lockedM[Math.floor(_rng() * lockedM.length) % lockedM.length];
-      unlockedMal.push(nm.id); saveJSON('malcore.malunlocked', unlockedMal); refreshRoster(); loot.malware = nm.name;
+      unlockedMal.push(nm.id); saveJSON('malcore.malunlocked', unlockedMal); refreshRoster(); markNew(nm.id); loot.malware = nm.name;
     }
     G._loot = loot;
     return loot;
@@ -2396,32 +2415,46 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function devCost(m) { return 8 + (m.gen || 0) * 4; } // 新規開発のビットコインコスト（gen0=8 / gen1=12）
   function btcEvoCost(level) { return level <= 0 ? 5 : 8; } // 改良（世代進化）のビットコインコスト
 
-  // ===== コインマイナー＆採掘ストック（攻略後にステージへ仕込まれ、数回の出撃の間だけ微量採掘） =====
+  // ===== コインマイナー＆採掘（攻略後にステージへ仕込まれ、数回の出撃の間だけ微量採掘） =====
   let miners = loadJSON('malcore.miners', {}); // stageId → 残り出撃回数
-  let stock = Object.assign({ btc: 0, info: 0, tech: 0, res: 0 }, loadJSON('malcore.stock', {}));
+  let stock = Object.assign({ btc: 0, info: 0, tech: 0, res: 0 }, loadJSON('malcore.stock', {}));  // 回収済み（改良/開発・次出撃に使用）
+  let pending = Object.assign({ btc: 0, info: 0, tech: 0, res: 0 }, loadJSON('malcore.pending', {})); // 未回収の採掘物
+  let newItems = loadJSON('malcore.new', []); // 図鑑の未読NEW（ドロップ/開発で追加、図鑑を開くとクリア）
   function saveStock() { saveJSON('malcore.stock', stock); }
+  function savePending() { saveJSON('malcore.pending', pending); }
+  function pendingTotal() { return pending.btc + pending.info + pending.tech + pending.res; }
   // 出撃1回あたりの採掘（微量）。深いステージほど少し多い。
   function minerYield(stageId) {
     const idx = STAGES.findIndex(s => s.id === stageId);
     const t = 1 + Math.max(0, idx) * 0.15;
     return { btc: Math.round(2 * t), info: Math.round(5 * t), tech: Math.round(3 * t), res: Math.round(4 * t) };
   }
-  // 出撃のたびに全マイナーが採掘→ストックへ。残り0で駆除。レポートを返す。
+  // 出撃のたびに全マイナーが採掘→"未回収"へ。残り0で駆除。母港で能動回収する。
   function tickMiners() {
-    const rep = { btc: 0, info: 0, tech: 0, res: 0, sites: 0, cleaned: [] };
+    const rep = { btc: 0, sites: 0, cleaned: [] };
     Object.keys(miners).forEach(sid => {
       if (miners[sid] <= 0) { delete miners[sid]; return; }
       const y = minerYield(sid);
-      stock.btc += y.btc; stock.info += y.info; stock.tech += y.tech; stock.res += y.res;
-      rep.btc += y.btc; rep.info += y.info; rep.tech += y.tech; rep.res += y.res; rep.sites++;
+      pending.btc += y.btc; pending.info += y.info; pending.tech += y.tech; pending.res += y.res;
+      rep.btc += y.btc; rep.sites++;
       miners[sid]--;
       if (miners[sid] <= 0) { delete miners[sid]; rep.cleaned.push(sid); }
     });
-    saveJSON('malcore.miners', miners); saveStock();
+    saveJSON('malcore.miners', miners); savePending();
     return rep;
+  }
+  // 母港で採掘物を回収（未回収→ストックへ）
+  function collectMining() {
+    stock.btc += pending.btc; stock.info += pending.info; stock.tech += pending.tech; stock.res += pending.res;
+    const got = { btc: pending.btc, info: pending.info, tech: pending.tech, res: pending.res };
+    pending = { btc: 0, info: 0, tech: 0, res: 0 };
+    saveStock(); savePending();
+    return got;
   }
   function plantMiner(stageId) { miners[stageId] = 3 + Math.floor(_rng() * 6); saveJSON('malcore.miners', miners); } // 3..8回
   function minerCount() { return Object.keys(miners).filter(k => miners[k] > 0).length; }
+  function markNew(id) { if (newItems.indexOf(id) < 0) { newItems.push(id); saveJSON('malcore.new', newItems); } }
+  function clearNew() { if (newItems.length) { newItems = []; saveJSON('malcore.new', newItems); } }
 
   let ROSTER = unlockedMal.slice(); // 編成候補＝解放済みマルウェア
   function refreshRoster() { ROSTER = unlockedMal.slice(); }
@@ -2457,16 +2490,16 @@ if (typeof document !== 'undefined' && document.getElementById) {
   function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
   function startGame() {
-    const rep = tickMiners(); // 出撃のたびに既設マイナーが採掘
+    const rep = tickMiners(); // 出撃のたびに既設マイナーが"未回収"へ採掘（母港で回収）
     G = createGame(STAGES[selectedStage], equipped, levels, party, portBuffs);
-    // 採掘した情報/技術/資源は今回の出撃に注ぎ込む（ビットコインはストックに残る＝開発資金）
-    if (rep.sites) {
+    // 回収済みストックの情報/技術/資源を今回の出撃に注ぎ込む（ビットコインは改良/開発用に残す）
+    if (stock.info || stock.tech || stock.res) {
       G.res.info += stock.info; G.res.tech += stock.tech; G.res.res += stock.res;
-      G.log.push('⛏️ コインマイナー' + rep.sites + '拠点が採掘: ₿+' + rep.btc +
-        ' 情報+' + stock.info + ' 技術+' + stock.tech + ' 資源+' + stock.res + ' を投入');
-      if (rep.cleaned.length) G.log.push('🧹 ' + rep.cleaned.map(id => (STAGES.find(s => s.id === id) || {}).name).join('・') + ' のマイナーは駆除された');
+      G.log.push('📦 回収済み補給を投入: 情報+' + stock.info + ' 技術+' + stock.tech + ' 資源+' + stock.res);
       stock.info = 0; stock.tech = 0; stock.res = 0; saveStock();
     }
+    if (rep.sites) G.log.push('⛏️ マイナー' + rep.sites + '拠点が採掘中（母港で回収できる）' +
+      (rep.cleaned.length ? ' ／ 🧹 ' + rep.cleaned.map(id => (STAGES.find(s => s.id === id) || {}).name).join('・') + 'のマイナーは駆除された' : ''));
     if (!onboarded) G.log.push('🔰 まずは光っている「👉おすすめ」の手を順番に押していけばOK。まず🔍偵察で敵を調べよう。');
     actTab = null; // カテゴリタブを初期化（自動で侵入から）
     Sound.bgm(); show('battle-screen'); renderBattle();
@@ -2746,18 +2779,38 @@ if (typeof document !== 'undefined' && document.getElementById) {
     const firstTip = !onboarded
       ? '<div class="home-card firsttip">🔰 <b>はじめての方へ</b><br>あなたは<b>悪の秘密基地の主</b>。手下（マルウェア）を率いて敵サーバを乗っ取ろう。まずは下の<b>⚔️出撃</b>を押すだけ。戦闘は光る「👉おすすめ」を順に押せばOK！</div>'
       : '';
+    // ダッシュボードのバッジ計算
+    const pend = pendingTotal();
+    const newN = newItems.length;
+    const buffCosts = PORT_BUFFS.map(b => (portBuffs[b.key] || 0) < b.max ? b.cost[portBuffs[b.key] || 0] : Infinity);
+    const minBuff = Math.min.apply(null, buffCosts);
+    const lockedMalCosts = MAL.filter(m => !malUnlocked(m.id)).map(m => devCost(m));
+    const minDevMal = lockedMalCosts.length ? Math.min.apply(null, lockedMalCosts) : Infinity;
+    const devReady = (devP >= minBuff) || (stock.btc >= minDevMal);   // 開発で"今できる"ことがある
+    const collectBtn = pend > 0
+      ? '<button id="home-collect" class="big-btn collect">⛏️ 採掘物を回収する（₿' + pending.btc +
+        ' 📡' + pending.info + ' 🧬' + pending.tech + ' 💾' + pending.res + '）</button>'
+      : '';
+    const dash =
+      collectBtn +
+      '<button id="home-sortie" class="big-btn">⚔️ 出撃する（敵サーバを乗っ取る）</button>' +
+      '<div class="home-actions">' +
+      '<button class="home-act" data-go="codex">📖 図鑑を見る' + (newN ? '<span class="act-badge">NEW ' + newN + '</span>' : '') +
+      '<small>集めた攻撃と対策を見る</small></button>' +
+      '<button class="home-act" data-go="develop">🛠️ 強化する' + (devReady ? '<span class="act-badge dot">!</span>' : '') +
+      '<small>改良・新規開発・母港バフ</small></button></div>';
     $('home-body').innerHTML =
       '<div class="hub-scene' + (mining ? ' mining' : '') + '">' + SPRITES.hubBg() + siphon + scene + '</div>' +
-      '<p class="hub-hint">タップでマルウェアの詳細・出撃メンバーの入替。出撃 ' + party.length + '/3' +
-      (mining ? ' ／ ⛏️ 採掘中 ' + mining + '拠点' : '') + '</p>' +
+      '<p class="hub-hint">タップでマルウェアの詳細・出撃メンバーの入替（出撃 ' + party.length + '/3' +
+      (mining ? ' ／ ⛏️ 採掘中 ' + mining + '拠点' : '') + '）</p>' +
       firstTip +
       '<div id="hub-pop"></div>' +
+      dash +
       '<div class="home-card">' +
       '<p class="home-meta">₿ <b>' + stock.btc + '</b>（改良・開発に使用） ／ 🛠️ 開発P <b>' + devP + '</b> ／ 🦠 母港 ' + unlockedMal.length + '/' + MAL.length + '</p>' +
       '<p class="home-meta">🗺️ 解放ステージ ' + unlockedStages + '/' + STAGES.length + ' ／ 📖 図鑑 ' + unlockedCards.length + '/' + CARDS.length +
       ' ／ ⛏️ 採掘拠点 ' + mining + '</p>' +
-      '<p class="home-meta">🏅 母港バフ: ' + buffLine + '</p></div>' +
-      '<button id="home-sortie" class="big-btn">⚔️ 出撃（ステージ選択）</button>';
+      '<p class="home-meta">🏅 母港バフ: ' + buffLine + '</p></div>';
     $('home-body').querySelectorAll('.hub-mal').forEach(b =>
       b.addEventListener('click', () => {
         Sound.unlock(); Sound.play('select');
@@ -2765,9 +2818,30 @@ if (typeof document !== 'undefined' && document.getElementById) {
         hubSay(b); // 一言しゃべる
         showHubInfo(b.dataset.hubmal);
       }));
+    const cb = $('home-collect');
+    if (cb) cb.addEventListener('click', () => {
+      Sound.unlock(); Sound.play('cutin');
+      const got = collectMining();
+      showToast('⛏️ 回収！ ₿+' + got.btc + ' 📡+' + got.info + ' 🧬+' + got.tech + ' 💾+' + got.res);
+      renderHome();
+    });
     const hs = $('home-sortie');
     if (hs) hs.addEventListener('click', () => { Sound.unlock(); Sound.play('select'); renderStageSelect(); show('stage-screen'); });
+    $('home-body').querySelectorAll('.home-act').forEach(b =>
+      b.addEventListener('click', () => {
+        Sound.unlock(); Sound.play('select');
+        const go = b.dataset.go;
+        if (go === 'codex') { clearNew(); renderCodex(); show('codex-screen'); }
+        else if (go === 'develop') { renderDevelop(); show('develop-screen'); }
+      }));
     startHubIdle(); // 表情がころころ変わる
+  }
+  // 軽量トースト（回収など）
+  function showToast(text) {
+    const el = document.createElement('div'); el.className = 'toast'; el.textContent = text;
+    $('app').appendChild(el);
+    setTimeout(() => el.classList.add('show'), 10);
+    setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 1800);
   }
 
   // 開発: 母港バフの購入（開発Pの使い道＝メタ進行）
@@ -2827,14 +2901,14 @@ if (typeof document !== 'undefined' && document.getElementById) {
     // タイトル → 母港ハブ（以降は下部タブバーで移動）
     tap('btn-start', () => { Sound.play('select'); renderHome(); show('home-screen'); });
     tap('btn-brief-back', () => { renderStageSelect(); show('stage-screen'); });
-    tap('btn-codex', () => { Sound.play('select'); renderCodex(); show('codex-screen'); });
+    tap('btn-codex', () => { Sound.play('select'); clearNew(); renderCodex(); show('codex-screen'); });
     tap('btn-sortie', () => { Sound.play('select'); startGame(); });
     tap('btn-retry', () => { Sound.play('select'); Sound.stopBgm(); renderBriefing(); show('briefing-screen'); });
     tap('btn-title', () => { Sound.stopBgm(); renderHome(); show('home-screen'); });
     // 下部タブバー: 母港/図鑑/開発/出撃
     const goTab = (id) => {
       if (id === 'home-screen') renderHome();
-      else if (id === 'codex-screen') renderCodex();
+      else if (id === 'codex-screen') { clearNew(); renderCodex(); }
       else if (id === 'develop-screen') renderDevelop();
       else if (id === 'stage-screen') renderStageSelect();
       show(id);

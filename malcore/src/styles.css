@@ -32,6 +32,25 @@ body {
 .big-btn:active { transform: translateY(3px); box-shadow: 0 3px 0 #1d6b41; }
 .big-btn.retry { background: linear-gradient(180deg,#ffd479,#f0a93a); box-shadow: 0 6px 0 #9c6a14; }
 .big-btn.ghost { background: #12201a; color: #9fe7c1; box-shadow: 0 6px 0 #0c1712; border: 1px solid #2a4a3a; }
+/* 採掘物の回収ボタン（金・目立つ・脈打つ） */
+.big-btn.collect { background: linear-gradient(180deg,#ffe08a,#e0a933); color: #3a2a00; box-shadow: 0 6px 0 #9c6a14;
+  font-size: 16px; animation: collectPulse 1.4s ease-in-out infinite; }
+@keyframes collectPulse { 0%,100% { box-shadow: 0 6px 0 #9c6a14, 0 0 0 rgba(255,211,74,0); } 50% { box-shadow: 0 6px 0 #9c6a14, 0 0 16px rgba(255,211,74,.55); } }
+/* 母港ダッシュボードのアクションカード */
+.home-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 320px; margin: 10px auto 0; }
+.home-act { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 12px; border-radius: 12px; background: #12201a; border: 1px solid #2a4a3a; color: #d6f0e0;
+  font-size: 15px; font-weight: 800; cursor: pointer; text-align: left; touch-action: manipulation; box-shadow: 0 4px 0 #0c1712; }
+.home-act:active { transform: translateY(2px); box-shadow: 0 2px 0 #0c1712; }
+.home-act small { font-size: 10px; font-weight: 500; color: #8fb6a3; }
+.act-badge { position: absolute; top: -7px; right: -6px; font-size: 10px; font-weight: 800; color: #06140d;
+  background: #ff6b6b; color: #fff; border-radius: 999px; padding: 1px 7px; box-shadow: 0 2px 4px rgba(0,0,0,.4); }
+.act-badge.dot { background: #ffd34a; color: #3a2a00; min-width: 18px; text-align: center; padding: 1px 5px; }
+/* 軽量トースト */
+.toast { position: fixed; left: 50%; bottom: 92px; transform: translate(-50%, 12px); z-index: 80; pointer-events: none;
+  background: #101c17; border: 1px solid #47d08a; color: #d6ffe8; font-size: 13px; font-weight: 700;
+  border-radius: 999px; padding: 8px 14px; opacity: 0; transition: opacity .3s, transform .3s; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 .sub { font-size: 14px; color: #9fe7c1; margin: 16px 0 6px; border-bottom: 1px solid #1f3a30; padding-bottom: 4px; }
 .sub small { color: #7fb89c; font-weight: 400; }
