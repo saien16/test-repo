@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b1020">
+<title>着信ガード — レピュテーション着信拒否</title>
+<style>
+:root{
+  --bg:#0b1020; --panel:#141b33; --panel2:#1b2444; --line:#26325c;
+  --txt:#eef2ff; --sub:#9fb0d9; --muted:#6f80ad;
+  --accent:#4f7cff; --accent2:#7aa2ff;
+  --safe:#2fd07f; --warn:#ffb020; --danger:#ff5470; --crime:#c2334d;
+  --shadow:0 10px 40px rgba(0,0,0,.45);
+  --r:16px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif;
+  background:radial-gradient(1200px 800px at 50% -10%,#16204a 0%,var(--bg) 55%);
+  color:var(--txt); display:flex; align-items:center; justify-content:center;
+  min-height:100%; padding:16px;
+}
+/* スマホ枠 */
+.phone{
+  width:100%; max-width:420px; height:min(880px,94vh);
+  background:var(--panel); border-radius:34px; overflow:hidden;
+  box-shadow:var(--shadow); border:1px solid var(--line);
+  display:flex; flex-direction:column; position:relative;
+}
+.statusbar{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 22px 4px; font-size:13px; color:var(--sub);
+}
+.notch{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:120px;height:22px;background:#000;border-radius:0 0 16px 16px;opacity:.85}
+.screen{flex:1;overflow-y:auto;overflow-x:hidden;padding:6px 16px 88px;-webkit-overflow-scrolling:touch}
+.screen::-webkit-scrollbar{width:0}
+
+h1{font-size:20px;margin:6px 4px 2px;letter-spacing:.02em}
+.tagline{color:var(--sub);font-size:12.5px;margin:0 4px 14px}
+
+/* 保護ステータスカード */
+.shield{
+  background:linear-gradient(160deg,#1c2a58,#141b33);
+  border:1px solid var(--line); border-radius:var(--r);
+  padding:18px; display:flex; gap:14px; align-items:center; margin-bottom:14px;
+}
+.shield .ic{font-size:34px;line-height:1}
+.shield.on .ic{filter:drop-shadow(0 0 10px rgba(79,124,255,.6))}
+.shield.off{opacity:.75}
+.shield .st{font-size:16px;font-weight:700}
+.shield .sub{font-size:12.5px;color:var(--sub);margin-top:2px}
+.switch{margin-left:auto;position:relative;width:52px;height:30px;flex:0 0 auto}
+.switch input{display:none}
+.switch label{position:absolute;inset:0;background:#33406e;border-radius:30px;cursor:pointer;transition:.2s}
+.switch label::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.2s}
+.switch input:checked + label{background:var(--accent)}
+.switch input:checked + label::after{transform:translateX(22px)}
+
+/* 統計 */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:12px;text-align:center}
+.stat .n{font-size:22px;font-weight:800}
+.stat .l{font-size:11px;color:var(--sub);margin-top:2px}
+.stat.blk .n{color:var(--danger)}
+.stat.saf .n{color:var(--safe)}
+
+.section-t{font-size:13px;color:var(--muted);margin:16px 6px 8px;font-weight:700;letter-spacing:.04em}
+
+/* シミュレーター */
+.sim{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.sim label{font-size:12px;color:var(--sub);display:block;margin-bottom:6px}
+.numrow{display:flex;gap:8px}
+input[type=tel],input[type=text]{
+  flex:1;background:#0e152e;border:1px solid var(--line);color:var(--txt);
+  border-radius:12px;padding:12px 14px;font-size:16px;outline:none;font-family:inherit;
+}
+input:focus{border-color:var(--accent)}
+.btn{
+  border:none;border-radius:12px;padding:12px 16px;font-size:15px;font-weight:700;
+  cursor:pointer;font-family:inherit;color:#fff;background:var(--accent);transition:.15s;
+}
+.btn:active{transform:scale(.97)}
+.btn.ghost{background:#26325c}
+.btn.wide{width:100%;margin-top:10px}
+.btn.danger{background:var(--danger)}
+.btn.sm{padding:8px 12px;font-size:13px}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{
+  background:#0e152e;border:1px solid var(--line);border-radius:999px;
+  padding:8px 12px;font-size:12.5px;color:var(--sub);cursor:pointer;
+  display:flex;align-items:center;gap:6px;
+}
+.chip:active{transform:scale(.96)}
+.chip .dot{width:8px;height:8px;border-radius:50%}
+.dot.safe{background:var(--safe)}.dot.solicitation{background:var(--warn)}
+.dot.fraud{background:var(--danger)}.dot.crime{background:var(--crime)}.dot.unknown{background:var(--muted)}
+
+/* 履歴リスト */
+.list{display:flex;flex-direction:column;gap:8px}
+.item{
+  background:var(--panel2);border:1px solid var(--line);border-radius:14px;
+  padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;
+}
+.item .avatar{width:42px;height:42px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:18px;background:#0e152e}
+.item .mid{flex:1;min-width:0}
+.item .num{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .meta{font-size:12px;color:var(--sub);margin-top:2px}
+.item .right{text-align:right;flex:0 0 auto}
+.badge{font-size:11px;font-weight:800;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.badge.safe{background:rgba(47,208,127,.15);color:var(--safe)}
+.badge.solicitation{background:rgba(255,176,32,.15);color:var(--warn)}
+.badge.fraud{background:rgba(255,84,112,.15);color:var(--danger)}
+.badge.crime{background:rgba(194,51,77,.2);color:#ff8098}
+.badge.unknown{background:rgba(111,128,173,.18);color:var(--sub)}
+.act{font-size:11px;color:var(--muted);margin-top:4px}
+.act.blocked{color:var(--danger);font-weight:700}
+.empty{text-align:center;color:var(--muted);padding:40px 10px;font-size:13.5px}
+
+/* 設定 */
+.setrow{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:8px}
+.setrow .txt{flex:1}
+.setrow .txt .t{font-size:14.5px;font-weight:700}
+.setrow .txt .d{font-size:12px;color:var(--sub);margin-top:2px}
+.catrow{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 8px}
+.catrow .chip.active{border-color:var(--accent);color:var(--txt);background:#1a2550}
+
+/* タブバー */
+.tabbar{
+  position:absolute;left:0;right:0;bottom:0;height:72px;background:rgba(16,22,44,.96);
+  border-top:1px solid var(--line);display:flex;backdrop-filter:blur(8px);
+}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--muted);cursor:pointer;font-size:11px}
+.tab .ti{font-size:20px}
+.tab.active{color:var(--accent2)}
+.badge-dot{position:absolute;top:8px;right:calc(50% - 22px);min-width:16px;height:16px;padding:0 4px;background:var(--danger);color:#fff;border-radius:999px;font-size:10px;display:none;align-items:center;justify-content:center;font-weight:800}
+
+/* 着信オーバーレイ */
+.callscreen{
+  position:absolute;inset:0;z-index:50;display:none;flex-direction:column;
+  align-items:center;justify-content:space-between;padding:60px 24px 48px;
+  background:linear-gradient(180deg,#0a0f22,#1a1030);
+}
+.callscreen.show{display:flex}
+.callscreen.risk{background:linear-gradient(180deg,#2a0a14,#3a0a1a)}
+.call-top{text-align:center;width:100%}
+.call-status{font-size:14px;color:var(--sub);letter-spacing:.1em}
+.call-num{font-size:30px;font-weight:800;margin-top:16px;letter-spacing:.01em}
+.call-name{font-size:16px;color:var(--sub);margin-top:6px}
+.rep-card{
+  margin-top:26px;width:100%;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);
+  border-radius:18px;padding:18px;text-align:left;
+}
+.rep-head{display:flex;align-items:center;gap:10px}
+.rep-head .big{font-size:26px}
+.rep-head .lbl{font-size:18px;font-weight:800}
+.rep-reason{font-size:13px;color:#dfe6ff;margin-top:10px;line-height:1.6}
+.rep-meter{height:8px;border-radius:8px;background:rgba(255,255,255,.12);margin-top:14px;overflow:hidden}
+.rep-meter i{display:block;height:100%;border-radius:8px}
+.rep-src{font-size:11px;color:#b9c4ea;margin-top:8px}
+.pulse{animation:pulse 1.1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+.call-actions{display:flex;gap:60px;align-items:center}
+.rounded{width:70px;height:70px;border-radius:50%;border:none;font-size:28px;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
+.rounded.decline{background:var(--danger)}
+.rounded.accept{background:var(--safe)}
+.autoblock-note{
+  background:rgba(255,84,112,.15);border:1px solid rgba(255,84,112,.4);
+  color:#ffd4dc;border-radius:14px;padding:12px 14px;font-size:13px;text-align:center;width:100%;
+}
+.autoblock-note b{color:#fff}
+.toast{
+  position:absolute;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);
+  background:#0e152e;border:1px solid var(--line);color:var(--txt);
+  padding:12px 18px;border-radius:12px;font-size:13.5px;box-shadow:var(--shadow);
+  opacity:0;pointer-events:none;transition:.25s;z-index:60;white-space:nowrap;max-width:90%;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* 詳細シート */
+.sheet{position:absolute;inset:0;z-index:40;background:rgba(0,0,0,.5);display:none;align-items:flex-end}
+.sheet.show{display:flex}
+.sheet-inner{width:100%;background:var(--panel);border-radius:22px 22px 0 0;border-top:1px solid var(--line);padding:8px 18px 24px;max-height:80%;overflow-y:auto}
+.grab{width:44px;height:5px;border-radius:5px;background:#37436e;margin:8px auto 14px}
+.kv{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line);font-size:14px}
+.kv .k{color:var(--sub)}
+.kv .v{font-weight:700;text-align:right;max-width:60%}
+.detail-actions{display:flex;gap:8px;margin-top:16px}
+.detail-actions .btn{flex:1}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="notch"></div>
+  <div class="statusbar"><span id="clock">9:41</span><span>📶 🔋</span></div>
+
+  <div class="screen" id="screen"><!-- 画面はJSで描画 --></div>
+
+  <!-- タブバー -->
+  <div class="tabbar">
+    <div class="tab active" data-tab="home"><div class="ti">🛡️</div>ホーム</div>
+    <div class="tab" data-tab="history" style="position:relative"><div class="ti">📜</div>履歴<span class="badge-dot" id="histBadge">0</span></div>
+    <div class="tab" data-tab="block"><div class="ti">🚫</div>拒否リスト</div>
+    <div class="tab" data-tab="settings"><div class="ti">⚙️</div>設定</div>
+  </div>
+
+  <!-- 着信画面 -->
+  <div class="callscreen" id="callScreen">
+    <div class="call-top">
+      <div class="call-status" id="callStatus">着信中…</div>
+      <div class="call-num" id="callNum">—</div>
+      <div class="call-name" id="callName"></div>
+      <div class="rep-card" id="repCard">
+        <div class="rep-head"><span class="big" id="repIc">🔍</span><span class="lbl" id="repLbl">照会中…</span></div>
+        <div class="rep-reason" id="repReason"></div>
+        <div class="rep-meter"><i id="repMeter" style="width:0%;background:var(--muted)"></i></div>
+        <div class="rep-src" id="repSrc"></div>
+      </div>
+    </div>
+    <div id="callBottom" style="width:100%;display:flex;flex-direction:column;gap:20px;align-items:center">
+      <div class="autoblock-note hidden" id="autoNote"></div>
+      <div class="call-actions" id="callActions">
+        <button class="rounded decline" id="btnDecline">✕</button>
+        <button class="rounded accept" id="btnAccept">✓</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 詳細シート -->
+  <div class="sheet" id="sheet"><div class="sheet-inner" id="sheetInner"></div></div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ============================================================
+   着信ガード — レピュテーション着信拒否 プロトタイプ
+   ・着信 → 電話番号のレピュテーション照会
+   ・勧誘/詐欺/犯罪なら 履歴に記録 → 自動で着信拒否
+   ・すべてブラウザ内(localStorage)で完結。外部依存なし。
+   ※ 実機での本当の着信ブロックは ネイティブアプリが必要（README参照）
+   ============================================================ */
+
+const CATS = {
+  safe:        {ja:'安全',    ic:'✅', color:'var(--safe)'},
+  solicitation:{ja:'勧誘',    ic:'📢', color:'var(--warn)'},
+  fraud:       {ja:'詐欺',    ic:'⚠️', color:'var(--danger)'},
+  crime:       {ja:'犯罪',    ic:'🚨', color:'var(--crime)'},
+  unknown:     {ja:'不明',    ic:'❓', color:'var(--muted)'},
+};
+
+/* ---- 内蔵レピュテーションDB（デモ用の疑似データ） ---- */
+const SEED_DB = {
+  '09012345678':{category:'fraud',       score:92, reports:184, reason:'「未払い料金がある」と かたる 架空請求の詐欺として 多数報告されています。', src:'コミュニティ報告 184件 / 迷惑電話DB'},
+  '0120999888': {category:'solicitation',score:64, reports:57,  reason:'投資マンションの しつこい勧誘電話として 報告されています。', src:'コミュニティ報告 57件'},
+  '0570001234': {category:'solicitation',score:58, reports:33,  reason:'光回線の 乗り換え勧誘。時間帯を問わず かけてくる との報告。', src:'コミュニティ報告 33件'},
+  '08099998888':{category:'crime',       score:97, reports:240, reason:'オレオレ詐欺（特殊詐欺）の受け子が 使用した番号として 警察情報と一致。', src:'特殊詐欺 注意喚起 / 報告 240件'},
+  '0344445555': {category:'fraud',       score:88, reports:121, reason:'還付金詐欺。「税務署」を名乗り ATM操作を指示する 手口が報告されています。', src:'コミュニティ報告 121件'},
+  '0312345678': {category:'safe',        score:5,  reports:0,   reason:'一般企業の代表番号として 登録済み。問題の報告は ありません。', src:'ホワイトリスト'},
+  '0120117117': {category:'safe',        score:2,  reports:0,   reason:'よく利用される正規のサポート窓口。安全と確認済み。', src:'ホワイトリスト'},
+};
+
+/* ---- 状態 ---- */
+const DEFAULT_SETTINGS = {
+  protection:true,
+  autoBlock:true,
+  blockedCats:['solicitation','fraud','crime'],
+  threshold:50,          // このスコア以上を危険とみなす
+  blockUnknownIntl:false // 不明な国際番号もブロック
+};
+let S = {
+  settings: load('pg_settings', DEFAULT_SETTINGS),
+  db:       load('pg_db', SEED_DB),
+  history:  load('pg_history', []),
+  block:    load('pg_block', []),   // ユーザーが手動で拒否した番号
+  tab:'home'
+};
+function load(k,def){ try{const v=JSON.parse(localStorage.getItem(k));return v==null?structuredClone(def):v;}catch(e){return structuredClone(def);} }
+function save(){ localStorage.setItem('pg_settings',JSON.stringify(S.settings));localStorage.setItem('pg_db',JSON.stringify(S.db));localStorage.setItem('pg_history',JSON.stringify(S.history));localStorage.setItem('pg_block',JSON.stringify(S.block)); }
+
+/* ---- レピュテーション照会エンジン ---- */
+function normalize(n){ return (n||'').replace(/[^\d+]/g,''); }
+function lookup(numRaw){
+  const num = normalize(numRaw);
+  // 1) ユーザー手動ブロック
+  if(S.block.includes(num)) return {category:'crime',score:100,reports:0,reason:'あなたが手動で 拒否リストに登録した番号です。',src:'あなたの拒否リスト',manual:true};
+  // 2) 内蔵DBに一致
+  if(S.db[num]) return {...S.db[num]};
+  // 3) ヒューリスティック（登録が無い番号の推定）
+  if(num.startsWith('+') && !num.startsWith('+81')){
+    return {category:'unknown',score:S.settings.blockUnknownIntl?70:35,reports:0,
+      reason:'登録の無い 国際電話です。心当たりが 無ければ 注意してください。',src:'発信元: 国際番号'};
+  }
+  if(/^0120|^0570|^0800/.test(num)){
+    return {category:'unknown',score:40,reports:0,reason:'フリーダイヤル/ナビダイヤル。企業の窓口や勧誘の 両方で使われます。',src:'番号の種別による推定'};
+  }
+  return {category:'unknown',score:20,reports:0,reason:'レピュテーション情報が ありません。未登録の番号です。',src:'情報なし'};
+}
+// この着信を自動拒否すべきか
+function shouldBlock(rep){
+  const s=S.settings;
+  if(!s.protection || !s.autoBlock) return false;
+  if(rep.manual) return true;
+  if(!s.blockedCats.includes(rep.category)) return false;
+  return rep.score >= s.threshold;
+}
+
+/* ---- 画面ルーティング ---- */
+const screen=document.getElementById('screen');
+function render(){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===S.tab));
+  ({home:renderHome,history:renderHistory,block:renderBlock,settings:renderSettings}[S.tab])();
+  updateBadge();
+}
+function updateBadge(){
+  const b=document.getElementById('histBadge');
+  const todayBlocked=S.history.filter(h=>h.action==='blocked'&&sameDay(h.ts)).length;
+  b.textContent=todayBlocked; b.style.display=todayBlocked>0?'flex':'none';
+}
+function sameDay(ts){const d=new Date(ts),n=new Date();return d.toDateString()===n.toDateString();}
+
+/* ---- ホーム ---- */
+function renderHome(){
+  const s=S.settings;
+  const blockedTotal=S.history.filter(h=>h.action==='blocked').length;
+  const blockedToday=S.history.filter(h=>h.action==='blocked'&&sameDay(h.ts)).length;
+  const safeTotal=S.history.filter(h=>h.action!=='blocked').length;
+  const presets=[
+    {n:'08099998888',c:'crime',l:'特殊詐欺'},
+    {n:'09012345678',c:'fraud',l:'架空請求'},
+    {n:'0120999888', c:'solicitation',l:'投資勧誘'},
+    {n:'0312345678', c:'safe',l:'正規企業'},
+    {n:'+1 202 555 0100',c:'unknown',l:'国際番号'},
+  ];
+  screen.innerHTML=`
+    <h1>着信ガード 🛡️</h1>
+    <p class="tagline">かかってきた番号の 評判を見て、勧誘・詐欺・犯罪は 自動で拒否します。</p>
+
+    <div class="shield ${s.protection?'on':'off'}">
+      <div class="ic">${s.protection?'🛡️':'🕳️'}</div>
+      <div>
+        <div class="st">${s.protection?'保護は 有効です':'保護は 無効です'}</div>
+        <div class="sub">${s.protection?(s.autoBlock?'危険な着信を 自動で拒否します':'危険な着信を 警告のみ表示'):'着信の判定を していません'}</div>
+      </div>
+      <div class="switch"><input type="checkbox" id="protSw" ${s.protection?'checked':''}><label for="protSw"></label></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat blk"><div class="n">${blockedToday}</div><div class="l">今日の拒否</div></div>
+      <div class="stat blk"><div class="n">${blockedTotal}</div><div class="l">累計の拒否</div></div>
+      <div class="stat saf"><div class="n">${safeTotal}</div><div class="l">通常の着信</div></div>
+    </div>
+
+    <div class="section-t">着信をシミュレート</div>
+    <div class="sim">
+      <label>電話番号を入力して「着信をテスト」</label>
+      <div class="numrow">
+        <input type="tel" id="simNum" placeholder="例）09012345678" inputmode="tel">
+        <button class="btn" id="simGo">着信</button>
+      </div>
+      <div class="presets" id="presets">
+        ${presets.map(p=>`<div class="chip" data-num="${p.n}"><span class="dot ${p.c}"></span>${p.l}</div>`).join('')}
+      </div>
+      <button class="btn ghost wide" id="randCall">🎲 ランダムな番号で 着信テスト</button>
+    </div>
+  `;
+  document.getElementById('protSw').onchange=e=>{S.settings.protection=e.target.checked;save();render();};
+  document.getElementById('simGo').onclick=()=>{const v=document.getElementById('simNum').value.trim();if(v)incomingCall(v);else toast('番号を 入力してください');};
+  document.getElementById('randCall').onclick=()=>{const keys=[...Object.keys(S.db),'+81 90 0000 1111','05000012345'];incomingCall(keys[Math.floor(Math.random()*keys.length)]);};
+  document.querySelectorAll('#presets .chip').forEach(c=>c.onclick=()=>incomingCall(c.dataset.num));
+}
+
+/* ---- 履歴 ---- */
+function renderHistory(){
+  const rows=[...S.history].reverse();
+  screen.innerHTML=`
+    <h1>着信履歴 📜</h1>
+    <p class="tagline">照会結果と 対応（拒否/着信）を すべて記録します。</p>
+    ${rows.length?'':'<div class="empty">まだ履歴が ありません。<br>ホームで 着信をテストしてみましょう。</div>'}
+    <div class="list">
+      ${rows.map((h,i)=>itemHTML(h, S.history.length-1-i)).join('')}
+    </div>
+    ${rows.length?'<button class="btn ghost wide" id="clearHist">履歴を すべて消去</button>':''}
+  `;
+  screen.querySelectorAll('.item').forEach(el=>el.onclick=()=>openDetail(parseInt(el.dataset.i)));
+  const ch=document.getElementById('clearHist');
+  if(ch)ch.onclick=()=>{if(confirm('履歴を すべて消去しますか？')){S.history=[];save();render();}};
+}
+function itemHTML(h,idx){
+  const c=CATS[h.category];
+  return `<div class="item" data-i="${idx}">
+    <div class="avatar">${c.ic}</div>
+    <div class="mid">
+      <div class="num">${h.name?h.name:h.num}</div>
+      <div class="meta">${fmtTime(h.ts)}</div>
+      <div class="act ${h.action==='blocked'?'blocked':''}">${h.action==='blocked'?'🚫 着信拒否しました':(h.action==='declined'?'手動で拒否':'✓ 着信を許可')}</div>
+    </div>
+    <div class="right"><span class="badge ${h.category}">${c.ja}</span></div>
+  </div>`;
+}
+
+/* ---- 拒否リスト ---- */
+function renderBlock(){
+  const manual=S.block;
+  const dbBad=Object.entries(S.db).filter(([,v])=>['solicitation','fraud','crime'].includes(v.category));
+  screen.innerHTML=`
+    <h1>拒否リスト 🚫</h1>
+    <p class="tagline">自動で拒否する 危険番号と、手動で登録した番号。</p>
+
+    <div class="section-t">手動で登録した番号</div>
+    <div class="sim" style="margin-bottom:14px">
+      <div class="numrow">
+        <input type="tel" id="blkNum" placeholder="拒否したい番号を入力" inputmode="tel">
+        <button class="btn danger" id="blkAdd">追加</button>
+      </div>
+    </div>
+    <div class="list">
+      ${manual.length?manual.map(n=>`<div class="item"><div class="avatar">🚫</div><div class="mid"><div class="num">${n}</div><div class="meta">手動で 拒否登録</div></div><div class="right"><button class="btn ghost sm" data-rm="${n}">解除</button></div></div>`).join(''):'<div class="empty">手動登録は ありません</div>'}
+    </div>
+
+    <div class="section-t">レピュテーションDB（危険と判定）</div>
+    <div class="list">
+      ${dbBad.map(([n,v])=>`<div class="item"><div class="avatar">${CATS[v.category].ic}</div><div class="mid"><div class="num">${n}</div><div class="meta">報告 ${v.reports}件・危険度 ${v.score}</div></div><div class="right"><span class="badge ${v.category}">${CATS[v.category].ja}</span></div></div>`).join('')}
+    </div>
+  `;
+  document.getElementById('blkAdd').onclick=()=>{
+    const v=normalize(document.getElementById('blkNum').value);
+    if(!v)return toast('番号を 入力してください');
+    if(!S.block.includes(v))S.block.push(v);
+    save();render();toast('拒否リストに 追加しました');
+  };
+  screen.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{S.block=S.block.filter(x=>x!==b.dataset.rm);save();render();toast('解除しました');});
+}
+
+/* ---- 設定 ---- */
+function renderSettings(){
+  const s=S.settings;
+  const catChips=['solicitation','fraud','crime','unknown'].map(c=>
+    `<div class="chip ${s.blockedCats.includes(c)?'active':''}" data-cat="${c}"><span class="dot ${c}"></span>${CATS[c].ja}</div>`).join('');
+  screen.innerHTML=`
+    <h1>設定 ⚙️</h1>
+    <p class="tagline">どんな着信を、どう扱うかを 決めます。</p>
+
+    <div class="setrow">
+      <div class="txt"><div class="t">保護を有効にする</div><div class="d">着信のたびに 番号を照会します</div></div>
+      <div class="switch"><input type="checkbox" id="s_prot" ${s.protection?'checked':''}><label for="s_prot"></label></div>
+    </div>
+    <div class="setrow">
+      <div class="txt"><div class="t">自動で着信拒否</div><div class="d">オフにすると 警告表示のみ（拒否はしない）</div></div>
+      <div class="switch"><input type="checkbox" id="s_auto" ${s.autoBlock?'checked':''}><label for="s_auto"></label></div>
+    </div>
+
+    <div class="section-t">拒否する種類</div>
+    <div class="catrow" id="catChips">${catChips}</div>
+
+    <div class="section-t">危険度のしきい値：<span id="thVal">${s.threshold}</span> 以上でブロック</div>
+    <input type="range" min="0" max="100" step="5" value="${s.threshold}" id="s_th" style="width:100%">
+
+    <div class="setrow" style="margin-top:14px">
+      <div class="txt"><div class="t">未登録の国際番号もブロック</div><div class="d">心当たりのない +81以外の番号を 危険扱い</div></div>
+      <div class="switch"><input type="checkbox" id="s_intl" ${s.blockUnknownIntl?'checked':''}><label for="s_intl"></label></div>
+    </div>
+
+    <button class="btn ghost wide" id="resetAll" style="margin-top:18px">初期設定に もどす</button>
+    <p class="tagline" style="margin-top:16px;line-height:1.7">
+      ※ これは 仕組みを体験する プロトタイプです。ブラウザ内だけで動き、
+      実際の電話回線には つながりません。本物の 着信ブロックには
+      Android / iOS の ネイティブアプリが 必要です（README を参照）。
+    </p>
+  `;
+  document.getElementById('s_prot').onchange=e=>{s.protection=e.target.checked;save();};
+  document.getElementById('s_auto').onchange=e=>{s.autoBlock=e.target.checked;save();};
+  document.getElementById('s_intl').onchange=e=>{s.blockUnknownIntl=e.target.checked;save();};
+  document.getElementById('s_th').oninput=e=>{s.threshold=+e.target.value;document.getElementById('thVal').textContent=s.threshold;save();};
+  screen.querySelectorAll('#catChips .chip').forEach(c=>c.onclick=()=>{
+    const cat=c.dataset.cat;
+    if(s.blockedCats.includes(cat))s.blockedCats=s.blockedCats.filter(x=>x!==cat);
+    else s.blockedCats.push(cat);
+    save();c.classList.toggle('active');
+  });
+  document.getElementById('resetAll').onclick=()=>{if(confirm('設定を 初期化しますか？')){S.settings=structuredClone(DEFAULT_SETTINGS);save();render();}};
+}
+
+/* ============================================================
+   着信フロー（本体）
+   ============================================================ */
+const cs=document.getElementById('callScreen');
+let currentCall=null;
+function incomingCall(numRaw){
+  const num=normalize(numRaw);
+  const rep=lookup(num);
+  currentCall={num,numRaw,rep,ts:Date.now()};
+
+  // 画面初期化
+  cs.classList.add('show'); cs.classList.remove('risk');
+  document.getElementById('callStatus').textContent='着信中…';
+  document.getElementById('callStatus').classList.add('pulse');
+  document.getElementById('callNum').textContent=numRaw;
+  document.getElementById('callName').textContent='';
+  document.getElementById('autoNote').classList.add('hidden');
+  document.getElementById('callActions').classList.remove('hidden');
+  // 照会中の見た目
+  const repIc=document.getElementById('repIc'),repLbl=document.getElementById('repLbl'),
+        repReason=document.getElementById('repReason'),repMeter=document.getElementById('repMeter'),
+        repSrc=document.getElementById('repSrc');
+  repIc.textContent='🔍';repLbl.textContent='レピュテーション照会中…';
+  repReason.textContent='';repMeter.style.width='0%';repMeter.style.background='var(--muted)';repSrc.textContent='';
+
+  vibrate([200,120,200]);
+
+  // 照会（実アプリではDB/APIアクセス。ここでは擬似的に少し待つ）
+  setTimeout(()=>{
+    const c=CATS[rep.category];
+    repIc.textContent=c.ic;
+    repLbl.textContent=`${c.ja}（危険度 ${rep.score}）`;
+    repLbl.style.color=c.color;
+    repReason.textContent=rep.reason;
+    repMeter.style.width=rep.score+'%';
+    repMeter.style.background=c.color;
+    repSrc.textContent='情報源: '+rep.src+(rep.reports?`　/　報告 ${rep.reports}件`:'');
+
+    const block=shouldBlock(rep);
+    if(block){
+      cs.classList.add('risk');
+      finishCall('blocked');
+    } else if(S.settings.protection && ['fraud','crime','solicitation'].includes(rep.category)){
+      // 保護中だが自動拒否対象外 → 警告のみ
+      cs.classList.add('risk');
+    }
+  },850);
+}
+
+function finishCall(action){
+  // action: 'blocked'（自動） / 'declined'（手動拒否） / 'accepted'（応答）
+  const {num,numRaw,rep,ts}=currentCall;
+  document.getElementById('callStatus').classList.remove('pulse');
+
+  if(action==='blocked'){
+    document.getElementById('callStatus').textContent='危険な着信を 検知';
+    document.getElementById('callActions').classList.add('hidden');
+    const note=document.getElementById('autoNote');
+    note.classList.remove('hidden');
+    note.innerHTML=`🚫 <b>自動で 着信拒否しました</b><br>この番号は「${CATS[rep.category].ja}」と 判定されました。履歴に 記録します。`;
+    vibrate([400]);
+    logCall(action);
+    setTimeout(endCall,2200);
+  } else {
+    logCall(action);
+    endCall();
+  }
+}
+function logCall(action){
+  const {num,numRaw,rep,ts}=currentCall;
+  S.history.push({num:numRaw, category:rep.category, score:rep.score, reason:rep.reason,
+                  src:rep.src, reports:rep.reports||0, action, ts, name:''});
+  if(S.history.length>500)S.history=S.history.slice(-500);
+  save();
+}
+function endCall(){ cs.classList.remove('show','risk'); currentCall=null; render(); }
+
+document.getElementById('btnDecline').onclick=()=>{ if(!currentCall)return; finishCall('declined'); toast('着信を 拒否しました'); };
+document.getElementById('btnAccept').onclick=()=>{ if(!currentCall)return; finishCall('accepted'); toast('着信に 応答しました'); };
+
+/* ---- 履歴の詳細シート ---- */
+const sheet=document.getElementById('sheet'),sheetInner=document.getElementById('sheetInner');
+function openDetail(i){
+  const h=S.history[i]; if(!h)return; const c=CATS[h.category];
+  const onBlock=S.block.includes(normalize(h.num));
+  sheetInner.innerHTML=`
+    <div class="grab"></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <div class="avatar" style="width:52px;height:52px;font-size:24px">${c.ic}</div>
+      <div><div style="font-size:20px;font-weight:800">${h.num}</div>
+      <div style="margin-top:4px"><span class="badge ${h.category}">${c.ja}・危険度 ${h.score}</span></div></div>
+    </div>
+    <div class="kv"><span class="k">対応</span><span class="v" style="color:${h.action==='blocked'?'var(--danger)':'inherit'}">${h.action==='blocked'?'🚫 自動で着信拒否':(h.action==='declined'?'手動で拒否':'✓ 着信を許可')}</span></div>
+    <div class="kv"><span class="k">日時</span><span class="v">${fmtTime(h.ts,true)}</span></div>
+    <div class="kv"><span class="k">報告件数</span><span class="v">${h.reports} 件</span></div>
+    <div class="kv"><span class="k">情報源</span><span class="v">${h.src}</span></div>
+    <div class="kv" style="border:none;flex-direction:column;align-items:flex-start;gap:6px">
+      <span class="k">判定理由</span><span style="font-weight:500;line-height:1.6">${h.reason}</span></div>
+    <div class="detail-actions">
+      <button class="btn ${onBlock?'ghost':'danger'}" id="d_block">${onBlock?'拒否リスト登録済み':'この番号を拒否リストに追加'}</button>
+    </div>
+    <div class="detail-actions">
+      <button class="btn ghost" id="d_report">誤判定を報告 / 種類を変更</button>
+      <button class="btn ghost" id="d_close">閉じる</button>
+    </div>
+  `;
+  sheet.classList.add('show');
+  document.getElementById('d_close').onclick=closeSheet;
+  document.getElementById('d_block').onclick=()=>{const n=normalize(h.num);if(!S.block.includes(n))S.block.push(n);save();closeSheet();toast('拒否リストに 追加しました');};
+  document.getElementById('d_report').onclick=()=>reportSheet(h);
+}
+function reportSheet(h){
+  sheetInner.innerHTML=`
+    <div class="grab"></div>
+    <div style="font-size:18px;font-weight:800;margin-bottom:4px">この番号の種類を 変更</div>
+    <p class="tagline">正しい 分類を選ぶと、レピュテーションDBに 反映されます。</p>
+    <div class="catrow">
+      ${Object.keys(CATS).map(c=>`<div class="chip" data-set="${c}"><span class="dot ${c}"></span>${CATS[c].ja}</div>`).join('')}
+    </div>
+    <div class="detail-actions"><button class="btn ghost" id="r_close">キャンセル</button></div>
+  `;
+  document.getElementById('r_close').onclick=closeSheet;
+  sheetInner.querySelectorAll('[data-set]').forEach(el=>el.onclick=()=>{
+    const cat=el.dataset.set, n=normalize(h.num);
+    const score=cat==='safe'?3:cat==='unknown'?20:cat==='solicitation'?60:cat==='fraud'?88:96;
+    S.db[n]={category:cat,score,reports:(S.db[n]?.reports||0)+1,reason:'ユーザーの報告により 分類されました。',src:'あなたの報告'};
+    if(cat==='safe')S.block=S.block.filter(x=>x!==n);
+    save();closeSheet();toast('レピュテーションを 更新しました');
+  });
+}
+function closeSheet(){sheet.classList.remove('show');}
+sheet.onclick=e=>{if(e.target===sheet)closeSheet();};
+
+/* ---- ユーティリティ ---- */
+function fmtTime(ts,full){
+  const d=new Date(ts),n=new Date();
+  const t=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  if(full)return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${t}`;
+  if(d.toDateString()===n.toDateString())return `今日 ${t}`;
+  const y=new Date(n-864e5); if(d.toDateString()===y.toDateString())return `昨日 ${t}`;
+  return `${d.getMonth()+1}/${d.getDate()} ${t}`;
+}
+let toastT=null;
+function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>el.classList.remove('show'),1900);}
+function vibrate(p){if(navigator.vibrate)try{navigator.vibrate(p);}catch(e){}}
+function tickClock(){const d=new Date();document.getElementById('clock').textContent=`${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;}
+
+/* ---- 起動 ---- */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{S.tab=t.dataset.tab;render();});
+tickClock();setInterval(tickClock,10000);
+render();
+</script>
+</body>
+</html>
