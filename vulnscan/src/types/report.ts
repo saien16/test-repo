@@ -5,6 +5,8 @@
 import type { Finding, Severity } from './finding.js';
 import type { AttackChain } from './killchain.js';
 import type { ScanContext } from './context.js';
+import type { ArchitectureModel } from './architecture.js';
+import type { VulnerabilityHeatmap } from './heatmap.js';
 
 export interface ScanSummary {
   totalFindings: number;
@@ -38,6 +40,17 @@ export interface ScanResult {
   context: ScanContext;
   findings: Finding[];
   chains: AttackChain[];
+  /**
+   * 推定したシステムアーキテクチャとデプロイスタック。
+   * config.architecture が false なら undefined。
+   * 各項目は Claim<T> で包まれており、事実か推測かを区別できる。
+   */
+  architecture?: ArchitectureModel;
+  /**
+   * 脆弱性ヒートマップ。architecture が無ければ生成できないので undefined。
+   * 実測層(事実)と想定層(推測)の2層を持つ。
+   */
+  heatmap?: VulnerabilityHeatmap;
   summary: ScanSummary;
   /** スキャン中に発生したエラー（部分的失敗の記録） */
   errors: string[];

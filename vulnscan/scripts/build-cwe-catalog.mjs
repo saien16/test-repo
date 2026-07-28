@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * MITRE CWE 辞書を vulnscan が使う形に圧縮して `src/vuln/data/cwe-catalog.json` を生成する。
+ * MITRE CWE 辞書を GRIMOIRE が使う形に圧縮して `src/vuln/data/cwe-catalog.json` を生成する。
  *
  * 出典: OWASP/cwe-sdk-javascript (raw/cwe-dictionary.json)
  *   https://github.com/OWASP/cwe-sdk-javascript

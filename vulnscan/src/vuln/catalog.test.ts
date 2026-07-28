@@ -90,10 +90,11 @@ describe('ビルド後(dist)からの解決', () => {
     expect(Object.keys(parsed.entries).length).toBe(959);
   });
 
-  it('同梱が無いレイアウトでは src/vuln/data へフォールバックする', () => {
-    // dist を模した「data を持たない」ディレクトリから解決させる
-    const asBundle = join(REPO_ROOT, 'dist', 'no-such-layout', 'vuln');
-    expect(resolveCatalogPath(asBundle)).toBe(
+  it('同梱が無い場所からでも上位へ遡って src/vuln/data を見つける', () => {
+    // 同梱パス（dist/vuln/data）を経由しない位置から解決させる。
+    // bundler などでレイアウトが変わった場合の保険が効いていること。
+    const stray = join(REPO_ROOT, 'src', 'no-such-layout', 'vuln');
+    expect(resolveCatalogPath(stray)).toBe(
       join(REPO_ROOT, 'src', 'vuln', 'data', CATALOG_FILE_NAME),
     );
   });
