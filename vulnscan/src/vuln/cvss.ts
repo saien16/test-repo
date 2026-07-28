@@ -505,19 +505,16 @@ function applySeverityAdjustment(
     }
     if (changed) reasons.push("severity='low' のため High の影響度を Low に降格");
   } else if (severity === 'info') {
-    // 情報提供レベル: 影響が残るとしても 1 軸の Low まで
-    const top = axes.reduce((best, a) =>
-      IMPACT_RANK[metrics[a] as ImpactValue] > IMPACT_RANK[metrics[best] as ImpactValue] ? a : best,
-    );
+    // 情報提供レベル = セキュリティ影響が実証されていない。
+    // CVSS ではこれを「影響なし（スコア 0.0 / None）」として表現するのが正しい。
     let changed = false;
     for (const a of axes) {
-      const next: ImpactValue = a === top && metrics[a] !== 'N' ? 'L' : 'N';
-      if (metrics[a] !== next) {
-        metrics[a] = next;
+      if (metrics[a] !== 'N') {
+        metrics[a] = 'N';
         changed = true;
       }
     }
-    if (changed) reasons.push("severity='info' のため影響度を最大 1 軸の Low に制限");
+    if (changed) reasons.push("severity='info'（影響未実証）のため影響度を全て None とし 0.0 とする");
   }
 }
 
