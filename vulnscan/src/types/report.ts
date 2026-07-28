@@ -1,0 +1,82 @@
+/**
+ * ⑤ レポーターの入出力モデル。
+ */
+
+import type { Finding, Severity } from './finding.js';
+import type { AttackChain } from './killchain.js';
+import type { ScanContext } from './context.js';
+
+export interface ScanSummary {
+  totalFindings: number;
+  bySeverity: Record<Severity, number>;
+  byCategory: Record<string, number>;
+  /** ベースライン差分 */
+  newCount: number;
+  fixedCount: number;
+  persistentCount: number;
+  /** 誤検知として抑制された件数 */
+  suppressedCount: number;
+  chainCount: number;
+  /** 最も高いCVSSスコア */
+  maxCvssScore: number;
+  filesScanned: number;
+  durationMs: number;
+  /** LLM利用トークン数 */
+  tokenUsage: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+  };
+}
+
+/**
+ * ⑤への入力。レポーターはこれを「分析」して
+ * 読みやすいレポートに再構成する（単なる羅列ではない）。
+ */
+export interface ScanResult {
+  context: ScanContext;
+  findings: Finding[];
+  chains: AttackChain[];
+  summary: ScanSummary;
+  /** スキャン中に発生したエラー（部分的失敗の記録） */
+  errors: string[];
+}
+
+export type ReportFormat = 'cli' | 'json' | 'sarif' | 'markdown' | 'html';
+
+export interface ReportOptions {
+  format: ReportFormat;
+  /** 出力先パス。未指定なら stdout */
+  outputPath?: string;
+  /** 色付きCLI出力 */
+  color: boolean;
+  /** info レベルまで含めるか */
+  verbose: boolean;
+}
+
+/**
+ * レポーターが生成する「分析済みの読み物」。
+ * 各フォーマッタはこの中間表現をレンダリングする。
+ */
+export interface AnalyzedReport {
+  /** 経営層向け: 3-5文の要約 */
+  executiveSummary: string;
+  /** 今回のスキャンで最も重要な所見 */
+  keyFindings: string[];
+  /** 推奨される対応順序（chokePointとseverityから導出） */
+  prioritizedActions: {
+    order: number;
+    action: string;
+    /** 対応することで解決する Finding / Chain */
+    resolves: { findings: string[]; chains: string[] };
+    /** 見積もり難易度 */
+    effort: 'low' | 'medium' | 'high';
+    rationale: string;
+  }[];
+  /** リスクの全体像を説明する文章 */
+  riskNarrative: string;
+  /** 前回スキャンとの比較コメント（ベースラインがある場合） */
+  trendNarrative?: string;
+  summary: ScanSummary;
+}

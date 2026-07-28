@@ -1,0 +1,91 @@
+/**
+ * 設定モデル（.vulnscan.yml）。
+ */
+
+import type { Severity } from './context.js';
+import type { LensId } from './finding.js';
+
+export interface LlmConfig {
+  /** 既定は claude-opus-5 */
+  model: string;
+  /** 思考の深さ。低いほど高速・安価 */
+  effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  maxTokens: number;
+  /** 同時実行数 */
+  concurrency: number;
+  /** このスキャン全体の出力トークン上限。超えたら打ち切る */
+  tokenBudget: number | null;
+  /** 安全分類器に拒否された際のフォールバックモデル */
+  fallbackModel: string | null;
+  /** チャンク単位の結果キャッシュを使うか */
+  cache: boolean;
+}
+
+export interface ScanConfig {
+  /** 走査から除外する glob */
+  exclude: string[];
+  /** 明示的に含める glob（未指定なら全て） */
+  include: string[];
+  /** 有効にする分析レンズ */
+  lenses: LensId[];
+  /** 自己検証パスを実行するか（誤検知抑制） */
+  selfVerify: boolean;
+  /** この確信度未満のFindingは破棄 */
+  minConfidence: number;
+  /** 1ファイルあたりの最大バイト数。超過分はスキップ */
+  maxFileBytes: number;
+}
+
+export interface VulnScanConfig {
+  llm: LlmConfig;
+  scan: ScanConfig;
+  /** この深刻度以上が存在すれば非ゼロ終了 */
+  failOn: Severity | 'never';
+  /** 新規Findingのみでゲートするか */
+  failOnNewOnly: boolean;
+  /** ベースラインJSONの保存先 */
+  baselinePath: string;
+  /** 抑制リスト */
+  ignorePath: string;
+  /** キルチェーン分析を実行するか */
+  killChain: boolean;
+}
+
+export const DEFAULT_CONFIG: VulnScanConfig = {
+  llm: {
+    model: 'claude-opus-5',
+    effort: 'high',
+    maxTokens: 16000,
+    concurrency: 4,
+    tokenBudget: null,
+    fallbackModel: 'claude-opus-4-8',
+    cache: true,
+  },
+  scan: {
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/.git/**',
+      '**/vendor/**',
+      '**/*.min.js',
+      '**/*.lock',
+    ],
+    include: [],
+    lenses: [
+      'injection',
+      'authz',
+      'crypto-secrets',
+      'deserialization-ssrf',
+      'web-output',
+    ],
+    selfVerify: true,
+    minConfidence: 0.5,
+    maxFileBytes: 512_000,
+  },
+  failOn: 'high',
+  failOnNewOnly: false,
+  baselinePath: '.vulnscan/baseline.json',
+  ignorePath: '.vulnignore',
+  killChain: true,
+};

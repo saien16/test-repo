@@ -1,0 +1,52 @@
+# vulnscan 設定ファイルのサンプル
+# `.vulnscan.yml` にリネームしてリポジトリルートに置くと自動で読み込まれます。
+# 指定しなかった項目は既定値が使われます。
+
+llm:
+  # 使用するモデル。既定は claude-opus-5
+  model: claude-opus-5
+  # 思考の深さ。low / medium / high / xhigh / max
+  # 低いほど高速・安価。まず high から始めて評価しながら下げるのが推奨
+  effort: high
+  maxTokens: 16000
+  # LLMの同時実行数
+  concurrency: 4
+  # このスキャン全体の出力トークン上限。null なら無制限
+  tokenBudget: null
+  # 安全分類器に解析を拒否された場合のフォールバックモデル
+  fallbackModel: claude-opus-4-8
+  # チャンク単位の結果キャッシュ（変更のないコードを再分析しない）
+  cache: true
+
+scan:
+  exclude:
+    - '**/node_modules/**'
+    - '**/dist/**'
+    - '**/build/**'
+    - '**/.git/**'
+    - '**/vendor/**'
+    - '**/*.min.js'
+  include: []
+  # 実行する分析レンズ
+  lenses:
+    - injection
+    - authz
+    - crypto-secrets
+    - deserialization-ssrf
+    - web-output
+  # 自己検証パス。誤検知を大きく減らすので原則有効のまま
+  selfVerify: true
+  # この確信度未満の検出は破棄する
+  minConfidence: 0.5
+  maxFileBytes: 512000
+
+# この深刻度以上が存在すれば非ゼロ終了（CIゲート）。'never' で無効化
+failOn: high
+# 新規検出のみでゲートする（既存の負債でCIを落とさない）
+failOnNewOnly: false
+
+baselinePath: .vulnscan/baseline.json
+ignorePath: .vulnignore
+
+# キルチェーン分析（個別の検出を攻撃経路として連鎖させる）
+killChain: true
