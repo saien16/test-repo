@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG, LEGACY_DEFAULT_PATHS } from '../types/config.js';
+import { DEFAULT_CONFIG, LEGACY_DEFAULT_PATHS, PATH_KEYS } from '../types/config.js';
 import { CONFIG_FILENAMES, loadConfig } from './index.js';
 
 let repoRoot: string;
@@ -217,6 +217,44 @@ describe('既定パスの後方互換', () => {
     await put('.grimoire.yml', 'ignorePath: config/.ignore\n');
     const file = await loadConfig(repoRoot);
     expect(file.config.ignorePath).toBe('config/.ignore');
+  });
+});
+
+/*
+ * 封じ込めは spec の `kind: 'path'` から導出した PATH_KEYS 全体に効く。
+ * 個別キーを列挙せず PATH_KEYS を回すことで、パス設定を足したときに
+ * 「テストの書き忘れ」でも穴が空かないようにしてある。
+ */
+describe.each([...PATH_KEYS])('パス設定 %s の封じ込め（PATH_KEYS 由来）', (key) => {
+  it('設定ファイルからリポジトリ外を指すと拒否され、出所は default のまま', async () => {
+    await writeConfig(`${key}: /etc/passwd\n`);
+    const { config, warnings } = await loadConfig(repoRoot);
+    expect(config[key]).toBe(DEFAULT_CONFIG[key]);
+    expect(config.pathSources?.[key]).toBe('default');
+    expect(warnings.some((w) => w.includes(key) && w.includes('リポジトリ外'))).toBe(true);
+  });
+
+  it('設定ファイルからリポジトリ内を指せば採用され、出所は config-file', async () => {
+    await writeConfig(`${key}: inside/allowed\n`);
+    const { config, warnings } = await loadConfig(repoRoot);
+    expect(config[key]).toBe('inside/allowed');
+    expect(config.pathSources?.[key]).toBe('config-file');
+    expect(warnings).toEqual([]);
+  });
+
+  it('CLI由来ならリポジトリ外でも受け入れ、出所は cli', async () => {
+    const outside = join(tmpdir(), `operator-${key}`);
+    const { config, warnings } = await loadConfig(repoRoot, { [key]: outside });
+    expect(config[key]).toBe(outside);
+    expect(config.pathSources?.[key]).toBe('cli');
+    expect(warnings).toEqual([]);
+  });
+
+  it('設定ファイルから出所を詐称できない', async () => {
+    await writeConfig(`pathSources:\n  ${key}: cli\n${key}: /etc/passwd\n`);
+    const { config } = await loadConfig(repoRoot);
+    expect(config.pathSources?.[key]).toBe('default');
+    expect(config[key]).toBe(DEFAULT_CONFIG[key]);
   });
 });
 

@@ -56,7 +56,9 @@ grimoire -f sarif -o report.sarif
 | `-m, --model` / `-e, --effort` | 使用モデルと思考の深さ（`low`〜`max`） |
 | `-c, --concurrency` / `--budget` | LLMの同時実行数と出力トークン上限 |
 | `--no-kill-chain` / `--no-self-verify` | 高速化のために工程を落とす |
+| `--no-architecture` / `--no-heatmap` | アーキテクチャ推定・ヒートマップを行わない |
 | `--baseline <path>` / `--update-baseline` | ベースラインの参照先と更新 |
+| `--ignore-file <path>` | 抑制リストの参照先 |
 | `--no-color` / `-q, --quiet` | 色を切る / 進捗を完全に黙らせる |
 
 ### 出力先の約束
@@ -136,7 +138,8 @@ MITRE 由来の値（CWE の説明・Common_Consequences・Likelihood_Of_Exploit
 したがって:
 
 - パス系設定（`baselinePath` / `ignorePath`）は**リポジトリ内へ封じ込め**ます。絶対パスや `..` での脱出は拒否し、既定値へフォールバックしたうえで警告を出します。
-- リポジトリ外を指してよいのは、オペレータが CLI フラグ（`--baseline`）で明示した場合だけです。出所は `config.pathSources` に記録されます。
+- リポジトリ外を指してよいのは、オペレータが CLI フラグ（`--baseline` / `--ignore-file`）で明示した場合だけです。出所は `config.pathSources` に記録されます。
+- 封じ込め対象のキーは `src/types/config-spec.ts` の `kind: 'path'` から導出しています（手書きの allowlist は無く、書き忘れはコンパイルエラーになります）。
 - 設定ファイルから `pathSources` を書いて信頼レベルを詐称することはできません。
 
 ### エラーメッセージから情報を漏らさない

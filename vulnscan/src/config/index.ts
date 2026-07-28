@@ -24,7 +24,9 @@ import { parse as parseYaml } from 'yaml';
 import {
   DEFAULT_CONFIG,
   LEGACY_DEFAULT_PATHS,
+  PATH_KEYS,
   type ConfigSource,
+  type PathKey,
   type PathSources,
   type VulnScanConfig,
 } from '../types/config.js';
@@ -41,9 +43,12 @@ export const CONFIG_FILENAMES = [
   '.vulnscan.yaml',
 ] as const;
 
-/** リポジトリ内への封じ込めを必須とする設定キー */
-const PATH_KEYS = ['baselinePath', 'ignorePath'] as const;
-type PathKey = (typeof PATH_KEYS)[number];
+/*
+ * 封じ込め対象のキー（{@link PATH_KEYS}）は `types/config-spec.ts` の
+ * `kind: 'path'` から導出される。以前ここに手書きの allowlist があったが、
+ * 新しいパス設定を足して**ここへの追記を忘れると**サニタイズも出所記録も
+ * 素通りする（デフォルト許可の）構造だったため、定義元を1箇所へ寄せてある。
+ */
 
 /** ネストしたオブジェクトを再帰的にマージする（配列は置換） */
 function merge<T>(base: T, override: unknown): T {
