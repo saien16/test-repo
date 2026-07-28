@@ -26,6 +26,54 @@ export const BLIND_SPOT_OBSERVED_MAX = 15;
 
 export type BlindSpotCause = BlindSpot['likelyCause'];
 
+/* ------------------------------------------------------------------ *
+ * 走査カバレッジのメモ化
+ *
+ * 「この構成要素のソースが走査されたか」は `component` にしか依存しないのに、
+ * `diagnoseCause` はセル単位（構成要素 × 約30列）で呼ばれる。
+ * 素朴に毎回 `ctx.files` を全走査すると、構成要素15件・ファイル2万件で
+ * 最悪 450セル × 20,000ファイル = 900万回の照合になる。必要なのは15回。
+ * ------------------------------------------------------------------ */
+
+interface ScanCoverage {
+  /** 構成要素の sourcePaths 配下にあるファイル */
+  filesUnderComponent: ScanContext['files'];
+  /** そのうち scan.exclude で落ちるファイル */
+  excludedFiles: ScanContext['files'];
+}
+
+/** (ScanContext, config) が同じ間だけ有効なメモ。構成要素IDで引く */
+const coverageCache = new WeakMap<ScanContext, WeakMap<VulnScanConfig, Map<string, ScanCoverage>>>();
+
+function scanCoverageOf(
+  component: ArchitectureComponent,
+  ctx: ScanContext,
+  config: VulnScanConfig,
+): ScanCoverage {
+  let byConfig = coverageCache.get(ctx);
+  if (byConfig === undefined) {
+    byConfig = new WeakMap();
+    coverageCache.set(ctx, byConfig);
+  }
+  let byComponent = byConfig.get(config);
+  if (byComponent === undefined) {
+    byComponent = new Map();
+    byConfig.set(config, byComponent);
+  }
+  const cached = byComponent.get(component.id);
+  if (cached !== undefined) return cached;
+
+  const filesUnderComponent = ctx.files.filter((file) =>
+    component.sourcePaths.some((p) => isUnderPath(file.path, p)),
+  );
+  const excludedFiles = filesUnderComponent.filter((file) =>
+    matchAnyGlob(config.scan.exclude, normalizePath(file.path)),
+  );
+  const coverage: ScanCoverage = { filesUnderComponent, excludedFiles };
+  byComponent.set(component.id, coverage);
+  return coverage;
+}
+
 export interface CauseDiagnosis {
   cause: BlindSpotCause;
   /** 切り分けの根拠（日本語） */
@@ -65,9 +113,7 @@ export function diagnoseCause(
   }
 
   // (1) 走査対象になっていない
-  const filesUnderComponent = ctx.files.filter((file) =>
-    component.sourcePaths.some((p) => isUnderPath(file.path, p)),
-  );
+  const { filesUnderComponent, excludedFiles } = scanCoverageOf(component, ctx, config);
 
   if (filesUnderComponent.length === 0) {
     return {
@@ -81,9 +127,6 @@ export function diagnoseCause(
     };
   }
 
-  const excludedFiles = filesUnderComponent.filter((file) =>
-    matchAnyGlob(config.scan.exclude, normalizePath(file.path)),
-  );
   if (excludedFiles.length === filesUnderComponent.length) {
     return {
       cause: 'not-scanned',

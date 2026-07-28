@@ -12,9 +12,9 @@
  * 各ステージの失敗は errors に積み、可能な限り部分結果を返す。
  * 途中で落ちても「何も出ない」より「途中まで出る」方が有用なため。
  *
- * ⑤⑥ を④の後に置いているのは、ヒートマップが Finding と AttackChain の
- * 両方を実測層の材料にするため。⑤が失敗すると⑥は成立しない（推測の土台が
- * 無いのに想定リスクを語れない）ので、その場合は⑥を飛ばして undefined を返す。
+ * ④⑤ にデータ依存は無いので並列に走らせる。両者の結果を使うのは⑥だけ。
+ * ⑤が失敗すると⑥は成立しない（推測の土台が無いのに想定リスクを語れない）ので、
+ * その場合は⑥を飛ばして undefined を返す。
  */
 
 import { collectContext } from '../context/index.js';
@@ -94,31 +94,40 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
   errors.push(...managed.errors);
   hooks?.onStageEnd?.('vuln', `${managed.findings.length} 件に正規化`);
 
-  // ④ キルチェーン分析
+  // ④⑤ キルチェーン分析とアーキテクチャ推定
+  //    両者にデータ依存は無く（どちらも ScanContext と Finding しか読まない）、
+  //    結果を使うのは ⑥ buildHeatmap だけなので並列に走らせる。
+  //    共有する LlmClient の可変状態は使用量カウンタと予算判定だけなので、
+  //    並行実行しても壊れない（予算打ち切りの精度がわずかに落ちるだけ）。
+  //    その代わり進捗フックの呼び出し順は乱れる。表示が前後するのは許容する。
   let chains: AttackChain[] = [];
-  if (config.killChain && managed.findings.length > 0) {
+  let architecture: ArchitectureModel | undefined;
+
+  const killChainStage = async (): Promise<void> => {
+    if (!config.killChain || managed.findings.length === 0) return;
     hooks?.onStageStart?.('killchain');
     const kc = await analyzeKillChains(managed.findings, context, llm, config);
     chains = kc.chains;
     errors.push(...kc.errors);
     hooks?.onStageEnd?.('killchain', `${chains.length} 本の攻撃経路`);
-  }
+  };
 
-  // ⑤ アーキテクチャ・デプロイスタック推定
-  //    事実（マニフェスト解析）と推測（LLM）を分けて収集する。
-  //    LLM が失敗しても事実部分は残るので、model は常に得られる。
-  let architecture: ArchitectureModel | undefined;
-  if (config.architecture) {
+  // 事実（マニフェスト解析）と推測（LLM）を分けて収集する。
+  // LLM が失敗しても事実部分は残るので、model は常に得られる。
+  const architectureStage = async (): Promise<void> => {
+    if (!config.architecture) return;
     hooks?.onStageStart?.('architecture');
     const arch = await inferArchitecture(context, llm, config);
     architecture = arch.model;
     errors.push(...arch.errors);
     hooks?.onStageEnd?.(
       'architecture',
-      `${architecture.components.length} 構成要素` +
-        `（事実 ${architecture.evidence.observed} / 推測 ${architecture.evidence.inferred}）`,
+      `${arch.model.components.length} 構成要素` +
+        `（事実 ${arch.model.evidence.observed} / 推測 ${arch.model.evidence.inferred}）`,
     );
-  }
+  };
+
+  await Promise.all([killChainStage(), architectureStage()]);
 
   // ⑥ ヒートマップ（実測層×想定層の重ね合わせ）
   //    アーキテクチャが無ければ行が作れないので生成しない。
