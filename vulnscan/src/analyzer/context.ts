@@ -137,7 +137,7 @@ function collectRelated(
 export function findReachability(
   ids: string[],
   ctx: ScanContext,
-  maxDepth = DEFAULTS.maxReachDepth,
+  maxDepth: number = DEFAULTS.maxReachDepth,
 ): Reachability {
   const entryById = new Map<string, EntryPoint>();
   for (const ep of ctx.entryPoints) {
