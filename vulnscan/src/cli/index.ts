@@ -24,6 +24,8 @@ const STAGE_LABELS: Record<StageName, string> = {
   analyze: 'ソースコード分析',
   vuln: '脆弱性情報管理',
   killchain: 'キルチェーン分析',
+  architecture: 'アーキテクチャ推定',
+  heatmap: 'ヒートマップ生成',
   report: 'レポート生成',
 };
 

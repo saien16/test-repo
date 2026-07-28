@@ -77,6 +77,8 @@ export const STAGE_ORDER: readonly StageName[] = [
   'analyze',
   'vuln',
   'killchain',
+  'architecture',
+  'heatmap',
   'report',
 ];
 
@@ -89,6 +91,8 @@ export const STAGE_SPELL: Readonly<Record<StageName, string>> = {
   analyze: '解析詠唱',
   vuln: '照合',
   killchain: '連鎖演算',
+  architecture: '構造把握',
+  heatmap: '熱図描画',
   report: '編纂',
 };
 
@@ -98,6 +102,8 @@ const STAGE_UNIT: Readonly<Record<StageName, string>> = {
   analyze: 'チャンク',
   vuln: '件',
   killchain: '経路',
+  architecture: '構成要素',
+  heatmap: 'セル',
   report: '節',
 };
 

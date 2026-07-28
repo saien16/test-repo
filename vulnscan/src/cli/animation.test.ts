@@ -228,7 +228,7 @@ describe('TTY アニメーション', () => {
     expect(out).toContain(STAGE_SPELL.context);
     expect(out).toContain('（コンテキスト収集）');
     expect(out).toContain('128 ファイル');
-    expect(out).toContain('[1/5]');
+    expect(out).toContain(`[1/${STAGE_ORDER.length}]`);
   });
 
   it('実行中の行は上書き（\\r + 行消去）で書かれ、改行を積まない', () => {
@@ -439,8 +439,10 @@ describe('formatClock', () => {
 });
 
 describe('ステージ語彙', () => {
-  it('5ステージすべてに詠唱名がある', () => {
-    expect(STAGE_ORDER).toHaveLength(5);
+  it('全ステージに詠唱名と単位がある', () => {
+    // 件数は直書きしない。ステージが増減してもこのテストは壊れず、
+    // 「語彙の付け忘れ」だけを検出し続ける。
+    expect(STAGE_ORDER.length).toBeGreaterThan(0);
     for (const stage of STAGE_ORDER) {
       expect(STAGE_SPELL[stage], stage).toBeTruthy();
     }
