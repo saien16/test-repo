@@ -49,6 +49,15 @@ export interface VulnScanConfig {
   ignorePath: string;
   /** キルチェーン分析を実行するか */
   killChain: boolean;
+  /** アーキテクチャ・デプロイスタックの推定を行うか */
+  architecture: boolean;
+  /** 脆弱性ヒートマップを生成するか（architecture が必要） */
+  heatmap: boolean;
+  /**
+   * ヒートマップの想定リスク層に採用する最低確信度。
+   * これ未満の推測はセルに反映せず、死角判定にも使わない。
+   */
+  minInferenceConfidence: number;
 }
 
 export const DEFAULT_CONFIG: VulnScanConfig = {
@@ -88,4 +97,7 @@ export const DEFAULT_CONFIG: VulnScanConfig = {
   baselinePath: '.vulnscan/baseline.json',
   ignorePath: '.vulnignore',
   killChain: true,
+  architecture: true,
+  heatmap: true,
+  minInferenceConfidence: 0.3,
 };
