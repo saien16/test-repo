@@ -5,8 +5,11 @@
  * ここでは「妥当な既定値 + 部分上書き」でオブジェクトを作れるようにする。
  */
 
+import type { ArchitectureModel } from '../types/architecture.js';
 import type { ScanContext } from '../types/context.js';
+import { assumed, inferred, observed } from '../types/evidence.js';
 import type { Cvss3Result, Finding } from '../types/finding.js';
+import type { VulnerabilityHeatmap } from '../types/heatmap.js';
 import type { AttackChain } from '../types/killchain.js';
 import type { ScanResult, ScanSummary } from '../types/report.js';
 import { summarize } from './summarize.js';
@@ -147,6 +150,254 @@ export function makeSummary(overrides: Partial<ScanSummary> = {}): ScanSummary {
   };
 }
 
+/**
+ * アーキテクチャ推定のフィクスチャ。
+ * 公開/内部/ローカルの3層と、信頼境界をまたぐフローを含む最小構成。
+ */
+export function makeArchitecture(overrides: Partial<ArchitectureModel> = {}): ArchitectureModel {
+  return {
+    style: inferred('spa-with-api', {
+      confidence: 0.7,
+      inferredBy: 'heuristic',
+      reasoning: 'フロントエンドのビルド設定と Express のルータ定義が同居しているため。',
+      alternatives: ['monolith'],
+    }),
+    components: [
+      {
+        id: 'web',
+        kind: 'web-frontend',
+        name: 'Web フロントエンド',
+        technology: observed('React 18', [{ file: 'package.json', line: 12 }]),
+        exposure: inferred('public-internet', {
+          confidence: 0.8,
+          inferredBy: 'heuristic',
+          reasoning: 'CDN 配信の設定があるため公開されていると判断。',
+        }),
+        dataSensitivity: assumed(['none'], '扱うデータの判別材料がない'),
+        requiresAuthentication: assumed(false, '既定値'),
+        sourcePaths: ['web/'],
+        entryPointIds: [],
+      },
+      {
+        id: 'api',
+        kind: 'api-service',
+        name: 'API サーバ (Express)',
+        technology: observed('Express 4.19.2', [{ file: 'package.json', line: 20 }]),
+        exposure: observed('public-internet', [{ file: 'Dockerfile', line: 8 }]),
+        dataSensitivity: inferred(['pii'], {
+          confidence: 0.6,
+          inferredBy: 'llm',
+          reasoning: 'users テーブルを直接参照しているため。',
+        }),
+        requiresAuthentication: inferred(true, {
+          confidence: 0.5,
+          inferredBy: 'heuristic',
+          reasoning: '認証ミドルウェアの登録があるため。',
+        }),
+        sourcePaths: ['src/api/'],
+        entryPointIds: ['GET /api/users/:id'],
+      },
+      {
+        id: 'db',
+        kind: 'database',
+        name: 'PostgreSQL',
+        technology: observed('PostgreSQL 15', [{ file: 'docker-compose.yml', line: 14 }]),
+        exposure: inferred('internal', {
+          confidence: 0.9,
+          inferredBy: 'heuristic',
+          reasoning: 'compose のネットワークが内部のみに閉じているため。',
+        }),
+        dataSensitivity: inferred(['pii', 'credentials'], {
+          confidence: 0.7,
+          inferredBy: 'llm',
+          reasoning: 'ユーザーテーブルとトークンテーブルを保持している。',
+        }),
+        requiresAuthentication: observed(true, [{ file: 'docker-compose.yml', line: 16 }]),
+        sourcePaths: ['src/db/'],
+        entryPointIds: [],
+      },
+      {
+        id: 'worker',
+        kind: 'background-worker',
+        name: 'バッチワーカー',
+        technology: assumed('Node.js', '実行形態の記述が無いため既定値'),
+        exposure: assumed('local', '起動方法が不明なためローカル実行と仮定'),
+        dataSensitivity: assumed(['unknown'], '不明'),
+        requiresAuthentication: assumed(false, '既定値'),
+        sourcePaths: ['src/worker/'],
+        entryPointIds: [],
+      },
+    ],
+    dataFlows: [
+      {
+        fromId: 'web',
+        toId: 'api',
+        protocol: observed('HTTP', [{ file: 'web/src/api.ts', line: 3 }]),
+        crossesTrustBoundary: inferred(true, {
+          confidence: 0.8,
+          inferredBy: 'heuristic',
+          reasoning: 'ブラウザからの入力がそのままサーバへ渡るため。',
+        }),
+      },
+      {
+        fromId: 'api',
+        toId: 'db',
+        protocol: observed('SQL', [{ file: 'src/db/pool.ts', line: 9 }]),
+        crossesTrustBoundary: inferred(false, {
+          confidence: 0.6,
+          inferredBy: 'heuristic',
+          reasoning: '同一 VPC 内の通信のため。',
+        }),
+      },
+      {
+        fromId: 'worker',
+        toId: 'db',
+        protocol: assumed('SQL', '接続方式の記述がないため既定値'),
+        crossesTrustBoundary: assumed(false, '判断材料なし'),
+      },
+    ],
+    deployment: {
+      runtime: observed('Node.js 20', [{ file: 'Dockerfile', line: 1 }]),
+      containerization: observed('docker', [{ file: 'Dockerfile' }]),
+      platform: inferred('aws-ecs', {
+        confidence: 0.4,
+        inferredBy: 'heuristic',
+        reasoning: 'task-definition.json があるため ECS と推測。',
+        alternatives: ['aws-ec2'],
+      }),
+      cloudProvider: inferred('aws', {
+        confidence: 0.6,
+        inferredBy: 'heuristic',
+        reasoning: 'AWS SDK への依存があるため。',
+      }),
+      cicd: observed('github-actions', [{ file: '.github/workflows/ci.yml' }]),
+      ingress: assumed('unknown', 'ロードバランサ設定を発見できなかった'),
+      secretsManagement: inferred('env-file', {
+        confidence: 0.5,
+        inferredBy: 'heuristic',
+        reasoning: '.env.example が存在するため。',
+      }),
+      iac: assumed('none', 'IaC ファイルを発見できなかった'),
+    },
+    evidence: { observed: 4, inferred: 4, assumed: 2, meanInferredConfidence: 0.55 },
+    inspectedManifests: ['package.json', 'Dockerfile', 'docker-compose.yml'],
+    gaps: [
+      'ロードバランサ／WAF の有無を判断できなかった（設定ファイルを発見できず）',
+      'バッチワーカーの実行契機が不明（cron 定義なし）',
+    ],
+    ...overrides,
+  };
+}
+
+/** ヒートマップのフィクスチャ。死角を likelyCause 別に複数含む */
+export function makeHeatmap(overrides: Partial<VulnerabilityHeatmap> = {}): VulnerabilityHeatmap {
+  return {
+    componentIds: ['web', 'api', 'db', 'worker'],
+    categories: [
+      { id: 'injection', name: 'インジェクション', cweIds: ['CWE-89'], owasp: 'A03:2021' },
+      { id: 'authz', name: '認可', cweIds: ['CWE-285'], owasp: 'A01:2021' },
+      { id: 'crypto', name: '暗号・秘密情報', cweIds: ['CWE-798'], owasp: 'A02:2021' },
+    ],
+    cells: [
+      {
+        componentId: 'api',
+        categoryId: 'injection',
+        observedRisk: 92,
+        findingIds: ['f-1'],
+        chainIds: ['ch-1'],
+        inferredRisk: inferred(85, {
+          confidence: 0.7,
+          inferredBy: 'catalog',
+          reasoning: '公開APIかつSQL利用のため。',
+        }),
+        basis: 'both',
+      },
+      {
+        componentId: 'api',
+        categoryId: 'crypto',
+        observedRisk: 60,
+        findingIds: ['f-2'],
+        chainIds: [],
+        inferredRisk: inferred(40, {
+          confidence: 0.5,
+          inferredBy: 'catalog',
+          reasoning: '署名鍵の取り扱いがあるため。',
+        }),
+        basis: 'observed-only',
+      },
+      {
+        componentId: 'db',
+        categoryId: 'authz',
+        observedRisk: 0,
+        findingIds: [],
+        chainIds: [],
+        inferredRisk: inferred(78, {
+          confidence: 0.6,
+          inferredBy: 'catalog',
+          reasoning: '行レベル認可の実装が確認できないため。',
+        }),
+        basis: 'inferred-only',
+      },
+      {
+        componentId: 'worker',
+        categoryId: 'injection',
+        observedRisk: 0,
+        findingIds: [],
+        chainIds: [],
+        inferredRisk: assumed(0, '該当コードを走査していない'),
+        basis: 'none',
+      },
+    ],
+    blindSpots: [
+      {
+        componentId: 'db',
+        categoryId: 'authz',
+        inferredRisk: 78,
+        reasoning: '認可レンズが DB 層のクエリを追跡できていない。',
+        likelyCause: 'no-matching-lens',
+        recommendedAction: '行レベルセキュリティの設定を手動で確認する。',
+      },
+      {
+        componentId: 'worker',
+        categoryId: 'injection',
+        inferredRisk: 65,
+        reasoning: 'worker ディレクトリが除外設定に含まれている。',
+        likelyCause: 'not-scanned',
+        recommendedAction: '除外設定を外して再スキャンする。',
+      },
+      {
+        componentId: 'web',
+        categoryId: 'crypto',
+        inferredRisk: 30,
+        reasoning: 'フロントエンドに暗号処理の実装が見当たらない。',
+        likelyCause: 'genuinely-absent',
+        recommendedAction: '暗号処理をサーバ側に集約できているか確認する。',
+      },
+      {
+        componentId: 'web',
+        categoryId: 'authz',
+        inferredRisk: 20,
+        reasoning: '判断材料が不足している。',
+        likelyCause: 'unknown',
+        recommendedAction: 'まず原因を切り分ける。',
+      },
+    ],
+    componentTotals: {
+      web: { observed: 12, inferred: 50 },
+      api: { observed: 152, inferred: 125 },
+      db: { observed: 0, inferred: 78 },
+      worker: { observed: 0, inferred: 65 },
+    },
+    categoryTotals: {
+      injection: { observed: 92, inferred: 150 },
+      authz: { observed: 0, inferred: 98 },
+      crypto: { observed: 60, inferred: 70 },
+    },
+    inferenceRatio: 0.68,
+    ...overrides,
+  };
+}
+
 /** サマリを自動計算した ScanResult を作る */
 export function makeResult(overrides: Partial<ScanResult> = {}): ScanResult {
   const base = {
@@ -157,6 +408,8 @@ export function makeResult(overrides: Partial<ScanResult> = {}): ScanResult {
   };
   return {
     ...base,
+    ...(overrides.architecture ? { architecture: overrides.architecture } : {}),
+    ...(overrides.heatmap ? { heatmap: overrides.heatmap } : {}),
     summary:
       overrides.summary ??
       summarize(base, {

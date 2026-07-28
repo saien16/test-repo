@@ -28,6 +28,7 @@ import {
   formatNumber,
   truncate,
 } from '../text.js';
+import { ARCHITECTURE_MAP_STYLE, renderArchitectureMap } from './architecture-map.js';
 
 const PHASE_JA: Record<string, string> = {
   reconnaissance: '偵察',
@@ -297,12 +298,20 @@ function renderHeader(result: ScanResult, analyzed: AnalyzedReport): string {
   return out.join('\n');
 }
 
-function renderToc(chains: readonly AttackChain[], findings: readonly Finding[], hasDeps: boolean): string {
+function renderToc(
+  chains: readonly AttackChain[],
+  findings: readonly Finding[],
+  hasDeps: boolean,
+  hasArchitectureMap: boolean,
+): string {
   const items: string[] = [
     '<li><a href="#executive">エグゼクティブサマリ</a></li>',
     '<li><a href="#risk">リスクの全体像</a></li>',
-    '<li><a href="#actions">優先対応アクション</a></li>',
   ];
+  if (hasArchitectureMap) {
+    items.push('<li><a href="#archmap">アーキテクチャ × リスクヒートマップ</a></li>');
+  }
+  items.push('<li><a href="#actions">優先対応アクション</a></li>');
   if (chains.length > 0) {
     items.push('<li><a href="#chains">攻撃チェーン詳細</a></li>');
     for (const chain of chains.slice(0, 8)) {
@@ -640,12 +649,16 @@ export function renderHtml(
   const chains = [...result.chains].sort((a, b) => b.priorityScore - a.priorityScore);
   // 詳細を描画するFindingのID。ここに無いIDへはリンクを張らない（リンク切れ防止）
   const renderedIds: ReadonlySet<string> = new Set(active.map((f) => f.id));
+  // アーキテクチャ推定とヒートマップが両方揃っている場合だけ描く。
+  // 片方でも欠けていれば空文字が返り、既存のレポート構成は一切変わらない。
+  const architectureMap = renderArchitectureMap(result.architecture, result.heatmap);
 
   const body = [
     renderHeader(result, analyzed),
-    renderToc(chains, active, result.context.dependencies.length > 0),
+    renderToc(chains, active, result.context.dependencies.length > 0, architectureMap !== ''),
     renderExecutive(analyzed),
     renderRisk(analyzed),
+    architectureMap,
     renderActions(analyzed, renderedIds),
     renderChains(chains, renderedIds),
     renderFindings(active, fixed),
@@ -668,7 +681,7 @@ export function renderHtml(
     '<meta name="color-scheme" content="light dark">',
     `<meta name="generator" content="grimoire 0.1.0">`,
     `<title>セキュリティスキャンレポート — ${escapeHtml(result.context.repoRoot)}</title>`,
-    `<style>${STYLE}</style>`,
+    `<style>${STYLE}${ARCHITECTURE_MAP_STYLE}</style>`,
     '</head>',
     '<body>',
     '<div class="wrap">',
