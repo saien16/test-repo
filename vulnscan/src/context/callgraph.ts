@@ -178,18 +178,24 @@ export function buildCallGraph(
     }
   }
 
-  const callees: Record<string, string[]> = {};
-  const callers: Record<string, string[]> = {};
+  // 呼び出し先名には `toString` のような Object.prototype のキーが現れうるため、
+  // 索引の構築には必ず Map を使う（プレーンオブジェクトだと継承プロパティを掴む）
+  const calleeMap = new Map<string, Set<string>>();
+  const callerMap = new Map<string, Set<string>>();
   for (const edge of edges) {
-    (callees[edge.from] ??= []).push(edge.to);
-    (callers[edge.to] ??= []).push(edge.from);
+    const callee = calleeMap.get(edge.from) ?? new Set<string>();
+    callee.add(edge.to);
+    calleeMap.set(edge.from, callee);
+
+    const caller = callerMap.get(edge.to) ?? new Set<string>();
+    caller.add(edge.from);
+    callerMap.set(edge.to, caller);
   }
-  for (const key of Object.keys(callees)) {
-    callees[key] = [...new Set(callees[key])];
-  }
-  for (const key of Object.keys(callers)) {
-    callers[key] = [...new Set(callers[key])];
-  }
+
+  const callees: Record<string, string[]> = Object.create(null) as Record<string, string[]>;
+  const callers: Record<string, string[]> = Object.create(null) as Record<string, string[]>;
+  for (const [key, values] of calleeMap) callees[key] = [...values];
+  for (const [key, values] of callerMap) callers[key] = [...values];
 
   return { edges, callees, callers };
 }

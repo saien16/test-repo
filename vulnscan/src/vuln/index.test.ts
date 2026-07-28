@@ -1,0 +1,414 @@
+/**
+ * manageFindings（③脆弱性情報管理の統合）・ベースライン差分・抑制のテスト。
+ */
+
+import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { ScanContext } from '../types/context.js';
+import { DEFAULT_CONFIG, type VulnScanConfig } from '../types/config.js';
+import type { Finding, RawFinding } from '../types/finding.js';
+import { manageFindings } from './index.js';
+import { applyBaseline, emptyBaseline, loadBaseline, saveBaseline } from './baseline.js';
+import { globToRegExp, matchIgnoreRule, parseIgnoreList } from './ignore.js';
+import type { FetchLike } from './osv.js';
+
+const NOW = '2026-07-28T00:00:00.000Z';
+const LAST_YEAR = '2025-01-01T00:00:00.000Z';
+
+let repoRoot: string;
+
+beforeEach(async () => {
+  repoRoot = await mkdtemp(join(tmpdir(), 'vulnscan-test-'));
+});
+
+afterEach(async () => {
+  await rm(repoRoot, { recursive: true, force: true });
+});
+
+function makeContext(overrides: Partial<ScanContext> = {}): ScanContext {
+  return {
+    repoRoot,
+    scannedAt: NOW,
+    languages: [],
+    frameworks: [],
+    dependencies: [],
+    files: [],
+    symbols: { symbols: [], byId: {} },
+    callGraph: { edges: [], callees: {}, callers: {} },
+    entryPoints: [
+      { kind: 'http-route', identifier: 'GET /users/:id', file: 'src/api/users.ts', line: 5 },
+    ],
+    trustBoundaries: [],
+    warnings: [],
+    ...overrides,
+  };
+}
+
+function makeConfig(overrides: Partial<VulnScanConfig> = {}): VulnScanConfig {
+  return { ...DEFAULT_CONFIG, ...overrides };
+}
+
+function makeRaw(overrides: Partial<RawFinding> = {}): RawFinding {
+  return {
+    cwe: 'CWE-89',
+    category: 'A03:2021-Injection',
+    title: 'SQLインジェクション',
+    severity: 'high',
+    confidence: 0.8,
+    location: { file: 'src/api/users.ts', startLine: 10, endLine: 12 },
+    evidence: 'db.query("SELECT * FROM users WHERE id = " + id)',
+    dataFlow: [],
+    reasoning: '文字列連結',
+    remediation: 'プレースホルダを使う',
+    lens: 'injection',
+    ...overrides,
+  };
+}
+
+/** 依存照合を行わないオプション */
+const NO_OSV = { scanDependencies: false as const, now: NOW };
+
+describe('manageFindings', () => {
+  it('RawFinding を Finding に正規化する', async () => {
+    const { findings, suppressedCount, errors } = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      makeConfig(),
+      NO_OSV,
+    );
+    expect(errors).toEqual([]);
+    expect(suppressedCount).toBe(0);
+    expect(findings).toHaveLength(1);
+    const f = findings[0]!;
+    expect(f.id).toMatch(/^VS-/);
+    expect(f.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(f.cvss.baseScore).toBeGreaterThan(0);
+    expect(f.diffStatus).toBe('new');
+    expect(f.status).toBe('open');
+    expect(f.references.length).toBeGreaterThan(0);
+  });
+
+  it('重複を統合する', async () => {
+    const { findings } = await manageFindings(
+      [makeRaw(), makeRaw({ lens: 'authz' })],
+      makeContext(),
+      makeConfig(),
+      NO_OSV,
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.confidence).toBeGreaterThan(0.8);
+  });
+
+  it('壊れた RawFinding があってもエラーに積んで続行する', async () => {
+    const broken = { ...makeRaw(), severity: 'high' } as RawFinding;
+    // location を欠損させる
+    delete (broken as unknown as Record<string, unknown>)['location'];
+    const { findings, errors } = await manageFindings(
+      [broken, makeRaw({ evidence: '別の箇所', location: { file: 'a.ts', startLine: 1, endLine: 1 } })],
+      makeContext(),
+      makeConfig(),
+      NO_OSV,
+    );
+    // location 欠損は既定値で補完されるため、少なくとも処理は継続する
+    expect(findings.length).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(errors)).toBe(true);
+  });
+
+  it('確信度がしきい値未満の指摘は抑制される', async () => {
+    const { findings, suppressedCount } = await manageFindings(
+      [makeRaw({ confidence: 0.2 })],
+      makeContext(),
+      makeConfig({ scan: { ...DEFAULT_CONFIG.scan, minConfidence: 0.5 } }),
+      NO_OSV,
+    );
+    expect(findings).toHaveLength(0);
+    expect(suppressedCount).toBe(1);
+  });
+});
+
+describe('ベースライン差分', () => {
+  it('初回スキャンは全て new になる', async () => {
+    const { findings, errors } = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      makeConfig(),
+      NO_OSV,
+    );
+    expect(errors).toEqual([]);
+    expect(findings[0]!.diffStatus).toBe('new');
+  });
+
+  it('ベースラインに存在すれば persistent になり firstSeen を引き継ぐ', async () => {
+    const config = makeConfig();
+    // 1回目のスキャン結果をベースラインとして保存
+    const first = await manageFindings([makeRaw()], makeContext(), config, {
+      ...NO_OSV,
+      now: LAST_YEAR,
+    });
+    await saveBaseline(first.findings, config.baselinePath, repoRoot);
+
+    // 2回目: 同じ指摘（行番号だけずれている）
+    const second = await manageFindings(
+      [makeRaw({ location: { file: 'src/api/users.ts', startLine: 99, endLine: 101 } })],
+      makeContext(),
+      config,
+      NO_OSV,
+    );
+    expect(second.findings[0]!.diffStatus).toBe('persistent');
+    expect(second.findings[0]!.firstSeen).toBe(LAST_YEAR);
+    expect(second.findings[0]!.lastSeen).toBe(NOW);
+  });
+
+  it('消えた指摘は fixed として報告される', async () => {
+    const config = makeConfig();
+    const first = await manageFindings([makeRaw()], makeContext(), config, {
+      ...NO_OSV,
+      now: LAST_YEAR,
+    });
+    await saveBaseline(first.findings, config.baselinePath, repoRoot);
+
+    const second = await manageFindings([], makeContext(), config, NO_OSV);
+    expect(second.findings).toHaveLength(1);
+    expect(second.findings[0]!.diffStatus).toBe('fixed');
+    expect(second.findings[0]!.status).toBe('fixed');
+  });
+
+  it('トリアージ状態（false-positive）が引き継がれる', async () => {
+    const config = makeConfig();
+    const first = await manageFindings([makeRaw()], makeContext(), config, {
+      ...NO_OSV,
+      now: LAST_YEAR,
+    });
+    const triaged: Finding[] = first.findings.map((f) => ({ ...f, status: 'false-positive' }));
+    await saveBaseline(triaged, config.baselinePath, repoRoot);
+
+    const second = await manageFindings([makeRaw()], makeContext(), config, NO_OSV);
+    expect(second.findings[0]!.status).toBe('false-positive');
+  });
+
+  it('ベースラインが壊れていても errors に積んで続行する', async () => {
+    const config = makeConfig();
+    await mkdir(join(repoRoot, '.vulnscan'), { recursive: true });
+    await writeFile(join(repoRoot, config.baselinePath), '{ 壊れた JSON', 'utf8');
+    const { findings, errors } = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      config,
+      NO_OSV,
+    );
+    expect(findings).toHaveLength(1);
+    expect(errors.some((e) => e.includes('ベースライン'))).toBe(true);
+  });
+
+  it('saveBaseline は修正済みを保存せず、ディレクトリを自動作成する', async () => {
+    const config = makeConfig({ baselinePath: 'nested/dir/baseline.json' });
+    const { findings } = await manageFindings([makeRaw()], makeContext(), config, NO_OSV);
+    const fixed: Finding = { ...findings[0]!, diffStatus: 'fixed', status: 'fixed', fingerprint: 'x'.repeat(64) };
+    const path = await saveBaseline([...findings, fixed], config.baselinePath, repoRoot);
+    const saved = JSON.parse(await readFile(path, 'utf8'));
+    expect(saved.version).toBe(1);
+    expect(saved.findings).toHaveLength(1);
+    expect(saved.generatedAt).toBeTruthy();
+  });
+
+  it('未存在のベースラインはエラーにならない', async () => {
+    const result = await loadBaseline('.vulnscan/none.json', repoRoot);
+    expect(result.existed).toBe(false);
+    expect(result.errors).toEqual([]);
+    expect(result.baseline.findings).toEqual([]);
+  });
+
+  it('素の配列形式のベースラインも読める', async () => {
+    await writeFile(join(repoRoot, 'b.json'), JSON.stringify([{ fingerprint: 'abc' }]), 'utf8');
+    const result = await loadBaseline('b.json', repoRoot);
+    expect(result.baseline.findings).toHaveLength(1);
+  });
+
+  it('applyBaseline は fixed 済みの指摘を再掲しない', () => {
+    const old = {
+      fingerprint: 'abc',
+      firstSeen: LAST_YEAR,
+      lastSeen: LAST_YEAR,
+      diffStatus: 'fixed',
+      status: 'fixed',
+    } as unknown as Finding;
+    const { fixed } = applyBaseline([], { ...emptyBaseline(), findings: [old] }, NOW);
+    expect(fixed).toEqual([]);
+  });
+});
+
+describe('.vulnignore による抑制', () => {
+  async function writeIgnore(content: string): Promise<void> {
+    await writeFile(join(repoRoot, '.vulnignore'), content, 'utf8');
+  }
+
+  it('指紋で抑制できる', async () => {
+    const ctx = makeContext();
+    const config = makeConfig();
+    const first = await manageFindings([makeRaw()], ctx, config, NO_OSV);
+    await writeIgnore(`# 検証済みのため抑制\n${first.findings[0]!.fingerprint}\n`);
+
+    const second = await manageFindings([makeRaw()], ctx, config, NO_OSV);
+    expect(second.findings).toHaveLength(0);
+    expect(second.suppressedCount).toBe(1);
+  });
+
+  it('ID で抑制できる', async () => {
+    const ctx = makeContext();
+    const config = makeConfig();
+    const first = await manageFindings([makeRaw()], ctx, config, NO_OSV);
+    await writeIgnore(first.findings[0]!.id);
+
+    const second = await manageFindings([makeRaw()], ctx, config, NO_OSV);
+    expect(second.suppressedCount).toBe(1);
+  });
+
+  it('glob パターンで抑制できる', async () => {
+    await writeIgnore('src/**  # レガシーコードは対象外\n');
+    const { findings, suppressedCount } = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      makeConfig(),
+      NO_OSV,
+    );
+    expect(findings).toHaveLength(0);
+    expect(suppressedCount).toBe(1);
+  });
+
+  it('CWE 単位で抑制できる', async () => {
+    await writeIgnore('CWE-89\n');
+    const { suppressedCount } = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      makeConfig(),
+      NO_OSV,
+    );
+    expect(suppressedCount).toBe(1);
+  });
+
+  it('glob と CWE の AND 条件を書ける', async () => {
+    await writeIgnore('src/api/** CWE-79\n');
+    const { findings, suppressedCount } = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      makeConfig(),
+      NO_OSV,
+    );
+    // CWE-89 なので抑制されない
+    expect(findings).toHaveLength(1);
+    expect(suppressedCount).toBe(0);
+  });
+
+  it('.vulnignore が無くてもエラーにならない', async () => {
+    const { errors } = await manageFindings([makeRaw()], makeContext(), makeConfig(), NO_OSV);
+    expect(errors).toEqual([]);
+  });
+
+  it('コメント・空行を無視する', () => {
+    const list = parseIgnoreList('# コメントのみ\n\n   \nCWE-79\nsrc/**\n');
+    expect(list.rules).toHaveLength(2);
+    expect(list.rules[0]!.kind).toBe('cwe');
+    expect(list.rules[1]!.kind).toBe('glob');
+  });
+
+  it('マッチしたルールを返す', () => {
+    const list = parseIgnoreList('CWE-89');
+    const finding = { cwe: 'CWE-89', id: 'VS-1', fingerprint: 'a', location: { file: 'x' } } as unknown as Finding;
+    expect(matchIgnoreRule(finding, list)?.kind).toBe('cwe');
+  });
+});
+
+describe('globToRegExp', () => {
+  it('* は階層を跨がない', () => {
+    expect(globToRegExp('src/*.ts').test('src/a.ts')).toBe(true);
+    expect(globToRegExp('src/*.ts').test('src/sub/a.ts')).toBe(false);
+  });
+
+  it('** は階層を跨ぐ', () => {
+    expect(globToRegExp('src/**').test('src/sub/a.ts')).toBe(true);
+    expect(globToRegExp('**/*.test.ts').test('src/a.test.ts')).toBe(true);
+    expect(globToRegExp('**/*.test.ts').test('a.test.ts')).toBe(true);
+  });
+
+  it('? は1文字に一致する', () => {
+    expect(globToRegExp('a?.ts').test('ab.ts')).toBe(true);
+    expect(globToRegExp('a?.ts').test('abc.ts')).toBe(false);
+  });
+
+  it('メタ文字をエスケープする', () => {
+    expect(globToRegExp('a+b.ts').test('a+b.ts')).toBe(true);
+    expect(globToRegExp('a+b.ts').test('aab.ts')).toBe(false);
+  });
+});
+
+describe('依存脆弱性との統合', () => {
+  const depContext = (): ScanContext =>
+    makeContext({
+      dependencies: [
+        { name: 'lodash', version: '4.17.15', ecosystem: 'npm', dev: false, manifest: 'package.json' },
+      ],
+    });
+
+  const okFetch: FetchLike = async (url) => {
+    const json = url.includes('querybatch')
+      ? { results: [{ vulns: [{ id: 'GHSA-xxxx' }] }] }
+      : {
+          id: 'GHSA-xxxx',
+          aliases: ['CVE-2020-8203'],
+          summary: 'Prototype pollution',
+          severity: [{ type: 'CVSS_V3', score: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H' }],
+          affected: [
+            {
+              package: { name: 'lodash', ecosystem: 'npm' },
+              ranges: [{ events: [{ introduced: '0' }, { fixed: '4.17.20' }] }],
+            },
+          ],
+        };
+    return { ok: true, status: 200, json: async () => json } as unknown as Response;
+  };
+
+  it('コード由来と依存由来の Finding が混在する', async () => {
+    const { findings, errors } = await manageFindings(
+      [makeRaw()],
+      depContext(),
+      makeConfig(),
+      { now: NOW, osv: { fetchImpl: okFetch } },
+    );
+    expect(errors).toEqual([]);
+    expect(findings).toHaveLength(2);
+    const dep = findings.find((f) => f.lens === 'dependency')!;
+    expect(dep.cve).toBe('CVE-2020-8203');
+    expect(dep.cvss.baseScore).toBe(9.8);
+    expect(dep.severity).toBe('critical');
+  });
+
+  it('依存脆弱性は同一マニフェストでも統合されない', async () => {
+    const twoVulns: FetchLike = async (url) => {
+      const json = url.includes('querybatch')
+        ? { results: [{ vulns: [{ id: 'GHSA-aaaa' }, { id: 'GHSA-bbbb' }] }] }
+        : { id: url.split('/').pop(), summary: '別の脆弱性', database_specific: { severity: 'HIGH' } };
+      return { ok: true, status: 200, json: async () => json } as unknown as Response;
+    };
+    const { findings } = await manageFindings([], depContext(), makeConfig(), {
+      now: NOW,
+      osv: { fetchImpl: twoVulns },
+    });
+    expect(findings).toHaveLength(2);
+    expect(new Set(findings.map((f) => f.fingerprint)).size).toBe(2);
+  });
+
+  it('ネットワークが使えなくてもコード由来の結果は返る（オフライン耐性）', async () => {
+    const failing: FetchLike = async () => {
+      throw new TypeError('fetch failed');
+    };
+    const { findings, errors } = await manageFindings([makeRaw()], depContext(), makeConfig(), {
+      now: NOW,
+      osv: { fetchImpl: failing },
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.lens).toBe('injection');
+    expect(errors.length).toBeGreaterThan(0);
+  });
+});

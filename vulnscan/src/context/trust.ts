@@ -537,7 +537,8 @@ const RULES: readonly BoundaryRule[] = [
     type: 'source',
     category: 'secret',
     languages: null,
-    re: /\b(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|auth[_-]?token)\s*[:=]\s*['"][^'"\s]{8,}['"]/gi,
+    // `dbPassword` のように接頭辞が付く変数名も拾えるようにしている
+    re: /\b[\w.$-]*(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|client[_-]?secret|auth[_-]?token)\s*[:=]\s*['"][^'"\s]{8,}['"]/gi,
   },
   {
     type: 'source',

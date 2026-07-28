@@ -10,7 +10,7 @@
 import type { ScanContext } from '../types/context.js';
 import type { VulnScanConfig } from '../types/config.js';
 import type { Finding, RawFinding } from '../types/finding.js';
-import { applyBaseline, loadBaseline, saveBaseline } from './baseline.js';
+import { applyBaseline, loadBaseline } from './baseline.js';
 import { loadIgnoreList, matchIgnoreRule } from './ignore.js';
 import { mergeFindings, normalizeFinding } from './normalize.js';
 import { scanDependencies, type OsvOptions } from './osv.js';

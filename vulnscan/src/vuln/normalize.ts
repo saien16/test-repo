@@ -4,12 +4,7 @@
 
 import type { ScanContext } from '../types/context.js';
 import type { Finding, RawFinding, Severity } from '../types/finding.js';
-import {
-  calculateCvss3,
-  cvss3RatingToSeverity,
-  inferCvss3MetricsWithReasons,
-  normalizeCweId,
-} from './cvss.js';
+import { calculateCvss3, inferCvss3MetricsWithReasons, normalizeCweId } from './cvss.js';
 import { computeFingerprint, fingerprintToId, normalizeFilePath } from './fingerprint.js';
 import { buildReferences, lookupCwe, owaspUrl } from './knowledge.js';
 

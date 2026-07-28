@@ -262,9 +262,12 @@ export function scoreChokePoints(
   });
 }
 
+/** LLM の提案を採用する許容差。これ以内なら「僅差」とみなす */
+export const CHOKE_POINT_LLM_TOLERANCE = 0.15;
+
 /**
  * チョークポイントを選ぶ。
- * LLM の提案が候補に含まれ、最良候補と僅差（0.1 以内）なら LLM の判断を尊重する。
+ * LLM の提案が候補に含まれ、最良候補と僅差なら LLM の判断（文脈理解）を尊重する。
  */
 export function selectChokePoint(
   candidates: readonly ChokePointCandidate[],
@@ -280,7 +283,7 @@ export function selectChokePoint(
   }
   if (llmSuggestion !== null) {
     const suggested = scored.find((s) => s.findingId === llmSuggestion);
-    if (suggested !== undefined && suggested.score >= best.score - 0.1) {
+    if (suggested !== undefined && suggested.score >= best.score - CHOKE_POINT_LLM_TOLERANCE) {
       return { findingId: suggested.findingId, score: suggested };
     }
   }

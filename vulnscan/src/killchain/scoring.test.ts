@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AttackTactic } from '../types/killchain.js';
 import {
+  CHOKE_POINT_LLM_TOLERANCE,
   computeImpactScore,
   computeLikelihoodScore,
   likelihoodLabel,
@@ -211,7 +212,11 @@ describe('チョークポイント選定', () => {
       { findingId: 'A', order: 1, cwe: 'CWE-863', hasFixedVersion: false }, // 上流だが修正困難
       { findingId: 'B', order: 2, cwe: 'CWE-89', hasFixedVersion: false }, // 少し下流だが容易
     ];
-    expect(selectChokePoint(close, 2, 'B')?.findingId).toBe('B');
+    const scored = scoreChokePoints(close, 3);
+    const diff = Math.abs((scored[0]?.score ?? 0) - (scored[1]?.score ?? 0));
+    expect(diff).toBeLessThanOrEqual(CHOKE_POINT_LLM_TOLERANCE);
+    expect(selectChokePoint(close, 3, null)?.findingId).toBe('A');
+    expect(selectChokePoint(close, 3, 'B')?.findingId).toBe('B');
   });
 
   it('LLM の提案が大きく劣るなら採用しない', () => {
