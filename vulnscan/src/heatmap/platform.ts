@@ -15,12 +15,13 @@
 
 import type { ArchitectureComponent, ArchitectureModel, ComponentKind } from '../types/architecture.js';
 import type { ScanContext } from '../types/context.js';
-import { toCatalogLanguages } from './catalog-adapter.js';
 import { claimFactor, type ConfidenceFactor, weakestOf } from './confidence.js';
 import { isUnderPath } from './assign.js';
 
 export interface ComponentPlatform {
+  /** 言語名。カタログ側の別名表（typescript→JavaScript 等）が吸収するため生の名前でよい */
   languages: string[];
+  /** MITRE の Applicable_Platforms 表記に寄せた技術名 */
   technologies: string[];
   /** 技術スタックの導出に使った推測の減衰係数（言語は事実由来なので基本的に含まれない） */
   factors: ConfidenceFactor[];
@@ -96,12 +97,12 @@ export function derivePlatform(
   let languages: string[];
   let languageSource: string;
   if (observedLanguages.length > 0) {
-    languages = toCatalogLanguages(observedLanguages);
+    languages = observedLanguages;
     languageSource = `配下ソースの言語(事実): ${languages.join('/') || 'なし'}`;
   } else {
     // 構成要素配下のファイルが特定できないので、リポジトリ全体の言語で代用する。
     // これは根拠のある推測ではなく代用なので、仮定として減衰させる。
-    languages = toCatalogLanguages(ctx.languages.map((l) => l.name));
+    languages = ctx.languages.map((l) => l.name);
     languageSource = `リポジトリ全体の言語で代用(仮定): ${languages.join('/') || 'なし'}`;
     factors.push({
       label: '言語の特定',
@@ -143,12 +144,10 @@ export function derivePlatform(
   const weakestFlow = weakestOf(flowFactors);
   if (weakestFlow) factors.push(weakestFlow);
 
-  if (technologies.length === 0) pushUnique(technologies, 'Not Technology-Specific');
-
   return {
     languages,
     technologies,
     factors,
-    description: `${languageSource} / 技術: ${technologies.join(', ')}`,
+    description: `${languageSource} / 技術: ${technologies.join(', ') || '不明'}`,
   };
 }

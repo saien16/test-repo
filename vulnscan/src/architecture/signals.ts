@@ -156,6 +156,8 @@ export function signalsFromDependencies(
       technology: entry.label,
       // 「pg という依存がある」は事実だが「PostgreSQL を使っている」は推測
       literal: false,
+      // 製品を特定できないクライアント（ORM・SDK 一式）は一般シグナル扱い
+      generic: entry.confidence < 0.7,
       confidence: entry.confidence,
       reasoning: `依存パッケージ ${dep.name}@${dep.version} (${dep.ecosystem}) は ${entry.label} のクライアントライブラリであるため、対応するバックエンドが存在すると推測した。`,
       citation,
@@ -250,6 +252,7 @@ export async function signalsFromEnvironment(
         name: matched.entry.label,
         technology: matched.entry.label,
         literal: false,
+        generic: true,
         confidence: matched.entry.confidence,
         reasoning: `環境変数 ${name} が参照されているため、対応するバックエンドが存在すると推測した。ただし変数名だけでは製品・バージョンは断定できない。`,
         citation: citationFor(path, content, name),

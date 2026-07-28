@@ -1,8 +1,14 @@
 /**
- * 設定の読み込み。`.vulnscan.yml` → CLIオプション の順に既定値を上書きする。
+ * 設定の読み込み。`.grimoire.yml` → CLIオプション の順に既定値を上書きする。
+ *
+ * 後方互換:
+ *   旧名 `.vulnscan.yml` / `.vulnscan.yaml` も読み込む。新旧が同居する場合は
+ *   新しい `.grimoire.*` を優先する（{@link CONFIG_FILENAMES} の並び順がそのまま優先順位）。
+ *   同様に、既定のベースライン `.grimoire/baseline.json` と抑制リスト
+ *   `.grimoireignore` が存在せず旧名だけがある場合は旧名を読む。
  *
  * 信頼境界:
- *   `.vulnscan.yml` は**スキャン対象リポジトリ**の中にあるファイルであり、
+ *   `.grimoire.yml` は**スキャン対象リポジトリ**の中にあるファイルであり、
  *   サードパーティのリポジトリやCIの未信頼PRブランチを解析する運用では
  *   攻撃者が内容を制御できる。したがってここから来た値は未信頼入力として扱う。
  *   特にパス系設定（baselinePath / ignorePath）は、そのまま使うと
@@ -12,18 +18,28 @@
  *   どちらの出所かは config.pathSources に記録する。
  */
 
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import {
   DEFAULT_CONFIG,
+  LEGACY_DEFAULT_PATHS,
   type ConfigSource,
   type PathSources,
   type VulnScanConfig,
 } from '../types/config.js';
 import { resolveInside } from '../util/path.js';
 
-const CONFIG_FILENAMES = ['.vulnscan.yml', '.vulnscan.yaml'];
+/**
+ * 探索する設定ファイル名。**先に書いたものが優先**される。
+ * 旧名（`.vulnscan.*`）は後方互換のために残してある。
+ */
+export const CONFIG_FILENAMES = [
+  '.grimoire.yml',
+  '.grimoire.yaml',
+  '.vulnscan.yml',
+  '.vulnscan.yaml',
+] as const;
 
 /** リポジトリ内への封じ込めを必須とする設定キー */
 const PATH_KEYS = ['baselinePath', 'ignorePath'] as const;
@@ -119,7 +135,48 @@ export async function loadConfig(
   }
   config = { ...config, pathSources };
 
+  // 明示指定が無いキーだけ、旧名（vulnscan 時代）へのフォールバックを検討する
+  const migrated: Partial<VulnScanConfig> = {};
+  for (const key of PATH_KEYS) {
+    if (pathSources[key] !== 'default') continue;
+    const legacy = await legacyPathFor(key, repoRoot, warnings);
+    if (legacy !== null) migrated[key] = legacy;
+  }
+  if (Object.keys(migrated).length > 0) config = { ...config, ...migrated };
+
   return { config, warnings };
+}
+
+/**
+ * 新しい既定パスが無く旧パスだけが存在する場合に、旧パスを返す（それ以外は null）。
+ *
+ * 新旧が両方あるときは新しい方をそのまま使う（勝手に旧へ戻さない）。
+ * 判定に失敗した場合も null を返し、既定値のまま続行する。
+ */
+async function legacyPathFor(
+  key: PathKey,
+  repoRoot: string,
+  warnings: string[],
+): Promise<string | null> {
+  const current = DEFAULT_CONFIG[key];
+  const legacy = LEGACY_DEFAULT_PATHS[key];
+  if (!legacy || legacy === current) return null;
+  if (await exists(join(repoRoot, current))) return null;
+  if (!(await exists(join(repoRoot, legacy)))) return null;
+
+  warnings.push(
+    `旧名の ${legacy} を使用します（${key}）。${current} へリネームすることを推奨します。`,
+  );
+  return legacy;
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function sourceOf(

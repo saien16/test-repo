@@ -18,9 +18,9 @@ import { truncate } from '../text.js';
 export const SARIF_VERSION = '2.1.0';
 export const SARIF_SCHEMA = 'https://json.schemastore.org/sarif-2.1.0.json';
 
-const TOOL_NAME = 'vulnscan';
+const TOOL_NAME = 'grimoire';
 const TOOL_VERSION = '0.1.0';
-const TOOL_URI = 'https://github.com/vulnscan/vulnscan';
+const TOOL_URI = 'https://github.com/grimoire-scanner/grimoire';
 
 /** SARIFの最小限の型（外部依存を増やさないため自前で定義） */
 export interface SarifLog {
@@ -226,7 +226,7 @@ function buildRules(findings: readonly Finding[]): { rules: SarifRule[]; index: 
     const num = cweNumber(ruleId);
     const categories = [...new Set(group.map((f) => f.category).filter((c) => c !== ''))];
 
-    const tags = ['security', 'vulnscan'];
+    const tags = ['security', 'grimoire'];
     if (num) tags.push(`external/cwe/cwe-${num}`);
     for (const category of categories) {
       tags.push(category.replace(/\s+/g, '-'));
@@ -300,6 +300,11 @@ function buildResult(finding: Finding, ruleIndex: Map<string, number>): SarifRes
       ),
     ],
     // 指紋はベースライン照合と同じ値を使う。値は必ず文字列。
+    //
+    // キー名が旧称 (vulnscan*) のままなのは意図的。GRIMOIRE へ改称しても
+    // ここは GitHub code scanning などが既存アラートと同一視するための
+    // 安定キーであり、変えると過去のアラート履歴・トリアージ状態が
+    // 全て切れて重複計上される。表示名だけを変え、識別子は据え置く。
     partialFingerprints: {
       vulnscanFingerprint: String(finding.fingerprint),
       vulnscanFindingId: String(finding.id),
@@ -400,11 +405,11 @@ export function buildSarifLog(result: ScanResult, analyzed?: AnalyzedReport): Sa
     invocations: [invocation],
     originalUriBaseIds: { SRCROOT: { uri: toFileUri(result.context.repoRoot) } },
     automationDetails: {
-      id: `vulnscan/${result.context.git?.branch ?? 'scan'}/`,
+      id: `grimoire/${result.context.git?.branch ?? 'scan'}/`,
       description: {
         text: analyzed
           ? truncate(analyzed.executiveSummary, 900)
-          : `vulnscan による ${findings.length} 件の検出結果`,
+          : `GRIMOIRE による ${findings.length} 件の検出結果`,
       },
     },
     columnKind: 'utf16CodeUnits',

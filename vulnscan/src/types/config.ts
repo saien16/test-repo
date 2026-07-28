@@ -1,5 +1,5 @@
 /**
- * 設定モデル（.vulnscan.yml）。
+ * 設定モデル（.grimoire.yml、旧 .vulnscan.yml）。
  */
 
 import type { Severity } from './context.js';
@@ -39,7 +39,7 @@ export interface ScanConfig {
 /**
  * 設定値の出所。信頼境界の判定に使う。
  *   - 'default'     : 組み込みの既定値
- *   - 'config-file' : スキャン対象リポジトリの `.vulnscan.yml`（**未信頼**）
+ *   - 'config-file' : スキャン対象リポジトリの `.grimoire.yml`（**未信頼**）
  *   - 'cli'         : CLIフラグ（オペレータが明示指定した値＝信頼できる）
  */
 export type ConfigSource = 'default' | 'config-file' | 'cli';
@@ -82,10 +82,21 @@ export interface VulnScanConfig {
   minInferenceConfidence: number;
   /**
    * パス系設定の出所。loadConfig が必ず算出して上書きするため、
-   * `.vulnscan.yml` から指定しても採用されない（信頼の詐称を防ぐ）。
+   * `.grimoire.yml` から指定しても採用されない（信頼の詐称を防ぐ）。
    */
   pathSources?: PathSources;
 }
+
+/**
+ * vulnscan 時代の既定パス。
+ *
+ * 明示指定が無く、かつ新しい既定パスが存在せず旧パスだけが存在する場合に、
+ * loadConfig がこちらへフォールバックする（既存リポジトリを壊さないため）。
+ */
+export const LEGACY_DEFAULT_PATHS: Readonly<Record<keyof PathSources, string>> = {
+  baselinePath: '.vulnscan/baseline.json',
+  ignorePath: '.vulnignore',
+};
 
 export const DEFAULT_CONFIG: VulnScanConfig = {
   llm: {
@@ -121,8 +132,8 @@ export const DEFAULT_CONFIG: VulnScanConfig = {
   },
   failOn: 'high',
   failOnNewOnly: false,
-  baselinePath: '.vulnscan/baseline.json',
-  ignorePath: '.vulnignore',
+  baselinePath: '.grimoire/baseline.json',
+  ignorePath: '.grimoireignore',
   killChain: true,
   architecture: true,
   heatmap: true,

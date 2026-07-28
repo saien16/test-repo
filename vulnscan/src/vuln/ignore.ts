@@ -1,5 +1,5 @@
 /**
- * 抑制リスト（.vulnignore）の読み込みと適用。
+ * 抑制リスト（.grimoireignore、旧 .vulnignore）の読み込みと適用。
  *
  * 書式: 1行1エントリ。`#` 以降はコメント。空行は無視。
  *   - 指紋そのもの      : 64桁の16進文字列
@@ -39,9 +39,9 @@ const ID_RE = /^VS-[0-9a-f]{6,}$/i;
 const CWE_RE = /^CWE-\d+$/i;
 
 /**
- * .vulnignore を読み込む。存在しなければ空のリストを返す（エラーではない）。
+ * 抑制リストを読み込む。存在しなければ空のリストを返す（エラーではない）。
  *
- * パスはリポジトリ内へ封じ込める（未信頼の `.vulnscan.yml` から任意ファイルを
+ * パスはリポジトリ内へ封じ込める（未信頼の `.grimoire.yml` から任意ファイルを
  * 読ませないため）。エラーには絶対パスも生の例外メッセージも載せない。
  */
 export async function loadIgnoreList(
@@ -71,7 +71,7 @@ export async function loadIgnoreList(
   }
 }
 
-/** .vulnignore の本文をパースする */
+/** 抑制リストの本文をパースする */
 export function parseIgnoreList(text: string): IgnoreList {
   const rules: IgnoreRule[] = [];
   const errors: string[] = [];
@@ -108,7 +108,7 @@ export function parseIgnoreList(text: string): IgnoreList {
         });
       } catch (e) {
         errors.push(
-          `.vulnignore ${i + 1}行目のパターンが不正です: '${trimmed}' (${e instanceof Error ? e.message : String(e)})`,
+          `抑制リスト ${i + 1}行目のパターンが不正です: '${trimmed}' (${e instanceof Error ? e.message : String(e)})`,
         );
       }
     }

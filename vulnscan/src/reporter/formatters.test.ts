@@ -100,7 +100,7 @@ describe('CLIフォーマッタ', () => {
     const text = renderCli(result, analyzed, { color: true, verbose: false, width: 80 });
     expect(text).toMatch(/\[/);
     // 色を剥がせば無色版と同じ情報が残る
-    expect(stripAnsi(text)).toContain('vulnscan スキャン結果');
+    expect(stripAnsi(text)).toContain('GRIMOIRE スキャン結果');
   });
 
   it('指定幅を超える行を作らない（全角幅を考慮）', () => {

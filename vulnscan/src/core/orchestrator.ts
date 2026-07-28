@@ -48,8 +48,14 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
   hooks?.onStageEnd?.('context', `${context.files.length} ファイル`);
 
   // ② ソースコード分析（LLM）
+  //    LLM を並列実行する唯一のステージなので、進捗を hooks へ流して
+  //    「12/87 チャンク」のような処理件数を表示できるようにする。
   hooks?.onStageStart?.('analyze');
-  const analyzed = await analyze(context, llm, config);
+  const analyzed = await analyze(context, llm, config, {
+    ...(hooks?.onProgress
+      ? { onProgress: (p) => hooks.onProgress?.('analyze', p.completed, p.total) }
+      : {}),
+  });
   errors.push(...analyzed.errors);
   hooks?.onStageEnd?.('analyze', `${analyzed.findings.length} 件の候補`);
 

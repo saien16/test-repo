@@ -5,7 +5,7 @@
  * 期待値には実データに存在する値だけを書く（作り話をしない）。
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -30,6 +30,7 @@ import {
 import { lookupCweInfo, owaspForCwe, CWE_KB } from './knowledge.js';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const CATALOG_FILE_NAME = 'cwe-catalog.json';
 
 /* ------------------------------------------------------------------ *
  * 読み込み・索引化
@@ -65,13 +66,36 @@ describe('カタログの読み込み', () => {
 
 describe('ビルド後(dist)からの解決', () => {
   it('dist/vuln に置かれた場合でもカタログJSONを解決できる', () => {
-    // tsc は JSON をコピーしないため、dist/vuln/catalog.js からは
-    // <repo>/src/vuln/data/ を探しにいく必要がある。
     const asDist = join(REPO_ROOT, 'dist', 'vuln');
     const resolved = resolveCatalogPath(asDist);
     expect(resolved).not.toBeNull();
     expect(existsSync(resolved!)).toBe(true);
-    expect(resolved).toBe(join(REPO_ROOT, 'src', 'vuln', 'data', 'cwe-catalog.json'));
+
+    // `npm run build` は scripts/copy-data.mjs で dist/vuln/data/ へ同梱する。
+    // 同梱済みならそちらが優先され、dist だけの配布でも 959 件が読める。
+    // 未ビルドの場合はリポジトリの src/vuln/data/ へフォールバックする。
+    const bundled = join(asDist, 'data', CATALOG_FILE_NAME);
+    const expected = existsSync(bundled)
+      ? bundled
+      : join(REPO_ROOT, 'src', 'vuln', 'data', CATALOG_FILE_NAME);
+    expect(resolved).toBe(expected);
+  });
+
+  it('dist に同梱されていればカタログ959件が dist だけで読める', () => {
+    const bundled = join(REPO_ROOT, 'dist', 'vuln', 'data', CATALOG_FILE_NAME);
+    if (!existsSync(bundled)) return; // 未ビルドならこの検証は対象外
+    const parsed = JSON.parse(readFileSync(bundled, 'utf8')) as {
+      entries: Record<string, unknown>;
+    };
+    expect(Object.keys(parsed.entries).length).toBe(959);
+  });
+
+  it('同梱が無いレイアウトでは src/vuln/data へフォールバックする', () => {
+    // dist を模した「data を持たない」ディレクトリから解決させる
+    const asBundle = join(REPO_ROOT, 'dist', 'no-such-layout', 'vuln');
+    expect(resolveCatalogPath(asBundle)).toBe(
+      join(REPO_ROOT, 'src', 'vuln', 'data', CATALOG_FILE_NAME),
+    );
   });
 
   it('探索候補には同梱パス(dist/vuln/data)が先頭に含まれる', () => {

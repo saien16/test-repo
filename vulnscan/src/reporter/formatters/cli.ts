@@ -93,7 +93,7 @@ function severityBars(ctx: Ctx, counts: Record<Severity, number>): void {
 
 function renderHeader(ctx: Ctx, result: ScanResult): void {
   const { style } = ctx;
-  const title = ' vulnscan スキャン結果 ';
+  const title = ' GRIMOIRE スキャン結果 ';
   const sideWidth = Math.max(0, ctx.width - displayWidth(title));
   const left = '━'.repeat(Math.floor(sideWidth / 2));
   const right = '━'.repeat(sideWidth - Math.floor(sideWidth / 2));

@@ -14,9 +14,9 @@ import { matchAnyGlob, normalizePath } from '../context/glob.js';
 import type { ArchitectureComponent } from '../types/architecture.js';
 import type { ScanContext } from '../types/context.js';
 import type { VulnScanConfig } from '../types/config.js';
+import type { LensId } from '../types/finding.js';
 import type { BlindSpot, HeatmapCell, WeaknessCategory } from '../types/heatmap.js';
-import { lensForCategory } from './catalog-adapter.js';
-import { isUnderPath } from './assign.js';
+import { cellKey, isUnderPath } from './assign.js';
 
 /** 死角とみなす想定リスクの下限 */
 export const BLIND_SPOT_INFERRED_MIN = 45;
@@ -41,6 +41,11 @@ export interface CauseDiagnosis {
 export function diagnoseCause(
   component: ArchitectureComponent,
   category: WeaknessCategory,
+  /**
+   * このセルの想定リスクの根拠になったCWE群を担当するレンズ
+   * （`lensForCwe()` で引いたもの）。空なら担当レンズが存在しない。
+   */
+  lenses: readonly LensId[],
   ctx: ScanContext,
   config: VulnScanConfig,
 ): CauseDiagnosis {
@@ -91,25 +96,28 @@ export function diagnoseCause(
   }
 
   // (2) 担当レンズが無い / 有効化されていない
-  const lens = lensForCategory(category.id);
-  if (lens === null) {
+  if (lenses.length === 0) {
     return {
       cause: 'no-matching-lens',
       detail:
-        `カテゴリ「${category.name}」を担当する分析レンズがそもそも存在しない。` +
+        `カテゴリ「${category.name}」の想定根拠となったCWEを担当する分析レンズが、` +
+        `このスキャナにそもそも存在しない（lensForCwe が該当なしを返した）。` +
         `検出が無いのは当然であり、安全を意味しない。`,
       recommendedAction:
         `このカテゴリはコード分析の射程外なので、設計レビューや設定監査など` +
         `別の手段で確認する。`,
     };
   }
-  if (!config.scan.lenses.includes(lens)) {
+  const enabledLenses = lenses.filter((lens) => config.scan.lenses.includes(lens));
+  if (enabledLenses.length === 0) {
     return {
       cause: 'no-matching-lens',
       detail:
-        `カテゴリ「${category.name}」を担当するレンズ '${lens}' が scan.lenses で有効になっていない` +
-        `（有効: ${config.scan.lenses.join(', ') || 'なし'}）。`,
-      recommendedAction: `レンズ '${lens}' を有効にして再スキャンし、本当に検出が無いのかを確認する。`,
+        `カテゴリ「${category.name}」を担当しうるレンズ（${lenses.join(', ')}）が` +
+        `scan.lenses で1つも有効になっていない（有効: ${config.scan.lenses.join(', ') || 'なし'}）。`,
+      recommendedAction:
+        `レンズ ${lenses.join(' / ')} のいずれかを有効にして再スキャンし、` +
+        `本当に検出が無いのかを確認する。`,
     };
   }
 
@@ -118,8 +126,8 @@ export function diagnoseCause(
   return {
     cause: 'genuinely-absent',
     detail:
-      `sourcePaths 配下の ${scannedCount} 件が走査され、担当レンズ '${lens}' も有効だったが検出は無かった。` +
-      `該当する実装自体が無いか、既に対策済みの可能性が高い。`,
+      `sourcePaths 配下の ${scannedCount} 件が走査され、担当レンズ（${enabledLenses.join(', ')}）も` +
+      `有効だったが検出は無かった。該当する実装自体が無いか、既に対策済みの可能性が高い。`,
     recommendedAction:
       `優先度は低い。ただしレンズの検出漏れの可能性は残るため、` +
       `このカテゴリの想定リスクが高い理由（露出度・扱うデータ）が実態と合っているかだけ確認する。`,
@@ -136,6 +144,8 @@ export function extractBlindSpots(
   cells: readonly HeatmapCell[],
   componentsById: ReadonlyMap<string, ArchitectureComponent>,
   categoriesById: ReadonlyMap<string, WeaknessCategory>,
+  /** セルキー `${componentId} ${categoryId}` → そのセルの根拠CWEを担当するレンズ */
+  lensesByCell: ReadonlyMap<string, LensId[]>,
   ctx: ScanContext,
   config: VulnScanConfig,
   /** 想定層を評価しない構成要素（未割当の疑似構成要素など） */
@@ -153,7 +163,8 @@ export function extractBlindSpots(
     const category = categoriesById.get(cell.categoryId);
     if (!component || !category) continue;
 
-    const diagnosis = diagnoseCause(component, category, ctx, config);
+    const lenses = lensesByCell.get(cellKey(cell.componentId, cell.categoryId)) ?? [];
+    const diagnosis = diagnoseCause(component, category, lenses, ctx, config);
     const observedNote =
       cell.findingIds.length === 0
         ? '検出0件'

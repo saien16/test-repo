@@ -651,7 +651,7 @@ export function renderHtml(
     renderFindings(active, fixed),
     renderSbom(result.context.dependencies, result.findings, renderedIds),
     renderIssues(result),
-    `<footer>vulnscan 0.1.0 が生成 — トークン使用量: 入力 ${formatNumber(analyzed.summary.tokenUsage.input)} / ` +
+    `<footer>GRIMOIRE 0.1.0 が生成 — トークン使用量: 入力 ${formatNumber(analyzed.summary.tokenUsage.input)} / ` +
       `出力 ${formatNumber(analyzed.summary.tokenUsage.output)} / ` +
       `キャッシュ読 ${formatNumber(analyzed.summary.tokenUsage.cacheRead)} / ` +
       `書 ${formatNumber(analyzed.summary.tokenUsage.cacheWrite)}</footer>`,
@@ -666,7 +666,7 @@ export function renderHtml(
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     '<meta name="color-scheme" content="light dark">',
-    `<meta name="generator" content="vulnscan 0.1.0">`,
+    `<meta name="generator" content="grimoire 0.1.0">`,
     `<title>セキュリティスキャンレポート — ${escapeHtml(result.context.repoRoot)}</title>`,
     `<style>${STYLE}</style>`,
     '</head>',

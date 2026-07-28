@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { DataSensitivity, Exposure } from '../types/architecture.js';
-import { weaknessCategories } from './catalog-adapter.js';
+import { cwesForComponent, weaknessCategories } from './catalog-adapter.js';
 import { ASSUMED_FACTOR } from './confidence.js';
 import {
   assume,
@@ -39,7 +39,14 @@ function evaluate(
     ...(ctxOverrides.frameworks ? { frameworks: ctxOverrides.frameworks } : {}),
   });
   const platform = derivePlatform(component, architecture, ctx);
-  return computeInferred(component, category(categoryId), platform, minInferenceConfidence);
+  const candidates = cwesForComponent(platform).get(categoryId) ?? [];
+  return computeInferred(
+    component,
+    category(categoryId),
+    platform,
+    candidates,
+    minInferenceConfidence,
+  );
 }
 
 const API: ComponentOverrides = {
@@ -52,7 +59,7 @@ describe('computeInferred: 確信度の減衰と伝播', () => {
   it('すべての根拠が事実なら、確信度はカタログ由来の基礎確信度になる', () => {
     const result = evaluate(API, 'injection');
     expect(result.suppressed).toBe(false);
-    // CWE-89 の悪用可能性は既知(High)なので基礎確信度は 0.8
+    // 主根拠となるCWEの悪用可能性がカタログ上既知なので基礎確信度は 0.8
     expect(result.confidence).toBeCloseTo(0.8, 5);
     expect(result.claim.provenance.kind).toBe('inferred');
   });
@@ -109,7 +116,13 @@ describe('computeInferred: 確信度の減衰と伝播', () => {
 
     expect(platform.technologies).toContain('Database Server');
     // 積(0.6*0.9)ではなく最弱(0.6)が採られる
-    const result = computeInferred(api, category('injection'), platform, 0.3);
+    const result = computeInferred(
+      api,
+      category('injection'),
+      platform,
+      cwesForComponent(platform).get('injection') ?? [],
+      0.3,
+    );
     expect(result.confidence).toBeCloseTo(0.8 * 0.6, 5);
   });
 });
@@ -201,20 +214,25 @@ describe('computeInferred: 重み付け', () => {
   });
 
   it('技術スタックに該当CWEが無ければ「仮定としての0」を返す', () => {
-    const result = evaluate(
-      {
-        id: 'cli',
-        kind: 'cli',
-        technology: fact('Go 製のバッチ実行ファイル'),
-        sourcePaths: ['cmd'],
-      },
-      'ssrf',
-      0.3,
-      { files: [makeFile('cmd/main.go', 'go')], frameworks: [] },
-    );
+    // 'other' はどのカテゴリにも畳めなかったCWEの受け皿で、
+    // 言語・技術のいずれからも引かれない
+    const result = evaluate(API, 'other');
     expect(result.matchedCweIds).toEqual([]);
     expect(result.claim.value).toBe(0);
     expect(result.claim.provenance.kind).toBe('assumed');
+  });
+
+  it('言語・技術非依存のCWEしか無いカテゴリは素点が割り引かれる', () => {
+    // 'authentication' は CWE-287 など言語非依存のCWEばかり（スタック固有0件）、
+    // 'xss' は CWE-79 がスタック固有として当たる
+    const generic = evaluate(API, 'authentication');
+    const specific = evaluate(API, 'xss');
+    expect(generic.specificCweIds).toHaveLength(0);
+    expect(specific.specificCweIds.length).toBeGreaterThan(0);
+    expect(specific.rawRisk).toBeGreaterThan(generic.rawRisk);
+    const provenance = generic.claim.provenance;
+    if (provenance.kind !== 'inferred') throw new Error('unreachable');
+    expect(provenance.reasoning).toContain('非依存');
   });
 
   it('想定リスクは 0..100 に収まる', () => {

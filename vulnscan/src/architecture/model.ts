@@ -86,7 +86,7 @@ function slug(text: string): string {
 export function canonicalFamily(text: string): string {
   const t = text.toLowerCase();
   const table: Array<[RegExp, string]> = [
-    [/postgres|pgvector|timescale|\bpg\b|rds/, 'postgresql'],
+    [/postgres|pgvector|timescale|\bpg\b/, 'postgresql'],
     [/mariadb|mysql/, 'mysql'],
     [/mongo/, 'mongodb'],
     [/dynamodb/, 'dynamodb'],
@@ -272,26 +272,56 @@ export function buildComponents(
   ctx: ScanContext,
   gaps: string[],
 ): { components: ArchitectureComponent[]; componentIdByName: Map<string, string> } {
-  const groups = new Map<string, { kind: ComponentKind; signals: ServiceSignal[] }>();
+  const groups = new Map<string, { kind: ComponentKind; idBase: string; signals: ServiceSignal[] }>();
 
-  for (const signal of factSet.services) {
-    const key = BACKEND_KINDS.has(signal.kind)
-      ? `${signal.kind}:${canonicalFamily(signal.technology)}`
-      : `${signal.kind}:${slug(signal.name)}`;
+  const groupKeyOf = (signal: ServiceSignal): { key: string; idBase: string } => {
+    if (BACKEND_KINDS.has(signal.kind)) {
+      const family = canonicalFamily(signal.technology);
+      return { key: `${signal.kind}:${family}`, idBase: family };
+    }
+    return { key: `${signal.kind}:${slug(signal.name)}`, idBase: slug(signal.name) };
+  };
+
+  // 製品を特定できた具体的なシグナルを先に確定させる
+  const specific = factSet.services.filter((s) => s.generic !== true);
+  const generic = factSet.services.filter((s) => s.generic === true);
+
+  for (const signal of specific) {
+    const { key, idBase } = groupKeyOf(signal);
     const existing = groups.get(key);
-    if (existing === undefined) groups.set(key, { kind: signal.kind, signals: [signal] });
+    if (existing === undefined) groups.set(key, { kind: signal.kind, idBase, signals: [signal] });
     else existing.signals.push(signal);
+  }
+
+  // 一般的なシグナル（環境変数名など）は、同種の具体的な構成要素があれば合流させる。
+  // 合流先が無い場合のみ独立した構成要素にする（「何かある」ことは判っているため）。
+  for (const signal of generic) {
+    const { key, idBase } = groupKeyOf(signal);
+    const exact = groups.get(key);
+    if (exact !== undefined) {
+      exact.signals.push(signal);
+      continue;
+    }
+    const sameKind = [...groups.values()]
+      .filter((g) => g.kind === signal.kind)
+      .sort((a, b) => b.signals.length - a.signals.length)[0];
+    if (sameKind !== undefined) sameKind.signals.push(signal);
+    else groups.set(key, { kind: signal.kind, idBase, signals: [signal] });
   }
 
   const components: ArchitectureComponent[] = [];
   const componentIdByName = new Map<string, string>();
   const usedIds = new Set<string>();
 
-  for (const [key, group] of groups) {
-    const label = group.signals[0]?.technology ?? group.signals[0]?.name ?? key;
-    let id = `${group.kind}-${slug(canonicalFamily(label))}`;
+  for (const group of groups.values()) {
+    // id が `object-storage-object-storage` のように冗長になる場合は名前を使う
+    const base =
+      group.idBase === '' || group.idBase === group.kind
+        ? slug(group.signals[0]?.name ?? 'x')
+        : group.idBase;
+    let id = `${group.kind}-${base}`;
     let n = 2;
-    while (usedIds.has(id)) id = `${group.kind}-${slug(canonicalFamily(label))}-${n++}`;
+    while (usedIds.has(id)) id = `${group.kind}-${base}-${n++}`;
     usedIds.add(id);
     const component = mergeSignals(id, group.kind, group.signals, factSet.facts);
     components.push(component);

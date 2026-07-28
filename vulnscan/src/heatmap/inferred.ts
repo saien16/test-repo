@@ -7,10 +7,17 @@
  *
  * ■ 式の設計判断
  *
- *   base = BASE_SCALE × max(悪用可能性重み × CIA影響重み)   … 最悪のCWEが下限を決める
- *   inferred = clamp(0..100,
- *                base × 露出度 × データ機微度 × 認証
- *                + CWE_COUNT_WEIGHT × log2(該当CWE数))      … 面の広さは緩やかに効く
+ *   cweWeight = 悪用可能性重み × CIA影響重み × (スタック固有か? 1 : GENERIC_DISCOUNT)
+ *   base      = BASE_SCALE × max(cweWeight)                 … 最悪のCWEが下限を決める
+ *   diversity = 1 + DIVERSITY_WEIGHT × log2(1 + スタック固有CWE数)  … 面の広さは緩やかに効く
+ *   inferred  = clamp(0..100, base × diversity × 露出度 × データ機微度 × 認証)
+ *
+ * 該当CWE数を「加算」ではなく「倍率」にしているのは、加算にすると
+ * ローカル実行で機微データも扱わない構成要素が、
+ * 「理屈の上では当てはまるCWEが多い」というだけで下駄を履いてしまうため。
+ * 面の広さは、その構成要素の置かれた状況で割り引かれるべきものである。
+ * また面の広さに数えるのはスタック固有のCWEだけにする。
+ * 言語非依存のCWEは全構成要素に等しく当てはまるので、行間の差を作らない。
  *
  * 露出度・機微度・認証は「同じ弱点でも、そこにあると何が起きるか」を
  * 変える係数なので乗算にする。加算にすると、公開APIでもローカルCLIでも
@@ -35,8 +42,9 @@ import type {
 } from '../types/architecture.js';
 import type { Citation, Claim } from '../types/evidence.js';
 import { assumed, inferred } from '../types/evidence.js';
+import type { LensId } from '../types/finding.js';
 import type { WeaknessCategory } from '../types/heatmap.js';
-import { cweFacts, cwesForPlatform, type CweLikelihood } from './catalog-adapter.js';
+import type { CweLikelihood, PlatformCwe } from './catalog-adapter.js';
 import {
   catalogFactor,
   claimFactor,
@@ -49,8 +57,18 @@ import type { ComponentPlatform } from './platform.js';
 /** 素点の基準スケール。上振れ要因のための余地(headroom)を残して 100 未満に置く */
 export const BASE_SCALE = 60;
 
-/** 該当CWE数による加点の強さ */
-export const CWE_COUNT_WEIGHT = 4;
+/** スタック固有CWE数による増幅の強さ（該当数が倍になるごとにこの割合だけ増える） */
+export const DIVERSITY_WEIGHT = 0.05;
+
+/**
+ * 言語非依存・技術非依存のCWEに掛ける割引。
+ *
+ * 「どのスタックにも当てはまる」ということは
+ * 「この構成要素で起きうる」という主張の根拠としては弱い、という意味の割引。
+ * 0 にして切り捨てないのは、認証不備(CWE-287)のように
+ * 言語非依存だが重大な弱点が想定層から丸ごと消えてしまうため。
+ */
+export const GENERIC_DISCOUNT = 0.6;
 
 /** 悪用可能性の重み */
 const LIKELIHOOD_WEIGHT: Record<CweLikelihood, number> = {
@@ -114,8 +132,18 @@ export interface InferredResult {
   suppressed: boolean;
   /** 減衰後の確信度 0..1（除外された場合もその値を保持する） */
   confidence: number;
-  /** 想定の根拠になったCWE（カタログ順） */
+  /** 想定の根拠になったCWE（CWE番号順） */
   matchedCweIds: string[];
+  /** うち、技術スタックに明示的に該当したもの */
+  specificCweIds: string[];
+  /** 素点を決めた主根拠のCWE。該当なしなら null */
+  dominantCweId: string | null;
+  /**
+   * 想定の根拠になったCWEを担当するレンズの集合。
+   * 空なら「このカテゴリの弱点を見るレンズがそもそも無い」＝構造的な死角。
+   * 死角の原因切り分け（blindspots.ts）が使う。
+   */
+  lenses: LensId[];
   /** 除外されなかった場合の素の想定リスク（テスト・説明用） */
   rawRisk: number;
 }
@@ -151,14 +179,20 @@ export function computeInferred(
   component: ArchitectureComponent,
   category: WeaknessCategory,
   platform: ComponentPlatform,
+  /** このカテゴリで、構成要素の技術スタックに該当したCWE（catalog-adapter が引いたもの） */
+  candidates: readonly PlatformCwe[],
   minInferenceConfidence: number,
   basisCitations: Citation[] = [],
 ): InferredResult {
-  // --- 該当CWEの抽出 ---
-  const platformCwes = new Set(cwesForPlatform(platform));
-  const matchedCweIds = category.cweIds.filter((id) => platformCwes.has(id));
+  const matchedCweIds = candidates.map((c) => c.id);
+  const specificCweIds = candidates.filter((c) => c.specific).map((c) => c.id);
+  const lenses: LensId[] = [];
+  for (const candidate of candidates) {
+    if (candidate.lens !== null && !lenses.includes(candidate.lens)) lenses.push(candidate.lens);
+  }
+  lenses.sort();
 
-  if (matchedCweIds.length === 0) {
+  if (candidates.length === 0) {
     return {
       claim: assumed(
         0,
@@ -169,30 +203,35 @@ export function computeInferred(
       suppressed: false,
       confidence: 0,
       matchedCweIds: [],
+      specificCweIds: [],
+      dominantCweId: null,
+      lenses: [],
       rawRisk: 0,
     };
   }
 
-  // --- 素点: 最悪のCWEを主、該当数を従とする ---
-  let dominantCweId = matchedCweIds[0] as string;
+  // --- 素点: 最悪のCWEを主、スタック固有CWEの多さを従とする ---
+  let dominantCweId = candidates[0]!.id;
   let dominantWeight = -1;
   let dominantLikelihood: CweLikelihood = 'Unknown';
-  for (const cweId of matchedCweIds) {
-    const facts = cweFacts(cweId);
-    if (!facts) continue;
-    const likelihoodWeight = LIKELIHOOD_WEIGHT[facts.likelihood];
-    const impactWeight = IMPACT_WEIGHT[ciaCount(facts.cia)] ?? IMPACT_WEIGHT[0] ?? 0.4;
-    const weight = likelihoodWeight * impactWeight;
+  let dominantSpecific = false;
+  for (const candidate of candidates) {
+    const likelihoodWeight = LIKELIHOOD_WEIGHT[candidate.likelihood];
+    const impactWeight = IMPACT_WEIGHT[ciaCount(candidate.cia)] ?? IMPACT_WEIGHT[0] ?? 0.4;
+    // 言語・技術非依存のCWEは「この構成要素で起きうる」根拠としては弱いので割り引く
+    const specificity = candidate.specific ? 1 : GENERIC_DISCOUNT;
+    const weight = likelihoodWeight * impactWeight * specificity;
     if (weight > dominantWeight) {
       dominantWeight = weight;
-      dominantCweId = cweId;
-      dominantLikelihood = facts.likelihood;
+      dominantCweId = candidate.id;
+      dominantLikelihood = candidate.likelihood;
+      dominantSpecific = candidate.specific;
     }
   }
   if (dominantWeight < 0) dominantWeight = 0;
 
   const base = BASE_SCALE * dominantWeight;
-  const countBonus = CWE_COUNT_WEIGHT * Math.log2(matchedCweIds.length);
+  const diversity = 1 + DIVERSITY_WEIGHT * Math.log2(1 + specificCweIds.length);
 
   // --- 構成要素の性質による重み付け（各項は Claim なので確信度も取り出す） ---
   const exposure = component.exposure.value;
@@ -227,7 +266,7 @@ export function computeInferred(
       0,
       Math.min(
         100,
-        base * exposureMultiplier * sensitivityMultiplier * authMultiplier + countBonus,
+        base * diversity * exposureMultiplier * sensitivityMultiplier * authMultiplier,
       ),
     ),
   );
@@ -252,11 +291,16 @@ export function computeInferred(
   const cweSummary =
     matchedCweIds.length === 1
       ? dominantCweId
-      : `${dominantCweId} ほか計${matchedCweIds.length}件`;
+      : `${dominantCweId} ほか計${matchedCweIds.length}件` +
+        `（うちスタック固有 ${specificCweIds.length}件）`;
 
   const commonReasoning =
     `構成要素「${component.name}」の技術スタック（${platform.description}）に該当するCWEは ${cweSummary}。` +
-    `最も影響が大きい ${dominantCweId}（悪用可能性 ${dominantLikelihood}）を主根拠とし、` +
+    `最も影響が大きい ${dominantCweId}（悪用可能性 ${dominantLikelihood}` +
+    (dominantSpecific
+      ? '・スタック固有'
+      : `・言語/技術非依存のため素点を ${GENERIC_DISCOUNT} 倍に割引`) +
+    `）を主根拠とし、` +
     `露出度 ${exposureFactor.detail}、データ機微度 ${sensitivityFactor.detail}、` +
     `認証 ${authFactor.detail} で重み付けした` +
     (!requiresAuth && exposure === 'public-internet'
@@ -286,6 +330,9 @@ export function computeInferred(
       suppressed: true,
       confidence,
       matchedCweIds,
+      specificCweIds,
+      dominantCweId,
+      lenses,
       rawRisk,
     };
   }
@@ -301,6 +348,9 @@ export function computeInferred(
     suppressed: false,
     confidence,
     matchedCweIds,
+    specificCweIds,
+    dominantCweId,
+    lenses,
     rawRisk,
   };
 }

@@ -1,6 +1,9 @@
-# vulnscan 設定ファイルのサンプル
-# `.vulnscan.yml` にリネームしてリポジトリルートに置くと自動で読み込まれます。
+# GRIMOIRE 設定ファイルのサンプル
+# `.grimoire.yml` にリネームしてリポジトリルートに置くと自動で読み込まれます。
 # 指定しなかった項目は既定値が使われます。
+#
+# 後方互換: 旧名の `.vulnscan.yml` / `.vulnscan.yaml` も読み込みます。
+# 新旧が同居する場合は `.grimoire.yml` が優先されます。
 
 llm:
   # 使用するモデル。既定は claude-opus-5
@@ -49,8 +52,10 @@ failOnNewOnly: false
 # 絶対パスや `..` でリポジトリ外へ出る指定は拒否され、既定値が使われます
 # （設定ファイルは解析対象リポジトリの一部であり、未信頼入力として扱うため）。
 # リポジトリ外を指したい場合は CLI の --baseline で指定してください。
-baselinePath: .vulnscan/baseline.json
-ignorePath: .vulnignore
+# 旧名（.vulnscan/baseline.json / .vulnignore）しか存在しない場合は、
+# 明示指定が無い限り自動で旧名へフォールバックします（警告が1行出ます）。
+baselinePath: .grimoire/baseline.json
+ignorePath: .grimoireignore
 
 # キルチェーン分析（個別の検出を攻撃経路として連鎖させる）
 killChain: true

@@ -87,7 +87,7 @@ describe('SARIF 2.1.0 出力', () => {
 
   it('tool.driver に名前とルール定義がある', () => {
     const driver = log.runs[0]!.tool.driver;
-    expect(driver.name).toBe('vulnscan');
+    expect(driver.name).toBe('grimoire');
     expect(typeof driver.informationUri).toBe('string');
     expect(driver.rules.length).toBeGreaterThan(0);
   });

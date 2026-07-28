@@ -16,8 +16,10 @@ import {
 import { buildHeatmap } from './index.js';
 
 const CATEGORIES = weaknessCategories();
-const WEB_OUTPUT = CATEGORIES.find((c) => c.id === 'web-output')!;
-const INSECURE_DESIGN = CATEGORIES.find((c) => c.id === 'insecure-design')!;
+/** レンズ 'web-output' が担当するカテゴリ。想定リスクが高く出る */
+const XSS = CATEGORIES.find((c) => c.id === 'xss')!;
+/** 担当レンズが存在しないカテゴリ（CWE-400 系。DoS を見るレンズは無い） */
+const RESOURCE_EXHAUSTION = CATEGORIES.find((c) => c.id === 'resource-exhaustion')!;
 
 /**
  * 4種類の死角が同時に現れるように仕組んだシナリオ:
@@ -25,7 +27,7 @@ const INSECURE_DESIGN = CATEGORIES.find((c) => c.id === 'insecure-design')!;
  *   admin  … exclude で丸ごと除外 → not-scanned
  *   worker … ctx.files に1件も無い → not-scanned
  *   idp    … sourcePaths が無く判定不能 → unknown
- * さらに api の insecure-design カテゴリは担当レンズが無い → no-matching-lens
+ * さらに api の resource-exhaustion カテゴリは担当レンズが無い → no-matching-lens
  */
 function scenario(overrides: { minInferenceConfidence?: number; lenses?: string[] } = {}) {
   const components = [
@@ -63,7 +65,7 @@ function spotFor(spots: readonly BlindSpot[], componentId: string, categoryId: s
 describe('死角の原因の切り分け', () => {
   it('走査済み・担当レンズ有効なのに検出が無いなら genuinely-absent', () => {
     const heatmap = scenario();
-    const spot = spotFor(heatmap.blindSpots, 'api', 'web-output');
+    const spot = spotFor(heatmap.blindSpots, 'api', XSS.id);
     expect(spot.likelyCause).toBe('genuinely-absent');
     expect(spot.reasoning).toContain('web-output');
     expect(spot.recommendedAction.length).toBeGreaterThan(0);
@@ -71,34 +73,34 @@ describe('死角の原因の切り分け', () => {
 
   it('exclude の glob で丸ごと除外されていれば not-scanned', () => {
     const heatmap = scenario();
-    const spot = spotFor(heatmap.blindSpots, 'admin', 'web-output');
+    const spot = spotFor(heatmap.blindSpots, 'admin', XSS.id);
     expect(spot.likelyCause).toBe('not-scanned');
     expect(spot.reasoning).toContain('scan.exclude');
   });
 
   it('ctx.files に該当ファイルが1件も無ければ not-scanned', () => {
     const heatmap = scenario();
-    const spot = spotFor(heatmap.blindSpots, 'worker', 'web-output');
+    const spot = spotFor(heatmap.blindSpots, 'worker', XSS.id);
     expect(spot.likelyCause).toBe('not-scanned');
     expect(spot.reasoning).toContain('ScanContext.files');
   });
 
   it('担当レンズが存在しないカテゴリは no-matching-lens', () => {
     const heatmap = scenario();
-    const spot = spotFor(heatmap.blindSpots, 'api', 'insecure-design');
+    const spot = spotFor(heatmap.blindSpots, 'api', RESOURCE_EXHAUSTION.id);
     expect(spot.likelyCause).toBe('no-matching-lens');
   });
 
   it('担当レンズはあるが scan.lenses で無効なら no-matching-lens', () => {
     const heatmap = scenario({ lenses: ['injection'] });
-    const spot = spotFor(heatmap.blindSpots, 'api', 'web-output');
+    const spot = spotFor(heatmap.blindSpots, 'api', XSS.id);
     expect(spot.likelyCause).toBe('no-matching-lens');
     expect(spot.reasoning).toContain('web-output');
   });
 
   it('ソースパスが登録されていない構成要素は unknown', () => {
     const heatmap = scenario();
-    const spot = spotFor(heatmap.blindSpots, 'idp', 'web-output');
+    const spot = spotFor(heatmap.blindSpots, 'idp', XSS.id);
     expect(spot.likelyCause).toBe('unknown');
     expect(spot.recommendedAction).toContain('外部サービス');
   });
@@ -110,7 +112,7 @@ describe('死角の原因の切り分け', () => {
     const config = makeConfig({
       scan: { ...makeConfig().scan, exclude: ['**/admin/**'] },
     });
-    expect(diagnoseCause(component, INSECURE_DESIGN, ctx, config).cause).toBe('not-scanned');
+    expect(diagnoseCause(component, RESOURCE_EXHAUSTION, [], ctx, config).cause).toBe('not-scanned');
   });
 });
 
@@ -127,7 +129,7 @@ describe('死角の抽出条件', () => {
       config: makeConfig(),
     });
     expect(
-      heatmap.blindSpots.some((s) => s.componentId === 'api' && s.categoryId === 'web-output'),
+      heatmap.blindSpots.some((s) => s.componentId === 'api' && s.categoryId === XSS.id),
     ).toBe(false);
   });
 
@@ -179,11 +181,13 @@ describe('死角の抽出条件', () => {
     expect(heatmap.blindSpots.some((s) => s.componentId === '__unassigned__')).toBe(false);
   });
 
-  it('WEB_OUTPUT カテゴリの想定リスクは死角判定のしきい値を超える（前提の確認）', () => {
+  it('前提の確認: 対象カテゴリの想定リスクは死角判定のしきい値を超える', () => {
     const heatmap = scenario();
-    const cell = heatmap.cells.find(
-      (c) => c.componentId === 'api' && c.categoryId === WEB_OUTPUT.id,
-    );
-    expect(cell?.inferredRisk.value).toBeGreaterThanOrEqual(45);
+    for (const categoryId of [XSS.id, RESOURCE_EXHAUSTION.id]) {
+      const cell = heatmap.cells.find(
+        (c) => c.componentId === 'api' && c.categoryId === categoryId,
+      );
+      expect(cell?.inferredRisk.value).toBeGreaterThanOrEqual(45);
+    }
   });
 });

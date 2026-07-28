@@ -30,7 +30,7 @@ export function buildJsonReport(
 
   return {
     schemaVersion: JSON_SCHEMA_VERSION,
-    tool: { name: 'vulnscan', version: '0.1.0' },
+    tool: { name: 'grimoire', version: '0.1.0' },
     generatedAt: new Date().toISOString(),
     analysis: analyzed,
     result: { ...result, findings },

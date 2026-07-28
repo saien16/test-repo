@@ -1,29 +1,38 @@
 /**
- * 設定読み込みの信頼境界テスト。
+ * 設定読み込みの信頼境界テスト＋名称変更（vulnscan → GRIMOIRE）の後方互換テスト。
  *
- * `.vulnscan.yml` はスキャン対象リポジトリの中にあるファイル＝未信頼入力。
- * そこから来たパス系設定でリポジトリ外を読み書きできてはいけない。
+ * `.grimoire.yml`（および旧名 `.vulnscan.yml`）はスキャン対象リポジトリの
+ * 中にあるファイル＝未信頼入力。そこから来たパス系設定で
+ * リポジトリ外を読み書きできてはいけない。
  */
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG } from '../types/config.js';
-import { loadConfig } from './index.js';
+import { DEFAULT_CONFIG, LEGACY_DEFAULT_PATHS } from '../types/config.js';
+import { CONFIG_FILENAMES, loadConfig } from './index.js';
 
 let repoRoot: string;
 
 beforeEach(async () => {
-  repoRoot = await mkdtemp(join(tmpdir(), 'vulnscan-config-'));
+  repoRoot = await mkdtemp(join(tmpdir(), 'grimoire-config-'));
 });
 
 afterEach(async () => {
   await rm(repoRoot, { recursive: true, force: true });
 });
 
+/** 旧名の設定ファイルを書く（後方互換の既定経路） */
 async function writeConfig(yaml: string): Promise<void> {
   await writeFile(join(repoRoot, '.vulnscan.yml'), yaml, 'utf8');
+}
+
+/** 任意の名前でリポジトリ内にファイルを置く */
+async function put(relative: string, body = ''): Promise<void> {
+  const full = join(repoRoot, relative);
+  await mkdir(dirname(full), { recursive: true });
+  await writeFile(full, body, 'utf8');
 }
 
 describe('loadConfig', () => {
@@ -119,6 +128,99 @@ describe('loadConfig', () => {
     expect(config.ignorePath).toBe(DEFAULT_CONFIG.ignorePath);
   });
 
+  it('新名 .grimoire.yml を読み込む', async () => {
+    await put('.grimoire.yml', 'failOn: critical\nkillChain: false\n');
+    const { config, warnings } = await loadConfig(repoRoot);
+    expect(warnings).toEqual([]);
+    expect(config.failOn).toBe('critical');
+    expect(config.killChain).toBe(false);
+  });
+
+  it('新名 .grimoire.yaml も読み込む', async () => {
+    await put('.grimoire.yaml', 'failOn: low\n');
+    const { config } = await loadConfig(repoRoot);
+    expect(config.failOn).toBe('low');
+  });
+
+  it('旧名 .vulnscan.yml も引き続き読み込む（後方互換）', async () => {
+    await put('.vulnscan.yml', 'failOn: medium\n');
+    const { config, warnings } = await loadConfig(repoRoot);
+    expect(warnings).toEqual([]);
+    expect(config.failOn).toBe('medium');
+  });
+
+  it('旧名 .vulnscan.yaml も引き続き読み込む', async () => {
+    await put('.vulnscan.yaml', 'failOn: low\n');
+    const { config } = await loadConfig(repoRoot);
+    expect(config.failOn).toBe('low');
+  });
+
+  it('新旧が同居する場合は .grimoire.yml を優先する', async () => {
+    await put('.grimoire.yml', 'failOn: critical\n');
+    await put('.vulnscan.yml', 'failOn: low\n');
+    const { config } = await loadConfig(repoRoot);
+    expect(config.failOn).toBe('critical');
+  });
+
+  it('探索順は新名が先（優先順位そのもの）', () => {
+    expect(CONFIG_FILENAMES.indexOf('.grimoire.yml')).toBeLessThan(
+      CONFIG_FILENAMES.indexOf('.vulnscan.yml'),
+    );
+    expect(CONFIG_FILENAMES).toContain('.grimoire.yaml');
+    expect(CONFIG_FILENAMES).toContain('.vulnscan.yaml');
+  });
+});
+
+describe('既定パスの後方互換', () => {
+  it('新旧どちらも無ければ新しい既定値を使う', async () => {
+    const { config, warnings } = await loadConfig(repoRoot);
+    expect(config.baselinePath).toBe('.grimoire/baseline.json');
+    expect(config.ignorePath).toBe('.grimoireignore');
+    expect(warnings).toEqual([]);
+  });
+
+  it('旧ベースライン .vulnscan/baseline.json しか無ければそちらを読む', async () => {
+    await put(LEGACY_DEFAULT_PATHS.baselinePath, '{"findings":[]}');
+    const { config, warnings } = await loadConfig(repoRoot);
+    expect(config.baselinePath).toBe('.vulnscan/baseline.json');
+    // 出所は既定のままなので、リポジトリ内への封じ込めは効いたまま
+    expect(config.pathSources?.baselinePath).toBe('default');
+    expect(warnings.some((w) => w.includes('.vulnscan/baseline.json'))).toBe(true);
+  });
+
+  it('旧抑制リスト .vulnignore しか無ければそちらを読む', async () => {
+    await put(LEGACY_DEFAULT_PATHS.ignorePath, 'CWE-79\n');
+    const { config, warnings } = await loadConfig(repoRoot);
+    expect(config.ignorePath).toBe('.vulnignore');
+    expect(config.pathSources?.ignorePath).toBe('default');
+    expect(warnings.some((w) => w.includes('.vulnignore'))).toBe(true);
+  });
+
+  it('新旧が同居する場合は新しい方を使い、警告も出さない', async () => {
+    await put('.grimoire/baseline.json', '{"findings":[]}');
+    await put('.vulnscan/baseline.json', '{"findings":[]}');
+    await put('.grimoireignore', '');
+    await put('.vulnignore', '');
+    const { config, warnings } = await loadConfig(repoRoot);
+    expect(config.baselinePath).toBe('.grimoire/baseline.json');
+    expect(config.ignorePath).toBe('.grimoireignore');
+    expect(warnings).toEqual([]);
+  });
+
+  it('明示指定があれば旧パスが存在してもフォールバックしない', async () => {
+    await put(LEGACY_DEFAULT_PATHS.baselinePath, '{}');
+    await put(LEGACY_DEFAULT_PATHS.ignorePath, '');
+    // CLI 由来
+    const cli = await loadConfig(repoRoot, { baselinePath: 'custom/base.json' });
+    expect(cli.config.baselinePath).toBe('custom/base.json');
+    // 設定ファイル由来
+    await put('.grimoire.yml', 'ignorePath: config/.ignore\n');
+    const file = await loadConfig(repoRoot);
+    expect(file.config.ignorePath).toBe('config/.ignore');
+  });
+});
+
+describe('loadConfig（信頼境界・続き）', () => {
   it('壊れたYAMLでも落とさず、例外メッセージを警告に載せない', async () => {
     await writeConfig('llm: [unclosed\n  secret: "ここは設定ファイルの中身"\n');
     const { config, warnings } = await loadConfig(repoRoot);

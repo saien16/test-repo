@@ -10,7 +10,12 @@ import { normalizePath } from '../context/glob.js';
 import type { ArchitectureComponent, ArchitectureModel } from '../types/architecture.js';
 import type { ScanContext } from '../types/context.js';
 import type { Finding } from '../types/finding.js';
-import { cweCategory, UNCATEGORIZED_CATEGORY_ID } from './catalog-adapter.js';
+import { cweCategoryId } from './catalog-adapter.js';
+
+/** セルを引くためのキー。Finding の振り分けとセル生成で必ず同じ関数を使う */
+export function cellKey(componentId: string, categoryId: string): string {
+  return `${componentId} ${categoryId}`;
+}
 
 /** 未割当 Finding を受け止める疑似構成要素のID */
 export const UNASSIGNED_COMPONENT_ID = '__unassigned__';
@@ -154,8 +159,8 @@ export function assignFindingsToComponents(
 
 /**
  * Finding をカテゴリへ割り当てる。
- * カタログに無い CWE は捨てず '未分類' カテゴリへ送る。
+ * カタログに無い CWE は捨てず 'other'（その他の弱点）カテゴリへ送る。
  */
 export function categoryIdForFinding(finding: Finding): string {
-  return cweCategory(finding.cwe)?.id ?? UNCATEGORIZED_CATEGORY_ID;
+  return cweCategoryId(finding.cwe);
 }

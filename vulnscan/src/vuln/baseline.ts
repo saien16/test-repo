@@ -34,7 +34,7 @@ export function emptyBaseline(): BaselineFile {
  * repoRoot を基準に相対パスを解決する。
  *
  * 既定ではリポジトリ外（絶対パス・`..` 脱出）を拒否して null を返す。
- * スキャン対象リポジトリの `.vulnscan.yml` は未信頼入力なので、
+ * スキャン対象リポジトリの `.grimoire.yml` は未信頼入力なので、
  * そこから来たパスで任意の場所を読み書きさせないための封じ込め。
  * オペレータがCLIフラグで指定した値だけ `allowOutside` を渡す。
  */

@@ -96,6 +96,11 @@ export interface ServiceSignal {
   /** 使用技術の記述 */
   technology: string;
   literal: boolean;
+  /**
+   * 製品を特定できない一般的なシグナル（環境変数名・ORM 経由など）。
+   * 同種の具体的な構成要素があるならそちらに合流させる。
+   */
+  generic?: boolean;
   citation: Citation;
   /** literal=false のときの確信度 */
   confidence?: number;
@@ -171,6 +176,23 @@ export function citationFor(file: string, content: string, needle: string): Cita
   const lines = content.split(/\r?\n/);
   const text = lines[line - 1] ?? needle;
   return { file: normalizeRepoPath(file), line, excerpt: truncate(text) };
+}
+
+/**
+ * YAML/JSON のキー定義行を探して引用を作る。
+ * 単純な部分一致だと値の中の同名文字列（例: `postgres://db:5432`）を
+ * 掴んでしまい、実在しない位置を引用することになるため行頭で照合する。
+ */
+export function citationForKey(file: string, content: string, key: string): Citation {
+  const lines = content.split(/\r?\n/);
+  const pattern = new RegExp(`^\\s*["']?${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']?\\s*:`);
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i] ?? '';
+    if (pattern.test(text)) {
+      return { file: normalizeRepoPath(file), line: i + 1, excerpt: truncate(text) };
+    }
+  }
+  return { file: normalizeRepoPath(file) };
 }
 
 /** ファイル全体を根拠とする引用（「そのファイルが存在すること」自体が事実の場合） */

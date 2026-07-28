@@ -72,7 +72,7 @@ export class LlmClient {
 
   constructor(
     private readonly config: LlmConfig,
-    cacheDir = '.vulnscan/cache',
+    cacheDir = '.grimoire/cache',
   ) {
     // APIキーは環境変数 or `ant auth login` プロファイルから解決される。
     // ハードコードしない。

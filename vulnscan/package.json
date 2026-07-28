@@ -1,13 +1,14 @@
 {
-  "name": "vulnscan",
+  "name": "grimoire",
   "version": "0.1.0",
-  "description": "LLMベースのソースコード脆弱性スキャナー",
+  "description": "GRIMOIRE — 959の弱点を収めた禁書。LLMベースのソースコード脆弱性スキャナー",
   "type": "module",
   "bin": {
-    "vulnscan": "./dist/cli/index.js"
+    "grimoire": "./dist/cli/index.js",
+    "grim": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/copy-data.mjs",
     "dev": "tsx src/cli/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",

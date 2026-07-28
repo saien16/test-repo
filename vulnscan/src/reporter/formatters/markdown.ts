@@ -512,7 +512,7 @@ export function renderMarkdown(
     ...renderIssues(result),
     '---',
     '',
-    `<sub>vulnscan 0.1.0 が生成 — トークン使用量: 入力 ${formatNumber(analyzed.summary.tokenUsage.input)} / ` +
+    `<sub>GRIMOIRE 0.1.0 が生成 — トークン使用量: 入力 ${formatNumber(analyzed.summary.tokenUsage.input)} / ` +
       `出力 ${formatNumber(analyzed.summary.tokenUsage.output)} / ` +
       `キャッシュ読 ${formatNumber(analyzed.summary.tokenUsage.cacheRead)}</sub>`,
     '',

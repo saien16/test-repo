@@ -10,6 +10,7 @@ import { parse as parseYaml, parseAllDocuments } from 'yaml';
 import type { ComponentKind } from '../types/architecture.js';
 import {
   citationFor,
+  citationForKey,
   emptyOutput,
   type ObservedFact,
   type ParseOutput,
@@ -192,7 +193,7 @@ export function parseCompose(path: string, content: string): ParseOutput {
 
   for (const [name, rawService] of Object.entries(services)) {
     const service = asRecord(rawService);
-    const nameCitation = citationFor(path, content, `${name}:`);
+    const nameCitation = citationForKey(path, content, name);
     out.facts.push({ kind: 'compose.service', value: name, citation: nameCitation });
     if (service === null) continue;
 
@@ -335,6 +336,13 @@ export function parseKubernetes(path: string, content: string): ParseOutput {
   }
 
   for (const doc of docs) {
+    // 構文エラーを含むドキュメントは解釈しない（誤った事実を作らないため）
+    if (Array.isArray(doc.errors) && doc.errors.length > 0) {
+      out.warnings.push(
+        `YAML に構文エラーがあるため解析を見送りました: ${path} (${doc.errors[0]?.message ?? '詳細不明'})`,
+      );
+      continue;
+    }
     let value: unknown;
     try {
       value = doc.toJS({ maxAliasCount: 100 });
@@ -390,7 +398,7 @@ export function parseKubernetes(path: string, content: string): ParseOutput {
               out.facts.push({
                 kind: 'env.variable',
                 value: envName,
-                citation: citationFor(path, content, envName),
+                citation: citationFor(path, content, `name: ${envName}`),
                 detail: { resource: `${kind}/${name}` },
               });
             }

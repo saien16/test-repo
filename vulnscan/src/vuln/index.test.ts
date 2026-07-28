@@ -4,12 +4,13 @@
 
 import { access, mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ScanContext } from '../types/context.js';
 import { DEFAULT_CONFIG, type PathSources, type VulnScanConfig } from '../types/config.js';
 import type { Finding, RawFinding } from '../types/finding.js';
 import { manageFindings } from './index.js';
+import { loadConfig } from '../config/index.js';
 import { applyBaseline, emptyBaseline, loadBaseline, saveBaseline } from './baseline.js';
 import { globToRegExp, loadIgnoreList, matchIgnoreRule, parseIgnoreList } from './ignore.js';
 import type { FetchLike } from './osv.js';
@@ -190,7 +191,7 @@ describe('ベースライン差分', () => {
 
   it('ベースラインが壊れていても errors に積んで続行する', async () => {
     const config = makeConfig();
-    await mkdir(join(repoRoot, '.vulnscan'), { recursive: true });
+    await mkdir(join(repoRoot, dirname(config.baselinePath)), { recursive: true });
     await writeFile(join(repoRoot, config.baselinePath), '{ 壊れた JSON', 'utf8');
     const { findings, errors } = await manageFindings(
       [makeRaw()],
@@ -239,9 +240,10 @@ describe('ベースライン差分', () => {
   });
 });
 
-describe('.vulnignore による抑制', () => {
+describe('抑制リストによる抑制', () => {
+  /** 既定の抑制リスト（現行名）へ書き出す */
   async function writeIgnore(content: string): Promise<void> {
-    await writeFile(join(repoRoot, '.vulnignore'), content, 'utf8');
+    await writeFile(join(repoRoot, DEFAULT_CONFIG.ignorePath), content, 'utf8');
   }
 
   it('指紋で抑制できる', async () => {
@@ -275,6 +277,38 @@ describe('.vulnignore による抑制', () => {
     );
     expect(findings).toHaveLength(0);
     expect(suppressedCount).toBe(1);
+  });
+
+  it('旧名 .vulnignore しか無い場合も loadConfig 経由で抑制できる（後方互換）', async () => {
+    // 現行名は置かず、旧名だけを置く
+    await writeFile(join(repoRoot, '.vulnignore'), 'CWE-89\n', 'utf8');
+    const { config, warnings } = await loadConfig(repoRoot);
+    expect(config.ignorePath).toBe('.vulnignore');
+    expect(warnings.some((w) => w.includes('.vulnignore'))).toBe(true);
+
+    const { suppressedCount } = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      config,
+      NO_OSV,
+    );
+    expect(suppressedCount).toBe(1);
+  });
+
+  it('現行名 .grimoireignore が優先される', async () => {
+    await writeFile(join(repoRoot, '.vulnignore'), 'CWE-89\n', 'utf8');
+    await writeFile(join(repoRoot, '.grimoireignore'), '# 何も抑制しない\n', 'utf8');
+    const { config } = await loadConfig(repoRoot);
+    expect(config.ignorePath).toBe('.grimoireignore');
+
+    const { findings, suppressedCount } = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      config,
+      NO_OSV,
+    );
+    expect(findings).toHaveLength(1);
+    expect(suppressedCount).toBe(0);
   });
 
   it('CWE 単位で抑制できる', async () => {
@@ -438,7 +472,7 @@ describe('エラーメッセージの情報漏洩', () => {
 
   it('壊れたベースラインのエラーに絶対パスも生の例外文字列も含めない', async () => {
     const config = makeConfig();
-    await mkdir(join(repoRoot, '.vulnscan'), { recursive: true });
+    await mkdir(join(repoRoot, dirname(config.baselinePath)), { recursive: true });
     await writeFile(join(repoRoot, config.baselinePath), `{ ${SECRET} は秘密 }`, 'utf8');
 
     const { errors } = await loadBaseline(config.baselinePath, repoRoot);
@@ -465,7 +499,7 @@ describe('エラーメッセージの情報漏洩', () => {
 
   it('manageFindings 経由でも絶対パスを漏らさない', async () => {
     const config = makeConfig();
-    await mkdir(join(repoRoot, '.vulnscan'), { recursive: true });
+    await mkdir(join(repoRoot, dirname(config.baselinePath)), { recursive: true });
     await writeFile(join(repoRoot, config.baselinePath), `{ ${SECRET}`, 'utf8');
     const { errors } = await manageFindings([makeRaw()], makeContext(), config, NO_OSV);
     expect(errors.length).toBeGreaterThan(0);

@@ -90,7 +90,7 @@ export async function manageFindings(
     fixed = diff.fixed;
   }
 
-  // --- 5. 抑制（.vulnignore と確信度しきい値） ---
+  // --- 5. 抑制（抑制リスト .grimoireignore と確信度しきい値） ---
   let suppressedCount = 0;
   const ignoreList = config?.ignorePath
     ? await loadIgnoreList(config.ignorePath, repoRoot, {
