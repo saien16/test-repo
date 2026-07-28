@@ -100,6 +100,16 @@ function idFor(prefix: string, key: string): string {
   return `${prefix}-${safe}`;
 }
 
+/**
+ * Finding へのリンク。
+ * verbose でない場合など、詳細を描画していないFindingへはリンクを張らない
+ * （リンク切れのアンカーを作らないため）。
+ */
+function linkFinding(id: string, rendered: ReadonlySet<string>, label?: string): string {
+  const text = `<code>${escapeHtml(label ?? id)}</code>`;
+  return rendered.has(id) ? `<a href="#${idFor('finding', id)}">${text}</a>` : text;
+}
+
 const STYLE = `
 :root {
   color-scheme: light dark;
@@ -327,7 +337,7 @@ function renderRisk(analyzed: AnalyzedReport): string {
   return ['<h2 id="risk">リスクの全体像</h2>', paragraphs(analyzed.riskNarrative)].join('\n');
 }
 
-function renderActions(analyzed: AnalyzedReport): string {
+function renderActions(analyzed: AnalyzedReport, rendered: ReadonlySet<string>): string {
   const out = ['<h2 id="actions">優先対応アクション</h2>'];
   if (analyzed.prioritizedActions.length === 0) {
     out.push('<p class="ok">対応が必要なアクションはありません。</p>');
@@ -357,7 +367,7 @@ function renderActions(analyzed: AnalyzedReport): string {
         paragraphs(action.rationale) +
         (action.resolves.findings.length > 0
           ? `<p class="meta">解消されるFinding: ${action.resolves.findings
-              .map((id) => `<a href="#${idFor('finding', id)}"><code>${escapeHtml(id)}</code></a>`)
+              .map((id) => linkFinding(id, rendered))
               .join(', ')}</p>`
           : '') +
         (action.resolves.chains.length > 0
@@ -371,7 +381,7 @@ function renderActions(analyzed: AnalyzedReport): string {
   return out.join('\n');
 }
 
-function renderChains(chains: readonly AttackChain[]): string {
+function renderChains(chains: readonly AttackChain[], rendered: ReadonlySet<string>): string {
   if (chains.length === 0) return '';
   const out = ['<h2 id="chains">攻撃チェーン詳細</h2>'];
   out.push(
@@ -403,7 +413,7 @@ function renderChains(chains: readonly AttackChain[]): string {
             escapeHtml(step.attackTechnique ?? '-'),
             escapeHtml(step.description),
             step.findingId
-              ? `<a href="#${idFor('finding', step.findingId)}"><code>${escapeHtml(step.findingId)}</code></a>`
+              ? linkFinding(step.findingId, rendered)
               : '-',
           ]),
       ),
@@ -416,7 +426,7 @@ function renderChains(chains: readonly AttackChain[]): string {
     }
     if (chain.chokePoint) {
       out.push(
-        `<blockquote><strong>✂ チョークポイント: <a href="#${idFor('finding', chain.chokePoint.findingId)}"><code>${escapeHtml(chain.chokePoint.findingId)}</code></a></strong><br>` +
+        `<blockquote><strong>✂ チョークポイント: ${linkFinding(chain.chokePoint.findingId, rendered)}</strong><br>` +
           `${escapeHtml(chain.chokePoint.rationale)}</blockquote>`,
       );
     }
@@ -554,7 +564,7 @@ function renderFindings(findings: readonly Finding[], fixed: readonly Finding[])
   return out.join('\n');
 }
 
-function renderSbom(dependencies: readonly Dependency[], findings: readonly Finding[]): string {
+function renderSbom(dependencies: readonly Dependency[], findings: readonly Finding[], rendered: ReadonlySet<string>): string {
   if (dependencies.length === 0) return '';
   const vulnerable = new Map<string, Finding[]>();
   for (const finding of findings) {
@@ -589,7 +599,7 @@ function renderSbom(dependencies: readonly Dependency[], findings: readonly Find
             ? '-'
             : hits
                 .slice(0, 4)
-                .map((f) => `<a href="#${idFor('finding', f.id)}">${escapeHtml(f.cve ?? f.cwe)}</a>`)
+                .map((f) => linkFinding(f.id, rendered, f.cve ?? f.cwe))
                 .join(', '),
         ];
       }),
@@ -628,16 +638,18 @@ export function renderHtml(
     );
   const fixed = result.findings.filter((f) => f.diffStatus === 'fixed');
   const chains = [...result.chains].sort((a, b) => b.priorityScore - a.priorityScore);
+  // 詳細を描画するFindingのID。ここに無いIDへはリンクを張らない（リンク切れ防止）
+  const renderedIds: ReadonlySet<string> = new Set(active.map((f) => f.id));
 
   const body = [
     renderHeader(result, analyzed),
     renderToc(chains, active, result.context.dependencies.length > 0),
     renderExecutive(analyzed),
     renderRisk(analyzed),
-    renderActions(analyzed),
-    renderChains(chains),
+    renderActions(analyzed, renderedIds),
+    renderChains(chains, renderedIds),
     renderFindings(active, fixed),
-    renderSbom(result.context.dependencies, result.findings),
+    renderSbom(result.context.dependencies, result.findings, renderedIds),
     renderIssues(result),
     `<footer>vulnscan 0.1.0 が生成 — トークン使用量: 入力 ${formatNumber(analyzed.summary.tokenUsage.input)} / ` +
       `出力 ${formatNumber(analyzed.summary.tokenUsage.output)} / ` +

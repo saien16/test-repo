@@ -85,16 +85,19 @@ export function wrapText(text: string, width: number): string[] {
     let word = '';
     let wordWidth = 0;
 
-    const flushWord = (): void => {
-      line += word;
-      lineWidth += wordWidth;
-      word = '';
-      wordWidth = 0;
-    };
     const breakLine = (): void => {
       out.push(line.replace(/\s+$/u, ''));
       line = '';
       lineWidth = 0;
+    };
+    /** 溜めていた英単語を行へ確定する。入りきらないなら先に改行する。 */
+    const flushWord = (): void => {
+      if (word === '') return;
+      if (lineWidth > 0 && lineWidth + wordWidth > limit) breakLine();
+      line += word;
+      lineWidth += wordWidth;
+      word = '';
+      wordWidth = 0;
     };
 
     const chars = Array.from(rawLine);
@@ -105,7 +108,7 @@ export function wrapText(text: string, width: number): string[] {
       const w = codePointWidth(cp);
 
       if (isAsciiWordChar(ch)) {
-        // 単語が1行に収まらないほど長い場合は諦めて切る
+        // 単語1つで1行に収まらない場合だけ、諦めて単語の途中で切る
         if (wordWidth + w > limit) {
           flushWord();
           breakLine();
@@ -145,6 +148,8 @@ export function wrapText(text: string, width: number): string[] {
           breakLine();
         }
       }
+      // 折り返した直後の行頭に空白を残さない
+      if (ch === ' ' && lineWidth === 0) continue;
       line += ch;
       lineWidth += w;
     }

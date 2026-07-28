@@ -83,10 +83,18 @@ const RULES: readonly BoundaryRule[] = [
     re: /\bprocess\s*\.\s*env\b/g,
   },
   {
+    // `regex.exec(...)` のような無関係な呼び出しを拾わないよう、レシーバ付きは
+    // child_process とその別名に限定する。
     type: 'sink',
     category: 'command-exec',
     languages: JS,
-    re: /\b(?:child_process\s*\.\s*)?(?:execSync|execFileSync|spawnSync|execFile|exec|spawn|fork)\s*\(/g,
+    re: /\b(?:child_process|childProcess|cp|proc)\s*\.\s*(?:execSync|execFileSync|spawnSync|execFile|exec|spawn|fork)\s*\(/g,
+  },
+  {
+    type: 'sink',
+    category: 'command-exec',
+    languages: JS,
+    re: /(?:^|[^.\w$])(?:execSync|execFileSync|spawnSync|execFile|exec|spawn)\s*\(/g,
   },
   {
     type: 'sink',

@@ -25,6 +25,7 @@ import {
   padStart,
   truncate,
   wrapIndented,
+  wrapText,
 } from '../text.js';
 
 const MIN_WIDTH = 60;
@@ -54,6 +55,19 @@ function heading(ctx: Ctx, title: string): void {
 
 function paragraph(ctx: Ctx, text: string, indent = '  '): void {
   for (const line of wrapIndented(text, ctx.width, indent)) ctx.out.push(line);
+}
+
+/**
+ * 1行目だけ prefix を付け、2行目以降は同じ幅で字下げして折り返す。
+ * prefix に色が付いていても、折り返し幅の計算はANSIを除いた表示幅で行う。
+ */
+function pushWithPrefix(ctx: Ctx, prefix: string, text: string): void {
+  const indent = ' '.repeat(displayWidth(prefix));
+  const lines = wrapText(text, Math.max(8, ctx.width - displayWidth(prefix)));
+  ctx.out.push(prefix + (lines[0] ?? ''));
+  for (const rest of lines.slice(1)) {
+    if (rest !== '') ctx.out.push(indent + rest);
+  }
 }
 
 /** 深刻度別の横棒グラフ */
@@ -137,10 +151,7 @@ function renderNarrative(ctx: Ctx, analyzed: AnalyzedReport): void {
   if (analyzed.keyFindings.length > 0) {
     heading(ctx, '主な所見');
     for (const item of analyzed.keyFindings) {
-      const lines = wrapIndented(item, ctx.width, '    ');
-      const head = lines[0] ?? '';
-      ctx.out.push(`  ${ctx.style.cyan('•')} ${head.trimStart()}`);
-      for (const rest of lines.slice(1)) ctx.out.push(rest);
+      pushWithPrefix(ctx, `  ${ctx.style.cyan('•')} `, item);
     }
   }
 
@@ -195,9 +206,7 @@ function renderActions(ctx: Ctx, analyzed: AnalyzedReport, limit: number): void 
     const effortColor: Severity =
       action.effort === 'low' ? 'low' : action.effort === 'medium' ? 'medium' : 'high';
     const head = `  ${ctx.style.bold(`${action.order}.`)} ${ctx.style.severity(`[工数:${effortJa(action.effort)}]`, effortColor)} `;
-    const bodyLines = wrapIndented(action.action, ctx.width, '     ');
-    ctx.out.push(head + (bodyLines[0] ?? '').trimStart());
-    for (const rest of bodyLines.slice(1)) ctx.out.push(rest);
+    pushWithPrefix(ctx, head, action.action);
 
     const resolves: string[] = [`Finding ${action.resolves.findings.length} 件`];
     if (action.resolves.chains.length > 0) {
