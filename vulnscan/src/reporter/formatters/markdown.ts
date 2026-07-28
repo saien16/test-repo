@@ -59,6 +59,27 @@ function anchor(text: string): string {
   return text.toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, '').trim().replace(/\s+/g, '-');
 }
 
+/**
+ * Finding 見出しの表示テキスト。**リンク先アンカーも必ずこれから導出する**。
+ *
+ * Markdown のアンカーはレンダラが見出し文字列から自動生成するため、
+ * 見出しとリンクが別々の文字列から作られていると静かにずれる。
+ * 実際、以前は見出しが `### {絵文字} {タイトル}` なのにリンクは
+ * `#{タイトルのslug}` を指しており、絵文字の分だけ外れていた。
+ *
+ * ID を含めるのは、同じタイトルの Finding が複数あるときの衝突と、
+ * タイトル変更でリンクが切れるのを防ぐため。
+ */
+function findingHeadingText(finding: Finding): string {
+  const emoji = SEVERITY_EMOJI[finding.severity] ?? '';
+  return `${emoji} ${finding.title}（${finding.id}）`;
+}
+
+/** Finding 詳細へのアンカー。見出しと同じ文字列から作る */
+function findingAnchor(finding: Finding): string {
+  return anchor(findingHeadingText(finding));
+}
+
 function renderHeader(result: ScanResult, analyzed: AnalyzedReport): string[] {
   const s = analyzed.summary;
   const git = result.context.git;
@@ -240,8 +261,7 @@ function renderChains(chains: readonly AttackChain[]): string[] {
 
 function renderFindingDetail(finding: Finding): string[] {
   const lines: string[] = [];
-  const emoji = SEVERITY_EMOJI[finding.severity] ?? '';
-  lines.push(`### ${emoji} ${escapeMdText(finding.title)}`);
+  lines.push(`### ${escapeMdText(findingHeadingText(finding))}`);
   lines.push('');
   lines.push(
     `\`${escapeMdCode(finding.id)}\` / **${escapeMdText(finding.cwe)}** / ` +
@@ -352,7 +372,7 @@ function renderFindings(result: ScanResult, verbose: boolean): string[] {
     const label = escapeMdCell(escapeMdInline(truncate(f.title, 60)));
     lines.push(
       `| ${SEVERITY_EMOJI[f.severity] ?? ''} ${SEVERITY_LABEL_JA[f.severity]} | ${(f.cvss?.baseScore ?? 0).toFixed(1)} | ` +
-        `${escapeMdCell(f.cwe)} | [${label}](#${anchor(f.title)}) | ` +
+        `${escapeMdCell(f.cwe)} | [${label}](#${findingAnchor(f)}) | ` +
         `\`${escapeMdCodeCell(f.location.file)}:${f.location.startLine}\` |`,
     );
   }

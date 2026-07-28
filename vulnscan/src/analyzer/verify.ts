@@ -8,6 +8,7 @@
  */
 
 import type { Severity } from '../types/context.js';
+import { severityRank } from '../util/severity.js';
 import type { ChunkContext } from './context.js';
 import { buildCodeBlock } from './prompt.js';
 import type { CandidateFinding, Verdict } from './schema.js';
@@ -81,17 +82,10 @@ export function buildVerificationPrompt(
   ].join('\n');
 }
 
-const SEVERITY_RANK: Record<Severity, number> = {
-  critical: 4,
-  high: 3,
-  medium: 2,
-  low: 1,
-  info: 0,
-};
-
-export function severityRank(severity: Severity): number {
-  return SEVERITY_RANK[severity];
-}
+// 深刻度の順序はシステム全体で1つでなければならない不変条件なので、
+// ここで再定義せず共有実装をそのまま使う。以前は analyzer / vuln / reporter が
+// それぞれ同じ表を持っており、順序を変えると3ステージで挙動が食い違う状態だった。
+export { severityRank };
 
 export interface VerdictApplication {
   /** 破棄すべきか（反証された） */
