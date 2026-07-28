@@ -116,12 +116,13 @@ export function maskSource(content: string, language: string): MaskedSource {
       }
     }
 
+    // 位置 i からの部分文字列を毎回切り出すと 1 行あたり O(長さ²) の
+    // コピーが発生するため、`String.prototype.startsWith` の第2引数
+    // （検索開始位置）で代用してアロケーションを避ける。
     while (i < line.length) {
-      const rest = line.slice(i);
-
       if (state === 'block-comment') {
         const close = profile.blockComment?.[1] ?? '*/';
-        if (rest.startsWith(close)) {
+        if (line.startsWith(close, i)) {
           bufNoComment += ' '.repeat(close.length);
           bufCodeOnly += ' '.repeat(close.length);
           i += close.length;
@@ -142,7 +143,7 @@ export function maskSource(content: string, language: string): MaskedSource {
           i += 2;
           continue;
         }
-        if (rest.startsWith(quote)) {
+        if (line.startsWith(quote, i)) {
           bufNoComment += quote;
           bufCodeOnly += ' '.repeat(quoteLen);
           i += quoteLen;
@@ -156,7 +157,7 @@ export function maskSource(content: string, language: string): MaskedSource {
       }
 
       // state === 'code'
-      const lineComment = profile.lineComments.find((c) => rest.startsWith(c));
+      const lineComment = profile.lineComments.find((c) => line.startsWith(c, i));
       if (lineComment) {
         const remaining = line.length - i;
         bufNoComment += ' '.repeat(remaining);
@@ -165,7 +166,7 @@ export function maskSource(content: string, language: string): MaskedSource {
         continue;
       }
 
-      if (profile.blockComment && rest.startsWith(profile.blockComment[0])) {
+      if (profile.blockComment && line.startsWith(profile.blockComment[0], i)) {
         const open = profile.blockComment[0];
         bufNoComment += ' '.repeat(open.length);
         bufCodeOnly += ' '.repeat(open.length);
@@ -174,10 +175,10 @@ export function maskSource(content: string, language: string): MaskedSource {
         continue;
       }
 
-      const quoteChar = profile.quotes.find((q) => rest.startsWith(q));
+      const quoteChar = profile.quotes.find((q) => line.startsWith(q, i));
       if (quoteChar) {
         const triple = quoteChar.repeat(3);
-        if (profile.tripleQuotes && rest.startsWith(triple)) {
+        if (profile.tripleQuotes && line.startsWith(triple, i)) {
           quote = triple;
           quoteLen = 3;
           bufNoComment += triple;

@@ -287,11 +287,27 @@ export function isSafeUrl(url: string): boolean {
   return /^https?:\/\/[^\s<>"'`\\]+$/.test(String(url ?? ''));
 }
 
-/** 見出し用のアンカーID（HTML目次で使う） */
-export function slugify(text: string, fallback: string): string {
-  const slug = text
-    .toLowerCase()
-    .replace(/[^a-z0-9぀-ヿ一-鿿-]+/gu, '-')
-    .replace(/^-+|-+$/g, '');
-  return slug === '' ? fallback : slug;
+/**
+ * Markdown組み立て用のタグ付きテンプレート。
+ *
+ * テンプレートリテラルの「地の文」（＝こちらが書いたMarkdown記法）はそのまま通し、
+ * 補間された値だけを必ず `escapeMdText` に通す。
+ *
+ * エスケープを書き忘れる余地を構文レベルで無くすためのもので、
+ * 未信頼入力（Findingのタイトル・LLM生成文・依存パッケージ名など）を
+ * Markdownへ埋め込む箇所では素の文字列連結ではなくこれを使うこと。
+ *
+ *   md`**代表例**: ${finding.title}`  // title は自動でエスケープされる
+ *
+ * 注意: 値をコードスパンやテーブルセルへ入れる場合は、追加の無害化
+ * （`escapeMdCode` / `escapeMdCell`）が別途必要になる。
+ */
+export function md(parts: TemplateStringsArray, ...values: unknown[]): string {
+  let out = parts[0] ?? '';
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i];
+    out += escapeMdText(value === null || value === undefined ? '' : String(value));
+    out += parts[i + 1] ?? '';
+  }
+  return out;
 }
