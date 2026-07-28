@@ -5,7 +5,7 @@
  * データフローを追うため、多少の誤検出よりも取りこぼしを避ける。
  */
 
-import type { EntryPoint, SymbolTable } from '../types/context.js';
+import type { EntryPoint, SymbolInfo, SymbolTable } from '../types/context.js';
 import { SymbolLocator, type AnalyzableSource } from './symbols.js';
 
 /** 1ファイルあたりの上限（生成コードで爆発しないためのガード） */
@@ -222,6 +222,33 @@ const RULES: readonly Rule[] = [
   },
 ];
 
+/**
+ * 言語ごとの適用ルールをモジュール初期化時に1回だけ振り分ける。
+ *
+ * 行ごとに RULES 全件を回すと、その言語に無関係なルールまで正規表現を
+ * 実行してしまう。バケットは RULES の並び順のまま作るので、検出順は変わらない。
+ * 言語非依存ルール（languages: null）は全バケットに含める。
+ */
+const LANGUAGE_AGNOSTIC_RULES: readonly Rule[] = RULES.filter((r) => r.languages === null);
+
+const RULES_BY_LANGUAGE: ReadonlyMap<string, readonly Rule[]> = (() => {
+  const languages = new Set<string>();
+  for (const rule of RULES) {
+    for (const lang of rule.languages ?? []) languages.add(lang);
+  }
+  const map = new Map<string, Rule[]>();
+  for (const lang of languages) map.set(lang, []);
+  for (const rule of RULES) {
+    for (const lang of rule.languages ?? languages) map.get(lang)?.push(rule);
+  }
+  return map;
+})();
+
+/** その言語に実際に適用されるルールだけを返す */
+function rulesFor(language: string): readonly Rule[] {
+  return RULES_BY_LANGUAGE.get(language) ?? LANGUAGE_AGNOSTIC_RULES;
+}
+
 /** Next.js のファイル規約からルートパスを推定する */
 function nextJsRoute(path: string): string | null {
   const apiMatch = /(?:^|\/)pages\/api\/(.+)\.[jt]sx?$/.exec(path);
@@ -249,6 +276,15 @@ export function detectEntryPoints(
   const found: EntryPoint[] = [];
   const seen = new Set<string>();
 
+  // ファイルごとのシンボルを1回だけ索引化する。
+  // source ループの中で table.symbols 全件を回すと O(ファイル数 × 全シンボル数) になる。
+  const symbolsByFile = new Map<string, SymbolInfo[]>();
+  for (const symbol of table.symbols) {
+    const list = symbolsByFile.get(symbol.file);
+    if (list) list.push(symbol);
+    else symbolsByFile.set(symbol.file, [symbol]);
+  }
+
   const push = (entry: EntryPoint): void => {
     const key = `${entry.kind}|${entry.file}|${entry.line}|${entry.identifier}`;
     if (seen.has(key)) return;
@@ -274,12 +310,12 @@ export function detectEntryPoints(
       }
 
       const lines = source.masked.noComment;
+      const rules = rulesFor(source.language);
       for (let i = 0; i < lines.length && count < MAX_PER_FILE; i++) {
         const line = lines[i] ?? '';
         if (line.trim() === '') continue;
 
-        for (const rule of RULES) {
-          if (rule.languages && !rule.languages.includes(source.language)) continue;
+        for (const rule of rules) {
           rule.re.lastIndex = 0;
           let match: RegExpExecArray | null;
           while ((match = rule.re.exec(line)) !== null) {
@@ -302,8 +338,7 @@ export function detectEntryPoints(
       }
 
       // `main` 関数はシンボル表からも拾う（言語規約が正規表現に載らない場合の保険）
-      for (const symbol of table.symbols) {
-        if (symbol.file !== source.path) continue;
+      for (const symbol of symbolsByFile.get(source.path) ?? []) {
         if (symbol.name !== 'main' || symbol.kind === 'module') continue;
         push({
           kind: 'main',

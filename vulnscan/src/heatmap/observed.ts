@@ -23,6 +23,8 @@
 
 import type { AttackChain } from '../types/killchain.js';
 import type { Finding } from '../types/finding.js';
+// clamp01 / round1 は util/num.ts に一元化した（統合前は計7箇所に散在）。
+import { round1 } from '../util/num.js';
 
 /** 件数による加点の強さ */
 export const COUNT_WEIGHT = 8;
@@ -35,9 +37,6 @@ export interface ObservedResult {
   chainIds: string[];
 }
 
-function round1(x: number): number {
-  return Math.round(x * 10) / 10;
-}
 
 /** Finding ID → その Finding が登場する攻撃チェーンID一覧 */
 export function chainIndexByFinding(chains: readonly AttackChain[]): Map<string, string[]> {

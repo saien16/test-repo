@@ -31,14 +31,26 @@ import type { AttackChain } from '../types/killchain.js';
 import type { ArchitectureModel } from '../types/architecture.js';
 import type { VulnerabilityHeatmap } from '../types/heatmap.js';
 
-export type StageName =
-  | 'context'
-  | 'analyze'
-  | 'vuln'
-  | 'killchain'
-  | 'architecture'
-  | 'heatmap'
-  | 'report';
+/**
+ * パイプラインのステージ順。**ここが唯一の真実**。
+ *
+ * 型を配列から導出しているので、ステージを足すときはこの配列に足すだけで
+ * `Record<StageName, _>` 群（CLI のラベル表・アニメーションの語彙表など）が
+ * 一斉にコンパイルエラーになる。
+ * 以前は配列と union が別々に手書きされており、ステージ追加時に
+ * 表示順の配列へ足し忘れても型エラーが出ず、静かに漏れたことがある。
+ */
+export const STAGE_SEQUENCE = [
+  'context',
+  'analyze',
+  'vuln',
+  'killchain',
+  'architecture',
+  'heatmap',
+  'report',
+] as const;
+
+export type StageName = (typeof STAGE_SEQUENCE)[number];
 
 export interface ScanHooks {
   onStageStart?: (stage: StageName, detail?: string) => void;

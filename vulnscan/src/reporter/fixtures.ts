@@ -11,7 +11,7 @@ import { assumed, inferred, observed } from '../types/evidence.js';
 import type { Cvss3Result, Finding } from '../types/finding.js';
 import type { VulnerabilityHeatmap } from '../types/heatmap.js';
 import type { AttackChain } from '../types/killchain.js';
-import type { ScanResult, ScanSummary } from '../types/report.js';
+import type { ScanResult } from '../types/report.js';
 import { summarize } from './summarize.js';
 
 export function makeCvss(overrides: Partial<Cvss3Result> = {}): Cvss3Result {
@@ -128,24 +128,6 @@ export function makeContext(overrides: Partial<ScanContext> = {}): ScanContext {
     trustBoundaries: [],
     git: { branch: 'main', headSha: 'abcdef1234567890', changedFiles: ['src/api/users.ts'] },
     warnings: [],
-    ...overrides,
-  };
-}
-
-export function makeSummary(overrides: Partial<ScanSummary> = {}): ScanSummary {
-  return {
-    totalFindings: 0,
-    bySeverity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
-    byCategory: {},
-    newCount: 0,
-    fixedCount: 0,
-    persistentCount: 0,
-    suppressedCount: 0,
-    chainCount: 0,
-    maxCvssScore: 0,
-    filesScanned: 0,
-    durationMs: 1234,
-    tokenUsage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     ...overrides,
   };
 }

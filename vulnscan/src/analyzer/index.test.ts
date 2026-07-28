@@ -302,6 +302,55 @@ describe('analyze', () => {
     expect(result.errors[0]).toContain('読み込めなかった');
   });
 
+  it('user プロンプトはレンズ間で同一（チャンクごとに1回だけ組み立てる）', async () => {
+    const { llm, calls } = makeLlm(() => ok({ findings: [] }));
+    await analyze(
+      makeContext(),
+      llm,
+      makeConfig({ lenses: ['injection', 'crypto-secrets', 'authz'], selfVerify: false }),
+      { readFile },
+    );
+
+    expect(calls).toHaveLength(3);
+    // system はレンズごとに変わるが、user はレンズに依存しない
+    expect(new Set(calls.map((c) => c.system)).size).toBe(3);
+    expect(new Set(calls.map((c) => c.user)).size).toBe(1);
+    // 同じチャンクのタスクは文字列インスタンスまで共有している
+    expect(calls[1]?.user).toBe(calls[0]?.user);
+    expect(calls[2]?.user).toBe(calls[0]?.user);
+  });
+
+  it('自己検証の refusal は警告だけ積んで未検証として続行する', async () => {
+    const { llm } = makeLlm((call) =>
+      call.schemaName === 'VulnScanAnalysis'
+        ? ok({ findings: [CANDIDATE] })
+        : { ok: false, reason: 'refusal', category: 'cyber' },
+    );
+
+    const result = await analyze(makeContext(), llm, makeConfig(), { readFile });
+
+    // 検証できなかった候補は破棄せず残る
+    expect(result.findings).toHaveLength(1);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('自己検証が拒否されました');
+    expect(result.errors[0]).toContain('category=cyber');
+    expect(result.errors[0]).toContain('未検証として扱います');
+  });
+
+  it('自己検証パスの予算切れも同じメッセージで打ち切る', async () => {
+    const { llm } = makeLlm((call) =>
+      call.schemaName === 'VulnScanAnalysis'
+        ? ok({ findings: [CANDIDATE] })
+        : { ok: false, reason: 'budget-exhausted' },
+    );
+
+    const result = await analyze(makeContext(), llm, makeConfig(), { readFile });
+
+    expect(result.errors).toEqual([
+      'トークン予算を使い切ったため、以降の分析を打ち切りました（それまでの結果のみ返します）',
+    ]);
+  });
+
   it('進捗を通知する', async () => {
     const phases: string[] = [];
     const { llm } = makeLlm((call) =>

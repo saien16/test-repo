@@ -14,6 +14,8 @@
  */
 
 import type { AttackTactic } from '../types/killchain.js';
+// clamp01 / round1 は util/num.ts に一元化した（統合前は計7箇所に散在）。
+import { clamp01 } from '../util/num.js';
 
 /** 戦術ごとの「攻撃者にとっての到達価値」= 影響係数 0..1 */
 export const TACTIC_IMPACT: Record<AttackTactic, number> = {
@@ -89,10 +91,6 @@ export interface ScoringResult {
   };
 }
 
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return x < 0 ? 0 : x > 1 ? 1 : x;
-}
 
 function mean(values: readonly number[], fallback: number): number {
   const nums = values.filter((v) => Number.isFinite(v));

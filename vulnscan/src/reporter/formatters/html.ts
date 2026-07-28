@@ -12,54 +12,24 @@ import type { Dependency } from '../../types/context.js';
 import type { Finding } from '../../types/finding.js';
 import type { AttackChain } from '../../types/killchain.js';
 import type { AnalyzedReport, ReportOptions, ScanResult } from '../../types/report.js';
-import { effortJa, likelihoodJa } from '../priority.js';
+import { buildSbomIndex, reportableFindings, sbomPackageKey } from '../collect.js';
+import { PHASE_JA, ROLE_JA, TACTIC_JA, effortJa, likelihoodJa } from '../labels.js';
 import {
   SEVERITY_HEX,
   SEVERITY_HEX_DARK,
   SEVERITY_LABEL_JA,
   SEVERITY_ORDER,
-  isActiveFinding,
-  severityRank,
 } from '../severity.js';
 import {
   escapeHtml,
   formatDateTime,
   formatDuration,
   formatNumber,
+  isSafeUrl,
   truncate,
 } from '../text.js';
 import { ARCHITECTURE_MAP_STYLE, renderArchitectureMap } from './architecture-map.js';
-
-const PHASE_JA: Record<string, string> = {
-  reconnaissance: '偵察',
-  weaponization: '武器化',
-  delivery: '配送',
-  exploitation: '攻撃実行',
-  installation: '居座り',
-  'command-and-control': '遠隔操作',
-  'actions-on-objectives': '目的の実行',
-};
-
-const TACTIC_JA: Record<string, string> = {
-  'initial-access': '初期侵入',
-  execution: '実行',
-  persistence: '永続化',
-  'privilege-escalation': '権限昇格',
-  'defense-evasion': '防御回避',
-  'credential-access': '資格情報アクセス',
-  discovery: '探索',
-  'lateral-movement': '横展開',
-  collection: '収集',
-  exfiltration: '持ち出し',
-  impact: '影響',
-};
-
-const ROLE_JA: Record<string, string> = {
-  source: '汚染源',
-  propagation: '伝播',
-  sanitizer: '無害化',
-  sink: '危険な出力先',
-};
+import { scrollTable } from '../html-util.js';
 
 /** 段落分割（空行区切りを <p> にする） */
 function paragraphs(text: string): string {
@@ -69,22 +39,6 @@ function paragraphs(text: string): string {
     .filter((b) => b !== '');
   if (blocks.length === 0) return '';
   return blocks.map((b) => `<p>${escapeHtml(b).replace(/\n/g, '<br>')}</p>`).join('\n');
-}
-
-/** テーブルは必ず横スクロールコンテナで包む */
-function scrollTable(head: string[], rows: string[][], className = ''): string {
-  const thead = head.map((h) => `<th scope="col">${h}</th>`).join('');
-  const tbody = rows
-    .map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`)
-    .join('\n');
-  return [
-    '<div class="table-scroll" tabindex="0">',
-    `<table class="${className}">`,
-    `<thead><tr>${thead}</tr></thead>`,
-    `<tbody>\n${tbody}\n</tbody>`,
-    '</table>',
-    '</div>',
-  ].join('\n');
 }
 
 function badge(severity: Finding['severity']): string {
@@ -523,9 +477,10 @@ function renderFindingDetail(finding: Finding): string {
   if (finding.references.length > 0) {
     out.push('<h4>参考リンク</h4>');
     out.push(
+      // http(s) 以外（javascript: など）や空白・引用符を含むURLはリンクにしない
       `<ul>${finding.references
         .map((r) =>
-          /^https?:\/\//.test(r)
+          isSafeUrl(r)
             ? `<li><a href="${escapeHtml(r)}" rel="noreferrer noopener">${escapeHtml(r)}</a></li>`
             : `<li>${escapeHtml(r)}</li>`,
         )
@@ -575,21 +530,7 @@ function renderFindings(findings: readonly Finding[], fixed: readonly Finding[])
 
 function renderSbom(dependencies: readonly Dependency[], findings: readonly Finding[], rendered: ReadonlySet<string>): string {
   if (dependencies.length === 0) return '';
-  const vulnerable = new Map<string, Finding[]>();
-  for (const finding of findings) {
-    const pkg = finding.affectedPackage;
-    if (!pkg) continue;
-    const key = `${pkg.ecosystem}:${pkg.name}`;
-    const list = vulnerable.get(key);
-    if (list) list.push(finding);
-    else vulnerable.set(key, [finding]);
-  }
-
-  const sorted = [...dependencies].sort((a, b) => {
-    const av = vulnerable.has(`${a.ecosystem}:${a.name}`) ? 0 : 1;
-    const bv = vulnerable.has(`${b.ecosystem}:${b.name}`) ? 0 : 1;
-    return av - bv || a.name.localeCompare(b.name);
-  });
+  const { vulnerable, sorted } = buildSbomIndex(dependencies, findings);
 
   return [
     '<h2 id="sbom">依存関係SBOM</h2>',
@@ -597,7 +538,7 @@ function renderSbom(dependencies: readonly Dependency[], findings: readonly Find
     scrollTable(
       ['パッケージ', 'バージョン', 'エコシステム', '用途', '宣言元', '脆弱性'],
       sorted.map((dep) => {
-        const hits = vulnerable.get(`${dep.ecosystem}:${dep.name}`) ?? [];
+        const hits = vulnerable.get(sbomPackageKey(dep)) ?? [];
         return [
           `<code>${escapeHtml(dep.name)}</code>`,
           escapeHtml(dep.version),
@@ -636,15 +577,7 @@ export function renderHtml(
   options: Pick<ReportOptions, 'verbose'>,
 ): string {
   const verbose = options.verbose === true;
-  const active = result.findings
-    .filter(isActiveFinding)
-    .filter((f) => verbose || f.severity !== 'info')
-    .sort(
-      (a, b) =>
-        severityRank(b.severity) - severityRank(a.severity) ||
-        (b.cvss?.baseScore ?? 0) - (a.cvss?.baseScore ?? 0) ||
-        a.id.localeCompare(b.id),
-    );
+  const active = reportableFindings(result.findings, verbose);
   const fixed = result.findings.filter((f) => f.diffStatus === 'fixed');
   const chains = [...result.chains].sort((a, b) => b.priorityScore - a.priorityScore);
   // 詳細を描画するFindingのID。ここに無いIDへはリンクを張らない（リンク切れ防止）

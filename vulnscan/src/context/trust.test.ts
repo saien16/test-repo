@@ -157,6 +157,52 @@ describe('ハードコードされた秘密の検出', () => {
   });
 });
 
+describe('言語ごとのルール振り分け', () => {
+  it('言語非依存ルール（secret）はどの言語でも適用される', () => {
+    // ルールを言語別バケットに事前振り分けしても、languages: null のルールは
+    // 全バケットに含まれるので言語に依らず拾えること
+    const cases: [string, string, string][] = [
+      ['main.go', 'go', 'const apiKey = "sk-9f8a7b6c5d4e3f2a"'],
+      ['app/settings.py', 'python', 'API_TOKEN = "tok-9f8a7b6c5d4e3f2a"'],
+      ['index.php', 'php', '$dbPassword = "s3cr3t-p4ssw0rd";'],
+      ['App.java', 'java', 'String clientSecret = "abcdefgh12345678";'],
+      ['app.rb', 'ruby', 'ACCESS_KEY = "AKIAIOSFODNN7EXAMPLX"'],
+    ];
+
+    for (const [path, language, line] of cases) {
+      expect(categories(analyze(path, language, [line]), 'source')).toContain('secret');
+    }
+  });
+
+  it('他言語のルールは適用されない', () => {
+    // PHP のスーパーグローバルは TypeScript ファイルでは拾わない
+    expect(analyze('src/a.ts', 'typescript', ['const x = $_GET["a"];'])).toHaveLength(0);
+    // process.env（JS 専用）は Python ファイルでは拾わない
+    expect(analyze('app/a.py', 'python', ['x = process.env.KEY'])).toHaveLength(0);
+  });
+
+  it('どのルールにも属さない言語でも言語非依存ルールだけは動く', () => {
+    const boundaries = analyze('main.rs', 'rust', [
+      'let api_key = "sk-9f8a7b6c5d4e3f2a";',
+      'let x = req.query.id;',
+    ]);
+    expect(categories(boundaries, 'source')).toEqual(['secret']);
+  });
+
+  it('同じ行に複数のマッチがあってもプレースホルダ判定は一貫する', () => {
+    // 行内の1回評価に変えても、行単位の判定である以上結果は変わらない
+    const suppressed = analyze('src/config.ts', 'typescript', [
+      'const a = "your-token-here"; const b = "your-secret-here";',
+    ]);
+    expect(categories(suppressed, 'source')).not.toContain('secret');
+
+    const kept = analyze('src/config.ts', 'typescript', [
+      'const token = "tok-9f8a7b6c5d4e"; const secret = "s3cr3t-p4ssw0rd";',
+    ]);
+    expect(categories(kept, 'source').filter((c) => c === 'secret').length).toBeGreaterThan(0);
+  });
+});
+
 describe('頑健性', () => {
   it('空ファイルでも例外を投げない', () => {
     expect(() => analyze('empty.ts', 'typescript', [''])).not.toThrow();

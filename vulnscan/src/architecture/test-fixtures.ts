@@ -4,7 +4,7 @@
  * インメモリの RepoFileSystem と最小の ScanContext を提供する。
  */
 
-import type { VulnScanConfig } from '../types/config.js';
+import { DEFAULT_CONFIG, type VulnScanConfig } from '../types/config.js';
 import type { Dependency, EntryPoint, ScanContext, SourceFile } from '../types/context.js';
 import type { RepoFileSystem } from './discover.js';
 import { normalizeRepoPath } from './facts.js';
@@ -79,34 +79,21 @@ export function makeContext(overrides: Partial<ScanContext> = {}): ScanContext {
   };
 }
 
+/**
+ * テスト用の設定。
+ *
+ * 必ず `DEFAULT_CONFIG` を土台にする。全フィールドを手書きしていた頃は
+ * GRIMOIRE リネーム前の旧既定値（`.vulnscan/baseline.json` / `.vulnignore`）が
+ * 固まったままになり、`pathSources` も欠落していた。
+ * つまり「本番では起こりえない設定」を検証している状態だったため、
+ * `heatmap/fixtures.ts` と同じ形へ揃える。
+ */
 export function makeConfig(overrides: Partial<VulnScanConfig> = {}): VulnScanConfig {
   return {
-    llm: {
-      model: 'claude-opus-5',
-      effort: 'high',
-      maxTokens: 16000,
-      concurrency: 2,
-      tokenBudget: null,
-      fallbackModel: null,
-      cache: false,
-    },
-    scan: {
-      exclude: [],
-      include: [],
-      lenses: ['injection'],
-      selfVerify: false,
-      minConfidence: 0.5,
-      maxFileBytes: 512_000,
-    },
-    failOn: 'high',
-    failOnNewOnly: false,
-    baselinePath: '.vulnscan/baseline.json',
-    ignorePath: '.vulnignore',
-    killChain: true,
-    architecture: true,
-    heatmap: true,
-    minInferenceConfidence: 0.3,
+    ...DEFAULT_CONFIG,
     ...overrides,
+    llm: { ...DEFAULT_CONFIG.llm, ...(overrides.llm ?? {}) },
+    scan: { ...DEFAULT_CONFIG.scan, ...(overrides.scan ?? {}) },
   };
 }
 

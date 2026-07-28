@@ -9,9 +9,16 @@
  */
 
 import { readdir, readFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import type { ScanContext } from '../types/context.js';
+import { resolveInside } from '../util/path.js';
 import { normalizeRepoPath } from './facts.js';
+
+/**
+ * パス封じ込めは `util/path.ts` の一箇所だけに置く。
+ * ここに複製を持つと、片方だけ強化されたときに脱出経路が残る。
+ */
+export { resolveInside } from '../util/path.js';
 
 /** ファイルアクセスの抽象。テストではインメモリ実装を差し替える */
 export interface RepoFileSystem {
@@ -49,15 +56,6 @@ const MAX_READ_BYTES = 256_000;
 export const MAX_MANIFESTS = 160;
 /** 環境変数参照を探すソースファイルの件数上限 */
 export const MAX_ENV_SCAN_FILES = 200;
-
-/** repoRoot の外へ出るパスを弾く */
-export function resolveInside(repoRoot: string, relPath: string): string | null {
-  const root = resolve(repoRoot);
-  const target = resolve(root, relPath);
-  const rel = relative(root, target);
-  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null;
-  return target;
-}
 
 /** 実ファイルシステム上の実装 */
 export function createNodeFileSystem(repoRoot: string): RepoFileSystem {

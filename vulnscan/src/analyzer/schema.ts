@@ -69,7 +69,6 @@ export const analysisResultSchema = z.object({
 });
 
 export type CandidateFinding = z.infer<typeof candidateFindingSchema>;
-export type AnalysisResult = z.infer<typeof analysisResultSchema>;
 
 /** 自己検証（反証）パスの出力 */
 export const verdictSchema = z.object({

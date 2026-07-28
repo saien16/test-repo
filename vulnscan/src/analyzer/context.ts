@@ -12,6 +12,7 @@
  */
 
 import type {
+  CallEdge,
   EntryPoint,
   FrameworkInfo,
   ScanContext,
@@ -25,6 +26,85 @@ export function symbolId(file: string, name: string): string {
   return `${file}:${name}`;
 }
 
+/**
+ * ScanContext から一度だけ作る索引。
+ *
+ * buildChunkContext はチャンクごとに呼ばれるため、辺・信頼境界・エントリポイントを
+ * 毎回線形走査すると「チャンク数 × 全件」になる。走査の結果は ScanContext が
+ * 変わらない限り不変なので、analyze() の冒頭で1回だけ作って使い回す。
+ *
+ * 値ではなく添字（元配列での出現順）を保持することで、
+ * 走査順に依存していた既存の出力順・打ち切り位置をそのまま再現できる。
+ */
+export interface ScanContextIndex {
+  /** `${from}\u0000${to}` → 最初に現れた辺（find の結果と一致させるため先勝ち） */
+  edgeByEndpoints: Map<string, CallEdge>;
+  /** symbolId → エントリポイント（同一IDは後勝ち＝従来の Map 構築と同じ） */
+  entryById: Map<string, EntryPoint>;
+  /** ファイル → ctx.entryPoints 内の添字 */
+  entryPointsByFile: Map<string, number[]>;
+  /** symbolId → ctx.entryPoints 内の添字 */
+  entryPointsBySymbolId: Map<string, number[]>;
+  /** ファイル → ctx.trustBoundaries 内の添字 */
+  boundariesByFile: Map<string, number[]>;
+  /** symbolId → ctx.trustBoundaries 内の添字 */
+  boundariesBySymbolId: Map<string, number[]>;
+}
+
+/** 辺の索引キー。区切りにはソース中に現れない NUL を使う */
+function edgeKey(from: string, to: string): string {
+  return `${from}\u0000${to}`;
+}
+
+/** symbolId → エントリポイント（同一IDは後勝ち） */
+function buildEntryById(ctx: ScanContext): Map<string, EntryPoint> {
+  const entryById = new Map<string, EntryPoint>();
+  for (const ep of ctx.entryPoints) {
+    if (ep.symbolId) entryById.set(ep.symbolId, ep);
+  }
+  return entryById;
+}
+
+function pushIndex(map: Map<string, number[]>, key: string, value: number): void {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
+}
+
+/** ScanContext 全体を1回だけ走査して索引を作る（O(辺 + 境界 + 入口)） */
+export function buildScanContextIndex(ctx: ScanContext): ScanContextIndex {
+  const edgeByEndpoints = new Map<string, CallEdge>();
+  for (const edge of ctx.callGraph.edges) {
+    const key = edgeKey(edge.from, edge.to);
+    // find() は最初の一致を返すので、既にあれば上書きしない
+    if (!edgeByEndpoints.has(key)) edgeByEndpoints.set(key, edge);
+  }
+
+  const entryById = buildEntryById(ctx);
+  const entryPointsByFile = new Map<string, number[]>();
+  const entryPointsBySymbolId = new Map<string, number[]>();
+  ctx.entryPoints.forEach((ep, i) => {
+    pushIndex(entryPointsByFile, ep.file, i);
+    if (ep.symbolId !== undefined) pushIndex(entryPointsBySymbolId, ep.symbolId, i);
+  });
+
+  const boundariesByFile = new Map<string, number[]>();
+  const boundariesBySymbolId = new Map<string, number[]>();
+  ctx.trustBoundaries.forEach((b, i) => {
+    pushIndex(boundariesByFile, b.file, i);
+    if (b.symbolId !== undefined) pushIndex(boundariesBySymbolId, b.symbolId, i);
+  });
+
+  return {
+    edgeByEndpoints,
+    entryById,
+    entryPointsByFile,
+    entryPointsBySymbolId,
+    boundariesByFile,
+    boundariesBySymbolId,
+  };
+}
+
 export interface ContextBuildOptions {
   /** 呼び出し元・呼び出し先それぞれの最大件数 */
   maxRelated?: number;
@@ -36,6 +116,11 @@ export interface ContextBuildOptions {
   maxReachDepth?: number;
   /** 宣言行のテキストを引く（あればシグネチャに添える） */
   declarationOf?: (symbol: SymbolInfo) => string | undefined;
+  /**
+   * 事前構築した索引。省略時はこの呼び出しの中で組み立てる（単体利用向け）。
+   * 複数チャンクを処理する場合は buildScanContextIndex() の結果を渡すこと。
+   */
+  index?: ScanContextIndex;
 }
 
 const DEFAULTS = {
@@ -95,7 +180,9 @@ function collectRelated(
   ids: string[],
   direction: 'caller' | 'callee',
   ctx: ScanContext,
-  opts: Required<Pick<ContextBuildOptions, 'maxRelated'>> & ContextBuildOptions,
+  index: ScanContextIndex,
+  maxRelated: number,
+  declarationOf?: ContextBuildOptions['declarationOf'],
 ): RelatedSymbol[] {
   const table = direction === 'caller' ? ctx.callGraph.callers : ctx.callGraph.callees;
   const own = new Set(ids);
@@ -108,23 +195,24 @@ function collectRelated(
       seen.add(relatedId);
 
       const sym = ctx.symbols.byId[relatedId];
-      // 呼び出しが書かれている位置（辺）を1つ添える。行が判るとLLMが検証しやすい
-      const edge = ctx.callGraph.edges.find((e) =>
-        direction === 'caller' ? e.from === relatedId && e.to === id : e.from === id && e.to === relatedId,
+      // 呼び出しが書かれている位置（辺）を1つ添える。行が判るとLLMが検証しやすい。
+      // 辺の全走査は事前構築した索引で O(1) 参照に置き換えてある。
+      const edge = index.edgeByEndpoints.get(
+        direction === 'caller' ? edgeKey(relatedId, id) : edgeKey(id, relatedId),
       );
 
       const related: RelatedSymbol = {
         id: relatedId,
         direction,
         signature: sym
-          ? describeSymbol(sym, opts.declarationOf)
+          ? describeSymbol(sym, declarationOf)
           : `${relatedId}（シンボル未解決）`,
         resolved: sym !== undefined,
       };
       if (edge) related.via = { file: edge.file, line: edge.line };
       out.push(related);
 
-      if (out.length >= opts.maxRelated) return out;
+      if (out.length >= maxRelated) return out;
     }
   }
   return out;
@@ -133,16 +221,17 @@ function collectRelated(
 /**
  * 呼び出し元を遡ってエントリポイントに到達できるか調べる（幅優先・深さ制限つき）。
  * ヒューリスティックな呼び出しグラフなので「到達しうる」以上の意味は持たせない。
+ *
+ * `entryById` はチャンクごとに作り直すと無駄なので、呼び出し側が
+ * 事前構築したものを渡せるようにしてある（省略時のみここで組み立てる）。
  */
 export function findReachability(
   ids: string[],
   ctx: ScanContext,
   maxDepth: number = DEFAULTS.maxReachDepth,
+  prebuiltEntryById?: ReadonlyMap<string, EntryPoint>,
 ): Reachability {
-  const entryById = new Map<string, EntryPoint>();
-  for (const ep of ctx.entryPoints) {
-    if (ep.symbolId) entryById.set(ep.symbolId, ep);
-  }
+  const entryById = prebuiltEntryById ?? buildEntryById(ctx);
 
   const visited = new Set<string>(ids);
   let frontier: { id: string; path: string[] }[] = ids.map((id) => ({ id, path: [id] }));
@@ -200,36 +289,57 @@ export function buildChunkContext(
   const maxBoundaries = opts.maxBoundaries ?? DEFAULTS.maxBoundaries;
   const maxEntryPoints = opts.maxEntryPoints ?? DEFAULTS.maxEntryPoints;
   const maxReachDepth = opts.maxReachDepth ?? DEFAULTS.maxReachDepth;
+  // 索引が渡されなかった場合（単体利用）だけ、その場で組み立てる
+  const index = opts.index ?? buildScanContextIndex(ctx);
 
   const ids = chunkSymbolIds(chunk);
   const idSet = new Set(ids);
 
-  const callers = collectRelated(ids, 'caller', ctx, { ...opts, maxRelated });
-  const callees = collectRelated(ids, 'callee', ctx, { ...opts, maxRelated });
+  const callers = collectRelated(ids, 'caller', ctx, index, maxRelated, opts.declarationOf);
+  const callees = collectRelated(ids, 'callee', ctx, index, maxRelated, opts.declarationOf);
   const calleeIds = new Set(callees.map((c) => c.id));
 
-  const ownEntryPoints = ctx.entryPoints
-    .filter(
-      (ep) =>
-        (ep.symbolId !== undefined && idSet.has(ep.symbolId)) ||
-        inChunkRange(chunk, ep.file, ep.line),
-    )
-    .slice(0, maxEntryPoints);
+  // 自分自身のエントリポイント: 「同一ファイル」か「チャンク内 symbolId」でしか
+  // 成立しないので、索引で候補だけを集めてから元の並び順に戻す。
+  const ownEntryIdx = new Set<number>();
+  for (const id of ids) {
+    for (const i of index.entryPointsBySymbolId.get(id) ?? []) ownEntryIdx.add(i);
+  }
+  for (const i of index.entryPointsByFile.get(chunk.file) ?? []) {
+    const ep = ctx.entryPoints[i];
+    if (ep && inChunkRange(chunk, ep.file, ep.line)) ownEntryIdx.add(i);
+  }
+  const ownEntryPoints = [...ownEntryIdx]
+    .sort((a, b) => a - b)
+    .slice(0, maxEntryPoints)
+    .map((i) => ctx.entryPoints[i] as EntryPoint);
 
-  const directBoundaries: TrustBoundary[] = [];
-  const relatedBoundaries: TrustBoundary[] = [];
-  for (const b of ctx.trustBoundaries) {
-    const isDirect =
-      inChunkRange(chunk, b.file, b.line) ||
-      (b.symbolId !== undefined && idSet.has(b.symbolId));
-    if (isDirect) {
-      if (directBoundaries.length < maxBoundaries) directBoundaries.push(b);
-      continue;
-    }
-    if (b.symbolId !== undefined && calleeIds.has(b.symbolId)) {
-      if (relatedBoundaries.length < maxBoundaries) relatedBoundaries.push(b);
+  // 信頼境界も同様。direct は「同一ファイル or チャンク内 symbolId」、
+  // related は「callee の symbolId」しか成立しないため全走査は要らない。
+  const directIdx = new Set<number>();
+  for (const id of ids) {
+    for (const i of index.boundariesBySymbolId.get(id) ?? []) directIdx.add(i);
+  }
+  for (const i of index.boundariesByFile.get(chunk.file) ?? []) {
+    const b = ctx.trustBoundaries[i];
+    if (b && inChunkRange(chunk, b.file, b.line)) directIdx.add(i);
+  }
+  const relatedIdx = new Set<number>();
+  for (const calleeId of calleeIds) {
+    for (const i of index.boundariesBySymbolId.get(calleeId) ?? []) {
+      // direct に入ったものは related には出さない（元の continue と同じ）
+      if (!directIdx.has(i)) relatedIdx.add(i);
     }
   }
+
+  const toBoundaries = (idx: Set<number>): TrustBoundary[] =>
+    [...idx]
+      .sort((a, b) => a - b)
+      .slice(0, maxBoundaries)
+      .map((i) => ctx.trustBoundaries[i] as TrustBoundary);
+
+  const directBoundaries = toBoundaries(directIdx);
+  const relatedBoundaries = toBoundaries(relatedIdx);
 
   const reachability =
     ownEntryPoints.length > 0
@@ -238,7 +348,7 @@ export function buildChunkContext(
           path: ids.slice(0, 1),
           entryPoint: ownEntryPoints[0] ?? null,
         }
-      : findReachability(ids, ctx, maxReachDepth);
+      : findReachability(ids, ctx, maxReachDepth, index.entryById);
 
   const frameworks = ctx.frameworks;
 

@@ -39,6 +39,8 @@ import { cwesForComponent, OTHER_CATEGORY_ID, weaknessCategories } from './catal
 import { computeInferred } from './inferred.js';
 import { chainIndexByFinding, computeObserved } from './observed.js';
 import { derivePlatform } from './platform.js';
+// clamp01 / round1 は util/num.ts に一元化した（統合前は計7箇所に散在）。
+import { clamp01, round1, round2 } from '../util/num.js';
 
 export { cellKey, UNASSIGNED_COMPONENT_ID } from './assign.js';
 export { BLIND_SPOT_INFERRED_MIN, BLIND_SPOT_OBSERVED_MAX, diagnoseCause } from './blindspots.js';
@@ -65,18 +67,6 @@ export interface BuildHeatmapInput {
   config: VulnScanConfig;
 }
 
-function round1(x: number): number {
-  return Math.round(x * 10) / 10;
-}
-
-function round2(x: number): number {
-  return Math.round(x * 100) / 100;
-}
-
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 /** 構成要素の実在を示す引用（想定層の basis に使う） */
 function basisCitationsFor(component: ArchitectureComponent, ctx: ScanContext): Citation[] {

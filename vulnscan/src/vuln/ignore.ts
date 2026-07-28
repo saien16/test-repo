@@ -10,8 +10,13 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { globToRegExp as compileGlob, matchGlob } from '../context/glob.js';
 import type { Finding } from '../types/finding.js';
-import { toDisplayPath, type ResolveRepoPathOptions } from '../util/path.js';
+import {
+  normalizeRelPath,
+  toDisplayPath,
+  type ResolveRepoPathOptions,
+} from '../util/path.js';
 import { resolvePath } from './baseline.js';
 
 export type IgnoreRuleKind = 'fingerprint' | 'id' | 'cwe' | 'glob';
@@ -97,20 +102,16 @@ export function parseIgnoreList(text: string): IgnoreList {
     } else if (CWE_RE.test(first)) {
       rules.push({ kind: 'cwe', raw: trimmed, line: i + 1, value: first.toUpperCase() });
     } else {
-      try {
-        rules.push({
-          kind: 'glob',
-          raw: trimmed,
-          line: i + 1,
-          value: first,
-          ...(cweQualifier ? { cwe: cweQualifier } : {}),
-          matcher: globToRegExp(first),
-        });
-      } catch (e) {
-        errors.push(
-          `抑制リスト ${i + 1}行目のパターンが不正です: '${trimmed}' (${e instanceof Error ? e.message : String(e)})`,
-        );
-      }
+      // 共有実装は変換に失敗しても throw せず「何にもマッチしない正規表現」を返す。
+      // 抑制リストの1行が壊れていてもスキャン全体は続行させたいので、この契約で良い。
+      rules.push({
+        kind: 'glob',
+        raw: trimmed,
+        line: i + 1,
+        value: first,
+        ...(cweQualifier ? { cwe: cweQualifier } : {}),
+        matcher: globToRegExp(first),
+      });
     }
   }
 
@@ -119,7 +120,9 @@ export function parseIgnoreList(text: string): IgnoreList {
 
 /** Finding が抑制対象かを判定し、一致したルールを返す */
 export function matchIgnoreRule(finding: Finding, list: IgnoreList): IgnoreRule | null {
-  const file = finding.location?.file ?? '';
+  // 照合前に必ず正規化する。以前は生のパスをそのまま当てていたため、
+  // 先頭 './' の付いた Finding を取りこぼしていた。
+  const file = normalizeRelPath(finding.location?.file ?? '');
   for (const rule of list.rules) {
     switch (rule.kind) {
       case 'fingerprint':
@@ -143,35 +146,25 @@ export function matchIgnoreRule(finding: Finding, list: IgnoreList): IgnoreRule 
 }
 
 /**
- * glob パターンを正規表現に変換する（依存追加を避けるための最小実装）。
- * 対応: `**`（区切りを跨ぐ任意）, `*`（区切りを跨がない任意）, `?`（1文字）
+ * glob パターンを正規表現に変換する。
+ *
+ * 変換の実体は `context/glob.ts`（`.gitignore` 側と同じ共有実装）。
+ * 以前はここに独自の最小実装があり、`{a,b}` / `[abc]` / `[!abc]` を
+ * 単なるリテラルとしてエスケープしていたため、
+ * **`.gitignore` と `.grimoireignore` でパターンの解釈が食い違っていた**。
+ * さらに独自版は throw する前提で呼び出し側が try/catch していたが、
+ * 共有版は throw しない設計なので、エラー処理の契約まで枝分かれしていた。
+ *
+ * 抑制リスト固有の約束事はここだけ残す:
+ *   末尾が `/` のパターン（ディレクトリ指定）は配下すべてに一致させる。
  */
 export function globToRegExp(pattern: string): RegExp {
-  let out = '';
-  for (let i = 0; i < pattern.length; i++) {
-    const ch = pattern[i] as string;
-    if (ch === '*') {
-      if (pattern[i + 1] === '*') {
-        // '**/' は「0階層以上」を意味するので、区切りごと省略可能にする
-        if (pattern[i + 2] === '/') {
-          out += '(?:.*/)?';
-          i += 2;
-        } else {
-          out += '.*';
-          i += 1;
-        }
-      } else {
-        out += '[^/]*';
-      }
-    } else if (ch === '?') {
-      out += '[^/]';
-    } else if ('\\^$+.()|{}[]'.includes(ch)) {
-      out += `\\${ch}`;
-    } else {
-      out += ch;
-    }
-  }
-  // ディレクトリ指定（末尾が / もしくは階層名のみ）は配下すべてに一致させる
-  if (pattern.endsWith('/')) out += '.*';
-  return new RegExp(`^${out}$`);
+  return compileGlob(pattern.endsWith('/') ? `${pattern}**` : pattern);
+}
+
+/** パターンがパスに一致するか（パスは正規化してから照合する） */
+export function matchIgnoreGlob(pattern: string, filePath: string): boolean {
+  return pattern.endsWith('/')
+    ? matchGlob(`${pattern}**`, filePath)
+    : matchGlob(pattern, filePath);
 }

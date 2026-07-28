@@ -227,3 +227,122 @@ describe('SARIF 2.1.0 出力', () => {
     expect(text.endsWith('\n')).toBe(true);
   });
 });
+
+/**
+ * rule.help.markdown は GitHub Code Scanning が Markdown（生HTML込み）として
+ * レンダリングするフィールドであり、流し込む値はスキャン対象リポジトリ由来の
+ * 未信頼入力である。markdown.ts で一度塞いだのと同じ穴なので、
+ * 敵対的な入力を明示的に固定しておく。
+ */
+describe('SARIF help.markdown のエスケープ（未信頼入力）', () => {
+  const hostile = (): ScanResult =>
+    makeResult({
+      findings: [
+        makeFinding({
+          id: 'f-x',
+          cwe: 'CWE-89',
+          title: '<script>alert("title")</script>',
+          reasoning: '<img src=x onerror=alert(1)>',
+          remediation: '</details><script>alert(2)</script>\n## 偽の見出し',
+          references: [
+            'javascript:alert(3)',
+            'https://example.com/ok',
+            'https://ex.com/<script>',
+            '<script>alert(4)</script>',
+          ],
+          dataFlow: [],
+        }),
+        makeFinding({
+          id: 'f-y',
+          // 正規化を通しても記号が残るCWE値
+          cwe: '79<script>alert(5)</script>',
+          title: '別CWEの代表例 & タイトル',
+          reasoning: 'a & b < c',
+          remediation: '',
+          references: [],
+          severity: 'high',
+          dataFlow: [],
+        }),
+      ],
+    });
+
+  const log = buildSarifLog(hostile(), analyzedOf(hostile()));
+  const markdowns = log.runs[0]!.tool.driver.rules.map((r) => r.help.markdown);
+  const joined = markdowns.join('\n');
+
+  it('title / reasoning / remediation のHTMLタグが生のまま残らない', () => {
+    expect(joined).not.toContain('<script>');
+    expect(joined).not.toContain('</script>');
+    expect(joined).not.toContain('<img ');
+    expect(joined).not.toContain('</details>');
+    // エスケープ済みの形では現れる（＝値自体は落としていない）
+    expect(joined).toContain('&lt;script&gt;alert("title")&lt;/script&gt;');
+    expect(joined).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(joined).toContain('&lt;/details&gt;');
+  });
+
+  it('ルールIDに紛れ込んだタグもエスケープされる', () => {
+    const rule = log.runs[0]!.tool.driver.rules.find((r) => r.id.includes('79'))!;
+    expect(rule.help.markdown).toContain('&lt;script&gt;alert(5)&lt;/script&gt;');
+    expect(rule.help.markdown).not.toContain('<script>');
+  });
+
+  it('& を実体参照へ置き換える（二重エスケープにならない順序）', () => {
+    expect(joined).toContain('a &amp; b &lt; c');
+    expect(joined).toContain('別CWEの代表例 &amp; タイトル');
+  });
+
+  it('参考リンクは http(s) のみ自動リンクにする', () => {
+    expect(joined).toContain('- <https://example.com/ok>');
+    // javascript: スキームは <> で囲まない（オートリンク化しない）
+    expect(joined).not.toContain('<javascript:');
+    expect(joined).toContain('- javascript:alert(3)');
+    // URL 内のタグもエスケープし、リンクにもしない
+    expect(joined).toContain('https://ex.com/&lt;script&gt;');
+    expect(joined).not.toContain('<https://ex.com/<script>>');
+    expect(joined).toContain('- &lt;script&gt;alert(4)&lt;/script&gt;');
+  });
+
+  it('こちらが書いた Markdown 記法は壊さない（見出し・強調が生きている）', () => {
+    const rule = log.runs[0]!.tool.driver.rules.find((r) => r.id === 'CWE-89')!;
+    expect(rule.help.markdown.startsWith('## CWE-89')).toBe(true);
+    expect(rule.help.markdown).toContain('**代表例**: ');
+    expect(rule.help.markdown).toContain('### なぜ問題か');
+    expect(rule.help.markdown).toContain('### 修正方針');
+    expect(rule.help.markdown).toContain('### 参考');
+  });
+
+  it('remediation に仕込まれた見出しは行として残るが、HTMLとしては無害化されている', () => {
+    // Markdown の見出し記法そのものは escapeMdText の対象外（構造は壊れうる）だが、
+    // タグは実体参照になっているのでスクリプト実行には至らない
+    const rule = log.runs[0]!.tool.driver.rules.find((r) => r.id === 'CWE-89')!;
+    expect(rule.help.markdown).toContain('## 偽の見出し');
+    expect(rule.help.markdown).not.toMatch(/<\/?script/);
+  });
+
+  it('空の reasoning / remediation は既定文言に落ちる', () => {
+    const rule = log.runs[0]!.tool.driver.rules.find((r) => r.id.includes('79'))!;
+    expect(rule.help.markdown).toContain('（修正方針の記載なし）');
+  });
+
+  it('JSON化して読み直しても help.markdown に生タグが混じらない', () => {
+    const text = renderSarif(hostile(), analyzedOf(hostile()));
+    const parsed = JSON.parse(text) as typeof log;
+    for (const rule of parsed.runs[0]!.tool.driver.rules) {
+      expect(rule.help.markdown).not.toMatch(/<\/?(?:script|img|details)\b/);
+    }
+  });
+
+  /**
+   * help.markdown 以外（message.text / help.text / properties）は SARIF 仕様上
+   * プレーンテキストであり、ビューアはHTMLとして解釈しない。
+   * ここをエスケープすると人が読むときに実体参照が見えてしまうので、
+   * 「エスケープしない」ことを意図として固定しておく。
+   */
+  it('プレーンテキストのフィールドはエスケープしない', () => {
+    const res = log.runs[0]!.results.find((r) => r.ruleId === 'CWE-89')!;
+    expect(res.message.text).toContain('<script>alert("title")</script>');
+    const rule = log.runs[0]!.tool.driver.rules.find((r) => r.id === 'CWE-89')!;
+    expect(rule.shortDescription.text).toContain('<script>');
+  });
+});

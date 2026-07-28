@@ -10,13 +10,9 @@
 import type { Severity } from '../../types/context.js';
 import type { AnalyzedReport, ReportOptions, ScanResult } from '../../types/report.js';
 import { createStyler, type Styler } from '../ansi.js';
-import { effortJa, likelihoodJa } from '../priority.js';
-import {
-  SEVERITY_LABEL_JA,
-  SEVERITY_ORDER,
-  isActiveFinding,
-  severityRank,
-} from '../severity.js';
+import { reportableFindings } from '../collect.js';
+import { effortJa, likelihoodJa } from '../labels.js';
+import { SEVERITY_LABEL_JA, SEVERITY_ORDER } from '../severity.js';
 import {
   displayWidth,
   formatDuration,
@@ -220,15 +216,7 @@ function renderActions(ctx: Ctx, analyzed: AnalyzedReport, limit: number): void 
 }
 
 function renderFindings(ctx: Ctx, result: ScanResult, verbose: boolean): void {
-  const findings = result.findings
-    .filter(isActiveFinding)
-    .filter((f) => verbose || f.severity !== 'info')
-    .sort(
-      (a, b) =>
-        severityRank(b.severity) - severityRank(a.severity) ||
-        (b.cvss?.baseScore ?? 0) - (a.cvss?.baseScore ?? 0) ||
-        a.id.localeCompare(b.id),
-    );
+  const findings = reportableFindings(result.findings, verbose);
   if (findings.length === 0) return;
 
   const limit = verbose ? findings.length : 10;

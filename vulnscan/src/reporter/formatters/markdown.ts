@@ -24,13 +24,9 @@ import type { Dependency } from '../../types/context.js';
 import type { Finding } from '../../types/finding.js';
 import type { AttackChain } from '../../types/killchain.js';
 import type { AnalyzedReport, ReportOptions, ScanResult } from '../../types/report.js';
-import { effortJa, likelihoodJa } from '../priority.js';
-import {
-  SEVERITY_LABEL_JA,
-  SEVERITY_ORDER,
-  isActiveFinding,
-  severityRank,
-} from '../severity.js';
+import { buildSbomIndex, reportableFindings, sbomPackageKey } from '../collect.js';
+import { PHASE_JA, ROLE_JA, TACTIC_JA, effortJa, likelihoodJa } from '../labels.js';
+import { SEVERITY_LABEL_JA, SEVERITY_ORDER, isActiveFinding } from '../severity.js';
 import {
   escapeMdCell,
   escapeMdCode,
@@ -50,39 +46,6 @@ const SEVERITY_EMOJI: Record<string, string> = {
   medium: '🟡',
   low: '🔵',
   info: '⚪',
-};
-
-/** キルチェーン段階の日本語表記 */
-const PHASE_JA: Record<string, string> = {
-  reconnaissance: '偵察',
-  weaponization: '武器化',
-  delivery: '配送',
-  exploitation: '攻撃実行',
-  installation: '居座り',
-  'command-and-control': '遠隔操作',
-  'actions-on-objectives': '目的の実行',
-};
-
-/** ATT&CK戦術の日本語表記 */
-const TACTIC_JA: Record<string, string> = {
-  'initial-access': '初期侵入',
-  execution: '実行',
-  persistence: '永続化',
-  'privilege-escalation': '権限昇格',
-  'defense-evasion': '防御回避',
-  'credential-access': '資格情報アクセス',
-  discovery: '探索',
-  'lateral-movement': '横展開',
-  collection: '収集',
-  exfiltration: '持ち出し',
-  impact: '影響',
-};
-
-const ROLE_JA: Record<string, string> = {
-  source: '汚染源',
-  propagation: '伝播',
-  sanitizer: '無害化',
-  sink: '危険な出力先',
 };
 
 function fence(code: string, lang = ''): string {
@@ -374,15 +337,7 @@ function renderFindingDetail(finding: Finding): string[] {
 }
 
 function renderFindings(result: ScanResult, verbose: boolean): string[] {
-  const findings = result.findings
-    .filter(isActiveFinding)
-    .filter((f) => verbose || f.severity !== 'info')
-    .sort(
-      (a, b) =>
-        severityRank(b.severity) - severityRank(a.severity) ||
-        (b.cvss?.baseScore ?? 0) - (a.cvss?.baseScore ?? 0) ||
-        a.id.localeCompare(b.id),
-    );
+  const findings = reportableFindings(result.findings, verbose);
 
   const lines = ['## 個別Finding詳細', ''];
   if (findings.length === 0) {
@@ -422,16 +377,8 @@ function renderFindings(result: ScanResult, verbose: boolean): string[] {
 function renderSbom(dependencies: readonly Dependency[], findings: readonly Finding[]): string[] {
   if (dependencies.length === 0) return [];
 
-  // 脆弱性が紐づくパッケージを索引化
-  const vulnerable = new Map<string, Finding[]>();
-  for (const finding of findings) {
-    const pkg = finding.affectedPackage;
-    if (!pkg) continue;
-    const key = `${pkg.ecosystem}:${pkg.name}`;
-    const list = vulnerable.get(key);
-    if (list) list.push(finding);
-    else vulnerable.set(key, [finding]);
-  }
+  // 脆弱性が紐づくパッケージの索引と並び順（html.ts と共有）
+  const { vulnerable, sorted } = buildSbomIndex(dependencies, findings);
 
   const lines = ['## 依存関係SBOM', ''];
   lines.push(
@@ -440,16 +387,10 @@ function renderSbom(dependencies: readonly Dependency[], findings: readonly Find
     '',
   );
 
-  const sorted = [...dependencies].sort((a, b) => {
-    const av = vulnerable.has(`${a.ecosystem}:${a.name}`) ? 0 : 1;
-    const bv = vulnerable.has(`${b.ecosystem}:${b.name}`) ? 0 : 1;
-    return av - bv || a.name.localeCompare(b.name);
-  });
-
   lines.push('| パッケージ | バージョン | エコシステム | 用途 | 宣言元 | 脆弱性 |');
   lines.push('| --- | --- | --- | --- | --- | --- |');
   for (const dep of sorted) {
-    const hits = vulnerable.get(`${dep.ecosystem}:${dep.name}`) ?? [];
+    const hits = vulnerable.get(sbomPackageKey(dep)) ?? [];
     const vulnCell =
       hits.length === 0
         ? '-'

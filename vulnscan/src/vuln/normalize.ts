@@ -4,23 +4,18 @@
 
 import type { ScanContext } from '../types/context.js';
 import type { Finding, RawFinding, Severity } from '../types/finding.js';
-import { calculateCvss3, inferCvss3MetricsWithReasons, normalizeCweId } from './cvss.js';
+import { clampConfidence } from '../util/num.js';
+import { SEVERITY_RANK, compareSeverity } from '../util/severity.js';
+import { extractCweId } from './catalog.js';
+import { calculateCvss3, inferCvss3MetricsWithReasons } from './cvss.js';
 import { computeFingerprint, fingerprintToId, normalizeFilePath } from './fingerprint.js';
 import { buildReferences, lookupCwe, owaspForCwe, owaspUrl } from './knowledge.js';
 
-/** 深刻度の強さ（比較用） */
-const SEVERITY_RANK: Record<Severity, number> = {
-  info: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-  critical: 4,
-};
-
-/** 深刻度の大小比較。a のほうが高ければ正 */
-export function compareSeverity(a: Severity, b: Severity): number {
-  return (SEVERITY_RANK[a] ?? 0) - (SEVERITY_RANK[b] ?? 0);
-}
+/**
+ * 深刻度の比較規約は `util/severity.ts` に一元化した。
+ * ここは互換のための再 export（`vuln/index.ts` から公開している）。
+ */
+export { compareSeverity };
 
 /** 統合対象とみなす行範囲の許容ずれ（行） */
 const LINE_PROXIMITY = 3;
@@ -31,7 +26,7 @@ const LINE_PROXIMITY = 3;
  * 推定根拠を reasoning の末尾に追記して説明可能にする。
  */
 export function normalizeFinding(raw: RawFinding, ctx: ScanContext, now: string): Finding {
-  const cweId = normalizeCweId(raw.cwe);
+  const cweId = extractCweId(raw.cwe);
   const kb = cweId ? lookupCwe(cweId) : undefined;
 
   const file = normalizeFilePath(raw.location?.file ?? '', ctx.repoRoot);
@@ -76,7 +71,7 @@ export function normalizeFinding(raw: RawFinding, ctx: ScanContext, now: string)
     category,
     title: raw.title ?? kb?.name ?? cweId ?? '無題の指摘',
     severity: normalizeSeverity(raw.severity),
-    confidence: clamp01(raw.confidence ?? 0.5),
+    confidence: clampConfidence(raw.confidence ?? 0.5),
     location: { file, startLine, endLine },
     evidence: raw.evidence ?? '',
     dataFlow: Array.isArray(raw.dataFlow) ? raw.dataFlow : [],
@@ -95,10 +90,6 @@ export function normalizeFinding(raw: RawFinding, ctx: ScanContext, now: string)
   };
 }
 
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0.5;
-  return Math.min(1, Math.max(0, value));
-}
 
 function normalizeSeverity(severity: Severity): Severity {
   return severity in SEVERITY_RANK ? severity : 'medium';

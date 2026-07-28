@@ -5,22 +5,22 @@
 
 import type { Severity } from '../types/context.js';
 import type { Finding } from '../types/finding.js';
+import { severityRank } from '../util/severity.js';
 
 /** 表示・集計で常にこの順序を使う（高い順） */
 export const SEVERITY_ORDER: readonly Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 
-/** 比較用の数値ランク。大きいほど深刻。 */
-const SEVERITY_RANK: Record<Severity, number> = {
-  info: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-  critical: 4,
-};
-
-export function severityRank(severity: Severity): number {
-  return SEVERITY_RANK[severity];
-}
+/**
+ * 比較用の数値ランク。大きいほど深刻。
+ *
+ * 実体は `util/severity.ts`（唯一の定義）。以前は同じランク表が
+ * ここと `vuln/normalize.ts` と `analyzer/verify.ts` の3箇所にあり、
+ * 「各フォーマッタとCIゲートで解釈がぶれないよう一元化する」という
+ * このファイルの趣旨に vuln / analyzer が参加していなかった。
+ *
+ * 注記: `analyzer/verify.ts` のランク表は本統合の対象外のため未統合。
+ */
+export { SEVERITY_RANK, severityRank, compareSeverity } from '../util/severity.js';
 
 /** レポート文言用の日本語ラベル */
 export const SEVERITY_LABEL_JA: Record<Severity, string> = {

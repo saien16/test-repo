@@ -11,33 +11,23 @@
  */
 
 import type { LensId } from '../types/finding.js';
-import type { AttackTactic, ChainStep, KillChainPhase } from '../types/killchain.js';
+import { extractCweId } from '../vuln/catalog.js';
+import {
+  ATTACK_TACTICS,
+  KILL_CHAIN_PHASES,
+  type AttackTactic,
+  type ChainStep,
+  type KillChainPhase,
+} from '../types/killchain.js';
 
-/** 型に定義された全キルチェーン段階（検証用） */
-export const KILL_CHAIN_PHASES: readonly KillChainPhase[] = [
-  'reconnaissance',
-  'weaponization',
-  'delivery',
-  'exploitation',
-  'installation',
-  'command-and-control',
-  'actions-on-objectives',
-];
-
-/** 型に定義された全 ATT&CK 戦術（検証用） */
-export const ATTACK_TACTICS: readonly AttackTactic[] = [
-  'initial-access',
-  'execution',
-  'persistence',
-  'privilege-escalation',
-  'defense-evasion',
-  'credential-access',
-  'discovery',
-  'lateral-movement',
-  'collection',
-  'exfiltration',
-  'impact',
-];
+/**
+ * 全キルチェーン段階 / 全 ATT&CK 戦術（検証用）。
+ *
+ * 実体は `types/killchain.ts` にあり、union 型のほうがこの配列から導出される。
+ * 以前は配列と union が別々に手書きされていたため、戦術を足して配列への追加を
+ * 忘れると LLM がその戦術を返せなくなるのに型エラーが出なかった。
+ */
+export { ATTACK_TACTICS, KILL_CHAIN_PHASES } from '../types/killchain.js';
 
 /** 戦術から導く既定のキルチェーン段階 */
 export const TACTIC_DEFAULT_PHASE: Record<AttackTactic, KillChainPhase> = {
@@ -284,13 +274,14 @@ export const LENS_TECHNIQUE_MAP: Record<LensId, string> = {
   dependency: 'T1195.001',
 };
 
-/** 'cwe89' / 'CWE_89' / '89' などを 'CWE-89' に正規化する */
-export function normalizeCwe(raw: string | null | undefined): string | null {
-  if (typeof raw !== 'string') return null;
-  const m = /(\d{1,4})/.exec(raw);
-  if (!m || m[1] === undefined) return null;
-  return `CWE-${Number(m[1])}`;
-}
+/**
+ * 'cwe89' / 'CWE_89' / '89' などを 'CWE-89' に正規化する。
+ *
+ * 実体は `vuln/catalog.ts` の寛容版に統合した。
+ * 以前はここだけ `Number()` を通していたためゼロ埋め（'CWE-089'）が潰れ、
+ * 5桁以上の CWE も 4桁で切れていた。どちらもカタログ引きが外れる原因になる。
+ */
+export { extractCweId as normalizeCwe } from '../vuln/catalog.js';
 
 /** 't1190' / 'T1190.001' / 'T1190 - Exploit...' などを 'T1190' 形式に正規化する */
 export function normalizeTechniqueId(raw: string | null | undefined): string | null {
@@ -324,7 +315,7 @@ export function mapFindingToTechnique(
 ): TechniqueInfo | null {
   if (!finding) return null;
 
-  const cwe = normalizeCwe(finding.cwe);
+  const cwe = extractCweId(finding.cwe);
   if (cwe !== null) {
     const byCwe = CWE_TECHNIQUE_MAP[cwe];
     const info = lookupTechnique(byCwe);

@@ -15,7 +15,12 @@
  * 継承したものは推測なので、{@link owaspForCwe} は `inherited` フラグで区別する。
  */
 
-import { cweAncestors, lookupCwe as lookupCatalogCwe, type CweEntry as CweCatalogEntry } from './catalog.js';
+import {
+  cweAncestors,
+  extractCweId,
+  lookupCwe as lookupCatalogCwe,
+  type CweEntry as CweCatalogEntry,
+} from './catalog.js';
 
 /** OWASP Top 10 2021 のカテゴリ識別子 */
 export type OwaspCategoryId =
@@ -538,12 +543,10 @@ export function buildReferences(
  * MITRE CWE カタログ（959件）との統合
  * ------------------------------------------------------------------ */
 
-/** 'cwe-89' / '89' / 'CWE-89' を 'CWE-89' に揃える。数値が取れなければ null */
-function toCweId(raw: string | undefined | null): string | null {
-  if (!raw) return null;
-  const m = /(\d+)/.exec(String(raw));
-  return m ? `CWE-${m[1]}` : null;
-}
+/**
+ * CWE ID の正規化は `catalog.ts` に一元化した（{@link extractCweId}）。
+ * ここでは寛容版を使う（表記ゆれの多い入力を受け取るため）。
+ */
 
 /** 情報の出所。事実（MITRE）と手作りの解釈を混同しないための印。 */
 export type CweInfoSource = 'curated' | 'catalog' | 'curated+catalog';
@@ -581,7 +584,7 @@ export interface CweInfo {
 export function owaspForCwe(
   cweId: string,
 ): { category: OwaspCategoryId; inherited: boolean; via: string | null } | null {
-  const id = toCweId(cweId);
+  const id = extractCweId(cweId);
   if (id === null) return null;
 
   const direct = CWE_KB[id];
@@ -599,7 +602,7 @@ export function owaspForCwe(
  * 重ね合わせた CWE 情報を返す。どちらにも無ければ null。
  */
 export function lookupCweInfo(cweId: string): CweInfo | null {
-  const id = toCweId(cweId);
+  const id = extractCweId(cweId);
   if (id === null) return null;
 
   const curated = CWE_KB[id];

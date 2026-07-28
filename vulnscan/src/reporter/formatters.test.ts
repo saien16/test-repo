@@ -11,6 +11,8 @@ import { renderCli } from './formatters/cli.js';
 import { renderHtml } from './formatters/html.js';
 import { renderJson } from './formatters/json.js';
 import { renderMarkdown } from './formatters/markdown.js';
+import { buildSbomIndex, reportableFindings, sbomPackageKey } from './collect.js';
+import { PHASE_JA, ROLE_JA, TACTIC_JA, effortJa, likelihoodJa } from './labels.js';
 import {
   displayWidth,
   escapeMdCell,
@@ -18,6 +20,7 @@ import {
   escapeMdCodeCell,
   escapeMdText,
   isSafeUrl,
+  md,
   stripAnsi,
   wrapText,
 } from './text.js';
@@ -449,6 +452,237 @@ describe('Markdownエスケープユーティリティ', () => {
     expect(isSafeUrl('data:text/html,<script>')).toBe(false);
     expect(isSafeUrl('https://example.com/ <script>')).toBe(false);
     expect(isSafeUrl('https://example.com/`x`')).toBe(false);
+  });
+});
+
+describe('md タグ付きテンプレート', () => {
+  it('補間値だけをエスケープし、地の文のMarkdown記法は残す', () => {
+    expect(md`**代表例**: ${'<script>alert(1)</script>'}`).toBe(
+      '**代表例**: &lt;script&gt;alert(1)&lt;/script&gt;',
+    );
+    expect(md`## ${'a & b'}`).toBe('## a &amp; b');
+  });
+
+  it('補間が無い場合はそのまま返す', () => {
+    expect(md`### なぜ問題か`).toBe('### なぜ問題か');
+  });
+
+  it('複数の補間をすべて通す', () => {
+    expect(md`${'<a>'} と ${'<b>'}`).toBe('&lt;a&gt; と &lt;b&gt;');
+  });
+
+  it('null / undefined は空文字にする（"undefined" と出さない）', () => {
+    expect(md`x=${null}|y=${undefined}`).toBe('x=|y=');
+  });
+
+  it('文字列以外も文字列化してからエスケープする', () => {
+    expect(md`n=${42}`).toBe('n=42');
+    expect(md`v=${{ toString: () => '<x>' }}`).toBe('v=&lt;x&gt;');
+  });
+});
+
+describe('reportableFindings（3フォーマット共通の抽出・並び順）', () => {
+  const findings = [
+    makeFinding({ id: 'b-low', severity: 'low', cvss: makeCvss({ baseScore: 3.1 }) }),
+    makeFinding({ id: 'a-info', severity: 'info', cvss: makeCvss({ baseScore: 0 }) }),
+    makeFinding({ id: 'c-crit', severity: 'critical', cvss: makeCvss({ baseScore: 9.8 }) }),
+    makeFinding({ id: 'a-crit', severity: 'critical', cvss: makeCvss({ baseScore: 9.8 }) }),
+    makeFinding({ id: 'd-high', severity: 'high', cvss: makeCvss({ baseScore: 8.1 }) }),
+    makeFinding({ id: 'e-fixed', severity: 'critical', diffStatus: 'fixed' }),
+    makeFinding({ id: 'f-fp', severity: 'critical', status: 'false-positive' }),
+  ];
+
+  it('解消済み・誤検知を落とす', () => {
+    const ids = reportableFindings(findings, true).map((f) => f.id);
+    expect(ids).not.toContain('e-fixed');
+    expect(ids).not.toContain('f-fp');
+  });
+
+  it('verbose でなければ info を落とし、verbose なら残す', () => {
+    expect(reportableFindings(findings, false).map((f) => f.id)).not.toContain('a-info');
+    expect(reportableFindings(findings, true).map((f) => f.id)).toContain('a-info');
+  });
+
+  it('深刻度 → CVSS → ID の順に並ぶ（同点はID昇順で安定）', () => {
+    expect(reportableFindings(findings, false).map((f) => f.id)).toEqual([
+      'a-crit',
+      'c-crit',
+      'd-high',
+      'b-low',
+    ]);
+  });
+
+  it('入力配列を破壊しない', () => {
+    const input = [...findings];
+    reportableFindings(input, true);
+    expect(input.map((f) => f.id)).toEqual(findings.map((f) => f.id));
+  });
+
+  it('cli / markdown / html が同じ順序でFindingを並べる', () => {
+    const result = makeResult({ findings, chains: [] });
+    const analyzed = analyzedOf(result);
+    const expected = reportableFindings(findings, true).map((f) => f.id);
+
+    const positionsIn = (text: string, ids: string[]): string[] =>
+      ids
+        .map((id) => ({ id, at: text.indexOf(id) }))
+        .filter((x) => x.at >= 0)
+        .sort((a, b) => a.at - b.at)
+        .map((x) => x.id);
+
+    const cli = stripAnsi(renderCli(result, analyzed, { color: false, verbose: true, width: 110 }));
+    const markdown = renderMarkdown(result, analyzed, { verbose: true });
+    const html = renderHtml(result, analyzed, { verbose: true });
+
+    for (const [name, text] of [
+      ['cli', cli],
+      ['markdown', markdown],
+      ['html', html],
+    ] as const) {
+      expect(positionsIn(text, expected), name).toEqual(expected);
+    }
+  });
+});
+
+describe('SBOMの索引と並び順（markdown / html 共通）', () => {
+  const dependencies = [
+    { name: 'zzz', version: '1.0.0', ecosystem: 'npm', dev: false, manifest: 'package.json' },
+    { name: 'aaa', version: '1.0.0', ecosystem: 'npm', dev: false, manifest: 'package.json' },
+    { name: 'mmm', version: '1.0.0', ecosystem: 'npm', dev: false, manifest: 'package.json' },
+    { name: 'aaa', version: '1.0.0', ecosystem: 'pypi', dev: false, manifest: 'requirements.txt' },
+  ];
+  const findings = [
+    makeFinding({
+      id: 'v-1',
+      cve: 'CVE-2024-0001',
+      affectedPackage: { name: 'zzz', version: '1.0.0', ecosystem: 'npm' },
+    }),
+    makeFinding({
+      id: 'v-2',
+      cve: 'CVE-2024-0002',
+      affectedPackage: { name: 'zzz', version: '1.0.0', ecosystem: 'npm' },
+    }),
+  ];
+
+  it('エコシステムが違えば同名でも別パッケージとして扱う', () => {
+    const { vulnerable } = buildSbomIndex(dependencies, findings);
+    expect(sbomPackageKey({ ecosystem: 'npm', name: 'aaa' })).not.toBe(
+      sbomPackageKey({ ecosystem: 'pypi', name: 'aaa' }),
+    );
+    expect(vulnerable.get('npm:zzz')).toHaveLength(2);
+    expect(vulnerable.has('pypi:zzz')).toBe(false);
+  });
+
+  it('脆弱なものが先頭、以降は name 昇順', () => {
+    const { sorted } = buildSbomIndex(dependencies, findings);
+    expect(sorted.map((d) => `${d.ecosystem}:${d.name}`)).toEqual([
+      'npm:zzz',
+      'npm:aaa',
+      'pypi:aaa',
+      'npm:mmm',
+    ]);
+  });
+
+  it('markdown と html のSBOM行順が一致する', () => {
+    const result = makeResult({
+      context: makeContext({ dependencies }),
+      findings,
+    });
+    const analyzed = analyzedOf(result);
+    // 期待順は索引が返す順序そのもの（脆弱→name昇順）
+    const expected = buildSbomIndex(dependencies, findings).sorted.map((d) => d.name);
+    expect(expected).toEqual(['zzz', 'aaa', 'aaa', 'mmm']);
+
+    // SBOMセクションだけを切り出してから行順を読む（他セクションの <code> に釣られないため）
+    const sectionOf = (text: string, start: string): string => {
+      const at = text.indexOf(start);
+      expect(at, `${start} が見つからない`).toBeGreaterThan(-1);
+      return text.slice(at);
+    };
+    const markdown = sectionOf(
+      renderMarkdown(result, analyzed, { verbose: true }),
+      '## 依存関係SBOM',
+    );
+    const html = sectionOf(renderHtml(result, analyzed, { verbose: true }), 'id="sbom"');
+
+    const mdRows = [...markdown.matchAll(/^\| `([^`]+)` \|/gm)].map((m) => m[1]!);
+    // 各行の先頭セル（パッケージ名）だけを拾う。宣言元セルも <code> なので行頭で固定する
+    const htmlRows = [...html.matchAll(/<tr><td><code>([^<]+)<\/code><\/td>/g)].map((m) => m[1]!);
+
+    expect(mdRows).toEqual(expected);
+    expect(htmlRows).toEqual(expected);
+  });
+
+  it('依存が0件なら索引も空', () => {
+    const { vulnerable, sorted } = buildSbomIndex([], findings);
+    expect(sorted).toEqual([]);
+    expect(vulnerable.size).toBe(1);
+  });
+});
+
+describe('日本語ラベル表（labels.ts に一元化）', () => {
+  it('markdown と html が同じチェーン段階・戦術の表記を出す', () => {
+    const result = makeResult({ findings: [makeFinding({ id: 'f-1' })], chains: [makeChain()] });
+    const analyzed = analyzedOf(result);
+    const markdown = renderMarkdown(result, analyzed, { verbose: true });
+    const html = renderHtml(result, analyzed, { verbose: true });
+
+    for (const label of [
+      PHASE_JA.exploitation,
+      PHASE_JA['actions-on-objectives'],
+      TACTIC_JA['initial-access'],
+      TACTIC_JA['credential-access'],
+      ROLE_JA.source,
+      ROLE_JA.sink,
+    ]) {
+      expect(markdown, label).toContain(label);
+      expect(html, label).toContain(label);
+    }
+  });
+
+  it('likelihoodJa / effortJa は全ての値を網羅する', () => {
+    expect([likelihoodJa('high'), likelihoodJa('medium'), likelihoodJa('low')]).toEqual([
+      '高',
+      '中',
+      '低',
+    ]);
+    expect([effortJa('low'), effortJa('medium'), effortJa('high')]).toEqual(['小', '中', '大']);
+  });
+
+  it('型の外の値が来ても既定値に倒れる（LLM由来の想定外入力）', () => {
+    expect(likelihoodJa('とても高い' as never)).toBe('低');
+    expect(effortJa('unknown' as never)).toBe('大');
+  });
+});
+
+describe('HTMLの参考リンク（isSafeUrl による検証）', () => {
+  const withRefs = (references: string[]): string => {
+    const result = makeResult({ findings: [makeFinding({ id: 'f-1', references })] });
+    return renderHtml(result, analyzedOf(result), { verbose: true });
+  };
+
+  it('http(s) はリンクにする', () => {
+    expect(withRefs(['https://example.com/ok'])).toContain(
+      '<a href="https://example.com/ok" rel="noreferrer noopener">',
+    );
+  });
+
+  it('javascript: スキームはリンクにしない', () => {
+    const html = withRefs(['javascript:alert(1)']);
+    expect(html).not.toContain('href="javascript:');
+    expect(html).toContain('<li>javascript:alert(1)</li>');
+  });
+
+  it('空白・引用符・バックスラッシュを含むURLもリンクにしない（インライン正規表現より厳しい）', () => {
+    for (const bad of [
+      'https://example.com/ onmouseover=alert(1)',
+      'https://example.com/"x',
+      "https://example.com/'x",
+      'https://example.com/\\x',
+    ]) {
+      const html = withRefs([bad]);
+      expect(html, bad).not.toContain('<a href="https://example.com/');
+    }
   });
 });
 

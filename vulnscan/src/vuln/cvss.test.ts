@@ -13,7 +13,6 @@ import {
   cvss3SeverityRating,
   inferCvss3Metrics,
   inferCvss3MetricsWithReasons,
-  normalizeCweId,
   parseCvss3Vector,
   roundupV30,
   roundupV31,
@@ -403,16 +402,8 @@ describe('inferCvss3Metrics', () => {
   });
 });
 
-describe('normalizeCweId', () => {
-  it('表記ゆれを CWE-<数字> に揃える', () => {
-    expect(normalizeCweId('CWE-89')).toBe('CWE-89');
-    expect(normalizeCweId('cwe-89')).toBe('CWE-89');
-    expect(normalizeCweId('89')).toBe('CWE-89');
-    expect(normalizeCweId('CWE 89')).toBe('CWE-89');
-    expect(normalizeCweId('')).toBeNull();
-    expect(normalizeCweId('unknown')).toBeNull();
-  });
-});
+// CWE ID 正規化のテストは `catalog.test.ts` へ移した
+// （実装を catalog.ts に一元化したため）。
 
 /** 基本メトリクスの全組合せ（4×2×3×2×2×3×3×3 = 1944 通り） */
 function* allMetricCombinations(): Generator<Cvss3Metrics> {

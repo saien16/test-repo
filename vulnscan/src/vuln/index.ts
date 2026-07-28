@@ -135,8 +135,10 @@ export {
   inferCvss3MetricsWithReasons,
   cvss3SeverityRating,
   cvss3RatingToSeverity,
-  normalizeCweId,
 } from './cvss.js';
+
+/** CWE ID の正規化。厳格版と寛容版を名前で明示的に分けている（catalog.ts が唯一の定義） */
+export { normalizeCweId, extractCweId } from './catalog.js';
 
 export { saveBaseline, loadBaseline, applyBaseline, emptyBaseline } from './baseline.js';
 export type { BaselineFile } from './baseline.js';

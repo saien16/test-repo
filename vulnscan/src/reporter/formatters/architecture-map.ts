@@ -37,6 +37,9 @@ import type { Claim, Provenance } from '../../types/evidence.js';
 import { provenanceLabel } from '../../types/evidence.js';
 import type { BlindSpot, HeatmapCell, VulnerabilityHeatmap } from '../../types/heatmap.js';
 import { escapeHtml, displayWidth, truncate } from '../text.js';
+// このセクションは html.ts と同一のドキュメント・同一のCSSクラスへ出力される。
+// 表の DOM 構造を1箇所にまとめるため、テーブル描画は html.ts の実装を共有する。
+import { scrollTable } from '../html-util.js';
 
 // ---------------------------------------------------------------------------
 // 表示用ラベル
@@ -145,25 +148,43 @@ function n(value: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * 0..100 相当の値を 0〜4 の離散レベルへ落とす。
- * 連続グラデーションにしないのは、微差を意味のある差として読ませないため。
+ * 実測リスク（塗りの濃さ）の段階しきい値。scale に対する比で判定する。
+ * 4等分＝0〜4 の5段階。CSS の .gm-heat-0 〜 .gm-heat-4 と対応する。
  */
-function heatLevel(value: number, scale: number): number {
+const HEAT_THRESHOLDS: readonly number[] = [0.25, 0.5, 0.75];
+
+/**
+ * 想定リスク（破線の輪郭）の段階しきい値。
+ * 推測値は実測ほど細かく刻む根拠が無いため 3等分＝0〜3 の4段階に粗くする。
+ * CSS の .gm-infer-1 〜 .gm-infer-3 と対応する。
+ */
+const INFER_THRESHOLDS: readonly number[] = [0.34, 0.67];
+
+/**
+ * 値を離散レベルへ落とす共通処理。
+ * 連続グラデーションにしないのは、微差を意味のある差として読ませないため。
+ *
+ * 0 以下・非有限は必ずレベル0（「事実が無い」の表現）。
+ * それ以外は `value / scale` が thresholds のどこに収まるかで 1..thresholds.length+1 を返す。
+ */
+function levelOf(value: number, scale: number, thresholds: readonly number[]): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
   const ratio = value / Math.max(1, scale);
-  if (ratio < 0.25) return 1;
-  if (ratio < 0.5) return 2;
-  if (ratio < 0.75) return 3;
-  return 4;
+  for (let i = 0; i < thresholds.length; i++) {
+    const threshold = thresholds[i];
+    if (threshold !== undefined && ratio < threshold) return i + 1;
+  }
+  return thresholds.length + 1;
 }
 
-/** 想定リスクは輪郭で表すため、段階を粗く（0〜3）する */
+/** 実測リスク → 0〜4 */
+function heatLevel(value: number, scale: number): number {
+  return levelOf(value, scale, HEAT_THRESHOLDS);
+}
+
+/** 想定リスク → 0〜3 */
 function inferLevel(value: number, scale: number): number {
-  if (!Number.isFinite(value) || value <= 0) return 0;
-  const ratio = value / Math.max(1, scale);
-  if (ratio < 0.34) return 1;
-  if (ratio < 0.67) return 2;
-  return 3;
+  return levelOf(value, scale, INFER_THRESHOLDS);
 }
 
 // ---------------------------------------------------------------------------
@@ -595,19 +616,6 @@ function claimBadge(claim: Claim<unknown>): string {
   return `<span class="gm-prov gm-prov-${kind}">${escapeHtml(provenanceLabel(claim.provenance))}</span>`;
 }
 
-function table(head: string[], rows: string[][], className = ''): string {
-  const thead = head.map((h) => `<th scope="col">${h}</th>`).join('');
-  const tbody = rows.map((row) => `<tr>${row.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('\n');
-  return [
-    '<div class="table-scroll" tabindex="0">',
-    `<table class="${className}">`,
-    `<thead><tr>${thead}</tr></thead>`,
-    `<tbody>\n${tbody}\n</tbody>`,
-    '</table>',
-    '</div>',
-  ].join('\n');
-}
-
 /** 推測依存度。1 に近いほど話半分に読むべき、という意味を文章で伝える */
 function renderInferenceRatio(heatmap: VulnerabilityHeatmap): string {
   const raw = Number.isFinite(heatmap.inferenceRatio) ? heatmap.inferenceRatio : 0;
@@ -672,7 +680,7 @@ function renderBlindSpots(heatmap: VulnerabilityHeatmap): string {
     );
     out.push(`<p class="gm-cause-reading">${escapeHtml(CAUSE_READING[cause])}</p>`);
     out.push(
-      table(
+      scrollTable(
         ['構成要素', '弱点カテゴリ', '想定リスク', 'そう判断した理由', '確認すべきこと'],
         group.map((s) => [
           `<code>${escapeHtml(s.componentId)}</code>`,
@@ -694,7 +702,7 @@ function renderMatrix(architecture: ArchitectureModel, heatmap: VulnerabilityHea
   if (heatmap.categories.length === 0) return '';
 
   const cellAt = new Map<string, HeatmapCell>();
-  for (const cell of heatmap.cells) cellAt.set(`${cell.componentId} ${cell.categoryId}`, cell);
+  for (const cell of heatmap.cells) cellAt.set(`${cell.componentId}\u0000${cell.categoryId}`, cell);
   const nameOfComponent = new Map(architecture.components.map((c) => [c.id, c.name]));
 
   const componentIds =
@@ -709,7 +717,7 @@ function renderMatrix(architecture: ArchitectureModel, heatmap: VulnerabilityHea
 
   const rows = componentIds.map((componentId) => {
     const cells = heatmap.categories.map((category) => {
-      const cell = cellAt.get(`${componentId} ${category.id}`);
+      const cell = cellAt.get(`${componentId}\u0000${category.id}`);
       if (!cell) return '<span class="gm-cell gm-heat-0">·</span>';
       const level = heatLevel(cell.observedRisk, 100);
       const mark = basisMark[cell.basis] ?? '·';
@@ -730,7 +738,7 @@ function renderMatrix(architecture: ArchitectureModel, heatmap: VulnerabilityHea
     '<summary>補助: 構成要素 × 弱点カテゴリの行列（セル単位の裏取り用）</summary>',
     '<p class="gm-note">記号 ● 実測と想定の双方あり ／ ◐ 実測のみ（想定外の発見） ／ △ 想定のみ＝死角候補 ／ · どちらも無し。' +
       `背景の濃さは実測リスク（0〜100 の絶対値。上の図の相対スケール ${Math.round(layout.observedScale)} とは別）。</p>`,
-    table(
+    scrollTable(
       ['構成要素', ...heatmap.categories.map((c) => escapeHtml(c.name))],
       rows,
       'gm-table gm-matrix-table',
@@ -767,7 +775,7 @@ function renderDeployment(architecture: ArchitectureModel): string {
       `推測 <span class="gm-num">${e.inferred}</span> 件（平均確信度 <span class="gm-num">${confidence}</span>） / ` +
       `仮定 <span class="gm-num">${e.assumed}</span> 件</p>`,
   );
-  out.push(table(['項目', '推定値', '出所', '根拠'], rows, 'gm-table'));
+  out.push(scrollTable(['項目', '推定値', '出所', '根拠'], rows, 'gm-table'));
 
   if (architecture.inspectedManifests.length > 0) {
     out.push(

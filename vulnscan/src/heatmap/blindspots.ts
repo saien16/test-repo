@@ -10,7 +10,8 @@
  * 判る範囲で原因を機械的に切り分ける。
  */
 
-import { matchAnyGlob, normalizePath } from '../context/glob.js';
+import { matchAnyGlob } from '../context/glob.js';
+import { normalizeRelPath as normalizePath } from '../util/path.js';
 import type { ArchitectureComponent } from '../types/architecture.js';
 import type { ScanContext } from '../types/context.js';
 import type { VulnScanConfig } from '../types/config.js';

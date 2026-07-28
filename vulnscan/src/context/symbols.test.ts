@@ -33,6 +33,51 @@ describe('maskSource', () => {
     expect(masked.noComment[0]?.trim()).toBe('');
     expect(masked.noComment[1]).toContain('/etc/passwd');
   });
+
+  it('複数文字のトークンが行の途中にあっても桁がずれない', () => {
+    // 位置指定の startsWith で部分文字列の切り出しを省いているため、
+    // `*/` `/*` `//` `"""` のような複数文字トークンのオフセット計算を確かめる
+    const lines = [
+      'const a = 1; /* block */ const b = 2; // tail',
+      "const c = `tpl ${x}`; const d = 'str'; /* open",
+      'still comment */ const e = 3;',
+    ];
+    const masked = maskSource(lines.join('\n'), 'typescript');
+
+    // 行数・各行の文字数は元と完全に一致する
+    expect(masked.codeOnly).toHaveLength(lines.length);
+    lines.forEach((line, i) => {
+      expect(masked.noComment[i]).toHaveLength(line.length);
+      expect(masked.codeOnly[i]).toHaveLength(line.length);
+    });
+
+    // `/* block */`（11文字）と `// tail`（7文字）がちょうど同じ桁数の空白になる
+    expect(masked.codeOnly[0]).toBe(
+      `const a = 1; ${' '.repeat(11)} const b = 2; ${' '.repeat(7)}`,
+    );
+    // `still comment */`（16文字）が空白化され、以降のコードは元の桁のまま
+    expect(masked.codeOnly[2]).toBe(`${' '.repeat(16)} const e = 3;`);
+    // コメントの中身は消え、コメント外のコードはそのまま残る
+    expect(masked.noComment[0]).not.toContain('block');
+    expect(masked.noComment[0]).toContain('const b = 2;');
+  });
+
+  it('Python の三重引用符を1つのトークンとして扱う', () => {
+    const lines = ['s = """doc', 'still string', 'end""" + t'];
+    const masked = maskSource(lines.join('\n'), 'python');
+
+    lines.forEach((line, i) => {
+      expect(masked.codeOnly[i]).toHaveLength(line.length);
+    });
+    expect(masked.codeOnly[1]?.trim()).toBe('');
+    expect(masked.codeOnly[2]).toContain('+ t');
+  });
+
+  it('PHP の `#` 行コメントを扱える', () => {
+    const masked = maskSource(['$a = 1; # exec($cmd)', '$b = 2;'].join('\n'), 'php');
+    expect(masked.noComment[0]).toBe('$a = 1;             ');
+    expect(masked.noComment[1]).toBe('$b = 2;');
+  });
 });
 
 describe('extractFileSymbols (TypeScript)', () => {
@@ -182,6 +227,41 @@ describe('buildCallGraph', () => {
 
   it('警告を出さずに解析できる', () => {
     expect(warnings).toEqual([]);
+  });
+
+  it('1行に複数の呼び出しがあっても呼び出し元が一致する', () => {
+    // locate() は行内で不変なので1回しか呼ばないようにしてある。
+    // 遅延評価に変えても、行内の全ての辺に同じ from が付くこと
+    const multi = source('src/multi.ts', 'typescript', [
+      'function a(x) { return x; }', //                 1
+      'function b(x) { return x; }', //                 2
+      'function outer(x) {', //                         3
+      '  return a(x) + b(x) + a(b(x));', //             4
+      '}', //                                           5
+    ]);
+    const localWarnings: string[] = [];
+    const localTable = buildSymbolTable([multi], localWarnings);
+    const localGraph = buildCallGraph([multi], localTable, localWarnings);
+
+    const line4 = localGraph.edges.filter((e) => e.line === 4);
+    expect(line4.length).toBeGreaterThan(1);
+    expect(new Set(line4.map((e) => e.from))).toEqual(new Set(['src/multi.ts:outer']));
+    expect(localWarnings).toEqual([]);
+  });
+
+  it('呼び出しが1つも無い行では呼び出し元の解決自体を行わない', () => {
+    // `if (...)` は NOT_A_CALL なので辺は生まれない（= locate も呼ばれない）
+    const none = source('src/none.ts', 'typescript', [
+      'function guard(x) {', //     1
+      '  if (x) {', //              2
+      '    return 1;', //           3
+      '  }', //                     4
+      '  return 0;', //             5
+      '}', //                       6
+    ]);
+    const localWarnings: string[] = [];
+    const localTable = buildSymbolTable([none], localWarnings);
+    expect(buildCallGraph([none], localTable, localWarnings).edges).toEqual([]);
   });
 
   it('Object.prototype と同名の呼び出し先でも索引が壊れない', () => {

@@ -13,7 +13,7 @@
  * トークン予算が尽きた場合はそこで打ち切り、それまでの結果を返す。
  */
 
-import type { LlmClient } from '../llm/client.js';
+import type { LlmClient, LlmResult } from '../llm/client.js';
 import { mapPool } from '../llm/pool.js';
 import type { ScanContext, SymbolInfo } from '../types/context.js';
 import type { VulnScanConfig } from '../types/config.js';
@@ -21,6 +21,7 @@ import type { RawFinding } from '../types/finding.js';
 import { chunkFile, groupSymbolsByFile, splitLines } from './chunker.js';
 import {
   buildChunkContext,
+  buildScanContextIndex,
   type ChunkContext,
   type ContextBuildOptions,
 } from './context.js';
@@ -37,21 +38,9 @@ import { defaultSourceReader, type SourceReader } from './source.js';
 import { DEFAULT_CHUNK_LIMITS, type Chunk, type ChunkLimits } from './types.js';
 import { applyVerdict, buildVerificationPrompt, VERIFY_SYSTEM_PROMPT } from './verify.js';
 
-export type { Chunk, ChunkLimits, LineRange, RelatedSymbol } from './types.js';
-export type { ChunkContext } from './context.js';
-export type { CandidateFinding, Verdict } from './schema.js';
-export { chunkFile, groupSymbolsByFile } from './chunker.js';
-export { buildChunkContext } from './context.js';
-export { LENSES, getLens, selectLenses } from './lenses/index.js';
-export {
-  dedupeFindings,
-  evidencePenalty,
-  filterByConfidence,
-  finalizeFindings,
-  sortFindings,
-  toRawFinding,
-} from './filter.js';
-export { applyVerdict } from './verify.js';
+// このモジュールの外から実際に使われるのは analyze() だけなので、
+// 公開するのもそれと、その引数・戻り値の型に限る。
+// analyzer 内部のヘルパは各モジュールから直接 import すること。
 
 export interface AnalyzeProgress {
   phase: 'analyze' | 'verify';
@@ -75,7 +64,18 @@ export interface AnalyzeResult {
 interface AnalysisTask {
   chunk: Chunk;
   chunkContext: ChunkContext;
+  /**
+   * 分析パスの user プロンプト。レンズに依存しないので
+   * チャンクごとに1回だけ組み立てたものを共有する。
+   */
+  userPrompt: string;
   lens: Lens;
+}
+
+/** チャンクごとに1回だけ用意する、レンズ非依存の材料 */
+interface PreparedChunk {
+  chunkContext: ChunkContext;
+  userPrompt: string;
 }
 
 interface Candidate {
@@ -115,6 +115,50 @@ function markBudgetExhausted(state: BudgetState, errors: string[]): void {
   errors.push(
     'トークン予算を使い切ったため、以降の分析を打ち切りました（それまでの結果のみ返します）',
   );
+}
+
+/** LLM 呼び出しが失敗したときのメッセージ（パスごとに文言だけ差し替える） */
+interface LlmFailureMessages {
+  /** 安全分類器に拒否された場合 */
+  refusal: (category: string) => string;
+  /** それ以外の失敗 */
+  failure: (error: string) => string;
+}
+
+const ANALYSIS_FAILURE_MESSAGES: LlmFailureMessages = {
+  refusal: (category) => `安全分類器に拒否されたためスキップしました（category=${category}）`,
+  failure: (error) => `分析に失敗しました: ${error}`,
+};
+
+const VERIFY_FAILURE_MESSAGES: LlmFailureMessages = {
+  refusal: (category) => `自己検証が拒否されました（category=${category}）。未検証として扱います`,
+  failure: (error) => `自己検証に失敗しました: ${error}`,
+};
+
+/**
+ * LLM 呼び出しの失敗を両パス共通で処理する。
+ *   - budget-exhausted: 予算切れを記録し、以降のタスクを打ち切らせる
+ *   - refusal         : 警告だけ積んで続行する（該当タスクのみ落とす）
+ *   - それ以外        : エラーとして積む
+ * 常に null を返すので、呼び出し側はそのまま return できる。
+ */
+function reportLlmFailure(
+  result: Extract<LlmResult<unknown>, { ok: false }>,
+  label: string,
+  messages: LlmFailureMessages,
+  state: BudgetState,
+  errors: string[],
+): null {
+  if (result.reason === 'budget-exhausted') {
+    markBudgetExhausted(state, errors);
+    return null;
+  }
+  if (result.reason === 'refusal') {
+    errors.push(`${label}: ${messages.refusal(result.category ?? '不明')}`);
+    return null;
+  }
+  errors.push(`${label}: ${messages.failure(result.error)}`);
+  return null;
 }
 
 /** ファイルを読んでチャンクに分割する */
@@ -176,7 +220,8 @@ async function runAnalysisPass(
 
       const result = await llm.structured({
         system: task.lens.systemPrompt,
-        user: buildAnalysisPrompt(task.chunkContext),
+        // レンズに依存しないので、チャンクごとに1回組み立てたものを使い回す
+        user: task.userPrompt,
         schema: analysisResultSchema,
         schemaName: SCHEMA_NAME_ANALYSIS,
         // ファイル内容ハッシュ + レンズID + チャンク識別子。
@@ -184,23 +229,10 @@ async function runAnalysisPass(
         cacheKey: `${task.chunk.fileHash}|${task.lens.id}|${task.chunk.id}`,
       });
 
+      // 脆弱性解析は正当な用途だが、稀に安全分類器に拒否される。
+      // その場合は該当チャンクだけ落として続行する。
       if (!result.ok) {
-        if (result.reason === 'budget-exhausted') {
-          markBudgetExhausted(state, errors);
-          return null;
-        }
-        if (result.reason === 'refusal') {
-          // 脆弱性解析は正当な用途だが、稀に安全分類器に拒否される。
-          // 該当チャンクだけ落として続行する。
-          errors.push(
-            `${taskLabel(task)}: 安全分類器に拒否されたためスキップしました（category=${
-              result.category ?? '不明'
-            }）`,
-          );
-          return null;
-        }
-        errors.push(`${taskLabel(task)}: 分析に失敗しました: ${result.error}`);
-        return null;
+        return reportLlmFailure(result, taskLabel(task), ANALYSIS_FAILURE_MESSAGES, state, errors);
       }
 
       return result.value.findings.map((candidate) => ({ task, candidate }));
@@ -247,20 +279,7 @@ async function runVerifyPass(
       });
 
       if (!result.ok) {
-        if (result.reason === 'budget-exhausted') {
-          markBudgetExhausted(state, errors);
-          return null;
-        }
-        if (result.reason === 'refusal') {
-          errors.push(
-            `${taskLabel(task)}: 自己検証が拒否されました（category=${
-              result.category ?? '不明'
-            }）。未検証として扱います`,
-          );
-          return null;
-        }
-        errors.push(`${taskLabel(task)}: 自己検証に失敗しました: ${result.error}`);
-        return null;
+        return reportLlmFailure(result, taskLabel(task), VERIFY_FAILURE_MESSAGES, state, errors);
       }
 
       return result.value;
@@ -304,27 +323,46 @@ export async function analyze(
     return { findings: [], errors };
   }
 
-  // 関連シンボルのシグネチャに宣言行を添えるためのアクセサ
-  const declarationOf = (symbol: SymbolInfo): string | undefined =>
-    sourceLines.get(symbol.file)?.[symbol.startLine - 1];
+  const preparedByChunkId = new Map<string, PreparedChunk>();
+  {
+    // 関連シンボルのシグネチャに宣言行を添えるためのアクセサ。
+    // sourceLines は解析対象ファイル全体の行配列（生ソースの約2倍のヒープ）で、
+    // 必要なのはこのブロックの中だけ。クロージャごとブロックに閉じ込めたうえで
+    // 最後に中身を捨て、数分〜数十分に及ぶ LLM 待機の間ヒープに残らないようにする。
+    const declarationOf = (symbol: SymbolInfo): string | undefined =>
+      sourceLines.get(symbol.file)?.[symbol.startLine - 1];
 
-  const contextOptions: ContextBuildOptions = {
-    declarationOf,
-    ...deps.contextOptions,
-  };
+    const contextOptions: ContextBuildOptions = {
+      declarationOf,
+      // ScanContext 由来の索引は全チャンクで共有する（チャンクごとの全走査を無くす）
+      index: buildScanContextIndex(ctx),
+      ...deps.contextOptions,
+    };
 
-  const contextByChunkId = new Map<string, ChunkContext>();
-  for (const chunk of chunks) {
-    contextByChunkId.set(chunk.id, buildChunkContext(ctx, chunk, contextOptions));
+    for (const chunk of chunks) {
+      const chunkContext = buildChunkContext(ctx, chunk, contextOptions);
+      // user プロンプトはレンズに依存しないので、ここでチャンクごとに1回だけ作る
+      preparedByChunkId.set(chunk.id, {
+        chunkContext,
+        userPrompt: buildAnalysisPrompt(chunkContext),
+      });
+    }
+
+    sourceLines.clear();
   }
 
   // レンズ単位でまとめる: 同じ system プロンプトが連続し、プロンプトキャッシュが効く
   const tasks: AnalysisTask[] = [];
   for (const lens of lenses) {
     for (const chunk of chunks) {
-      const chunkContext = contextByChunkId.get(chunk.id);
-      if (!chunkContext) continue;
-      tasks.push({ chunk, chunkContext, lens });
+      const prepared = preparedByChunkId.get(chunk.id);
+      if (!prepared) continue;
+      tasks.push({
+        chunk,
+        chunkContext: prepared.chunkContext,
+        userPrompt: prepared.userPrompt,
+        lens,
+      });
     }
   }
 

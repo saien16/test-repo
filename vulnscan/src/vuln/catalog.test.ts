@@ -21,6 +21,8 @@ import {
   cweAncestors,
   cweCategory,
   cwesForPlatform,
+  extractCweId,
+  normalizeCweId,
   lensCoverage,
   lensForCwe,
   likelihoodOf,
@@ -460,5 +462,78 @@ describe('knowledge.ts との統合', () => {
     expect(direct).toBe(curatedInCatalog.length);
     expect(direct).toBe(67);
     expect(inherited).toBeGreaterThan(direct * 3);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * CWE ID 正規化の統合（旧: cvss.ts / heatmap/catalog-adapter.ts /
+ * knowledge.ts / catalog.ts / killchain/attack-mapping.ts の5実装）
+ *
+ * 統合前は同名 export が2つあり、同じ入力がモジュールをまたぐと
+ * 結果が変わっていた。ここでその差分を固定する。
+ * ------------------------------------------------------------------ */
+
+describe('normalizeCweId（厳格版）', () => {
+  it('ID 単体の表記ゆれを CWE-<数字> に揃える', () => {
+    expect(normalizeCweId('CWE-89')).toBe('CWE-89');
+    expect(normalizeCweId('cwe-89')).toBe('CWE-89');
+    expect(normalizeCweId('cwe_89')).toBe('CWE-89');
+    expect(normalizeCweId('CWE 89')).toBe('CWE-89');
+    expect(normalizeCweId('89')).toBe('CWE-89');
+    expect(normalizeCweId(89)).toBe('CWE-89');
+    expect(normalizeCweId('  CWE-89  ')).toBe('CWE-89');
+  });
+
+  it('ID 以外が混ざっていれば null（ここが寛容版との違い）', () => {
+    expect(normalizeCweId('CWE-89 の疑い')).toBeNull();
+    expect(normalizeCweId('see cwe89')).toBeNull();
+    expect(normalizeCweId('CWE-89 (SQLi)')).toBeNull();
+    expect(normalizeCweId('')).toBeNull();
+    expect(normalizeCweId('unknown')).toBeNull();
+    expect(normalizeCweId(null)).toBeNull();
+    expect(normalizeCweId(undefined)).toBeNull();
+  });
+});
+
+describe('extractCweId（寛容版）', () => {
+  it('厳格版が通す入力はすべて同じ結果になる', () => {
+    for (const input of ['CWE-89', 'cwe-89', 'cwe_89', 'CWE 89', '89', '  CWE-89  ']) {
+      expect(extractCweId(input)).toBe(normalizeCweId(input));
+    }
+  });
+
+  it('文章混じりでも最初の数字を拾う（厳格版は null にする入力）', () => {
+    expect(extractCweId('CWE-89 の疑い')).toBe('CWE-89');
+    expect(extractCweId('see cwe89')).toBe('CWE-89');
+    expect(extractCweId('CWE-89 (SQLi)')).toBe('CWE-89');
+    expect(normalizeCweId('CWE-89 の疑い')).toBeNull();
+  });
+
+  it('数字が無ければ null', () => {
+    expect(extractCweId('')).toBeNull();
+    expect(extractCweId('unknown')).toBeNull();
+    expect(extractCweId(null)).toBeNull();
+    expect(extractCweId(undefined)).toBeNull();
+  });
+
+  it('ゼロ埋めを落とす（統合前は実装ごとに結果が違った）', () => {
+    // 旧 killchain 版のみ Number() でゼロ埋めを潰していた。
+    // カタログ側の ID は 'CWE-89' なので、落とさないと必ず引けない。
+    expect(extractCweId('CWE_089')).toBe('CWE-89');
+    expect(normalizeCweId('CWE-089')).toBe('CWE-89');
+    expect(lookupCwe('CWE-089')?.id).toBe('CWE-89');
+  });
+
+  it('5桁以上でも切り詰めない（旧 killchain 版は /(\\d{1,4})/ で 4 桁までだった）', () => {
+    expect(extractCweId('CWE-12345')).toBe('CWE-12345');
+  });
+
+  it('統合により同じ入力がモジュールをまたいでも同じ ID になる', () => {
+    // 旧構成: heatmap は厳格版、vuln/killchain は寛容版と、
+    // それぞれ別の normalizeCweId を import していた。
+    const inputs = ['CWE-79', 'cwe79', '79', 'CWE_079'];
+    const ids = inputs.map((i) => extractCweId(i));
+    expect(new Set(ids).size).toBe(1);
+    expect(ids[0]).toBe('CWE-79');
   });
 });

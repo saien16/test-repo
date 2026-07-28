@@ -11,6 +11,8 @@
  */
 
 import type { Claim } from '../types/evidence.js';
+// clamp01 / round1 は util/num.ts に一元化した（統合前は計7箇所に散在）。
+import { clamp01 } from '../util/num.js';
 
 /**
  * `assumed` に対する一律の減衰係数。
@@ -33,10 +35,6 @@ export interface ConfidenceFactor {
   detail: string;
 }
 
-function clamp01(x: number): number {
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
 
 /**
  * Claim から減衰係数を取り出す。

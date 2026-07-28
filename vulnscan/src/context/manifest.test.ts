@@ -314,4 +314,30 @@ describe('detectEntryPoints', () => {
       expect.objectContaining({ kind: 'export', identifier: 'publicApi' }),
     ]);
   });
+
+  it('複数ファイルでも main はそのファイルのものだけを拾う', () => {
+    // シンボル表はファイル単位で索引化してある（source ループ内の全走査を廃止）。
+    // 索引化しても、他ファイルの main が混ざらないこと
+    const sources = [
+      src('cmd/a/main.go', 'go', ['func main() {', '\tstart()', '}']),
+      src('cmd/b/main.go', 'go', ['func main() {', '\tstop()', '}']),
+      src('internal/util.go', 'go', ['func helper() {', '\treturn', '}']),
+    ];
+    const table = buildSymbolTable(sources, []);
+    const entries = detectEntryPoints(sources, table, []);
+
+    const mains = entries.filter((e) => e.kind === 'main');
+    expect(mains.map((m) => m.file)).toEqual(['cmd/a/main.go', 'cmd/b/main.go']);
+    for (const m of mains) {
+      expect(m.symbolId).toBe(`${m.file}:main`);
+    }
+  });
+
+  it('他言語のルールは適用されない', () => {
+    // ルールを言語別に事前振り分けしても、対象言語の判定は変わらないこと
+    const entries = entryPointsOf(
+      src('app/views.py', 'python', ["app.get('/users', handler)"]),
+    );
+    expect(entries.some((e) => e.identifier === '/users')).toBe(false);
+  });
 });

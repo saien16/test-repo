@@ -480,3 +480,83 @@ describe('補助の行列（主役はあくまで構成図）', () => {
     expect(html).toContain('△');
   });
 });
+
+describe('テーブル描画は html.ts の scrollTable を共有する', () => {
+  const section = renderArchitectureMap(makeArchitecture(), makeHeatmap());
+
+  it('すべての table が table-scroll コンテナに包まれる', () => {
+    const tables = section.match(/<table/g) ?? [];
+    const wrappers = section.match(/<div class="table-scroll" tabindex="0">/g) ?? [];
+    expect(tables.length).toBeGreaterThan(0);
+    expect(wrappers.length).toBe(tables.length);
+  });
+
+  it('レポート全体でも table と table-scroll の数が釣り合う（html.ts と同一のDOM構造）', () => {
+    const result = makeResult({
+      findings: [makeFinding({ id: 'f-1' })],
+      architecture: makeArchitecture(),
+      heatmap: makeHeatmap(),
+    });
+    const html = renderHtml(result, analyzedOf(result), { verbose: true });
+    const tables = html.match(/<table/g) ?? [];
+    const wrappers = html.match(/<div class="table-scroll"/g) ?? [];
+    expect(tables.length).toBeGreaterThan(1);
+    expect(wrappers.length).toBe(tables.length);
+  });
+
+  it('th には scope、行は td で構成される（両実装で同じ構造）', () => {
+    expect(section).toContain('<th scope="col">');
+    expect(section).toMatch(/<tbody>\n<tr><td>/);
+  });
+});
+
+describe('リスク値 → 視覚レベル（levelOf の閾値）', () => {
+  /** 単一構成要素のヒートマップを作り、その塗り／輪郭レベルを読む */
+  const levelsFor = (observed: number, inferred: number): { heat: number; infer: number } => {
+    const html = renderArchitectureMap(
+      makeArchitecture(),
+      makeHeatmap({
+        blindSpots: [],
+        // scale は最低 100。api だけ値を変え、他は 0 にして最大値を固定する
+        componentTotals: {
+          web: { observed: 0, inferred: 0 },
+          api: { observed, inferred },
+          db: { observed: 0, inferred: 0 },
+          worker: { observed: 0, inferred: 0 },
+        },
+      }),
+    );
+    // ノード単位の <g> に分割し、API サーバのノードだけを取り出す
+    const node = html
+      .split('<g class="gm-node">')
+      .find((chunk) => chunk.includes('API サーバ'));
+    expect(node, 'API サーバのノードが見つからない').toBeDefined();
+    return {
+      heat: Number(/gm-node-fill gm-heat-(\d)/.exec(node ?? '')?.[1] ?? '-1'),
+      infer: Number(/gm-halo gm-infer-(\d)/.exec(node ?? '')?.[1] ?? '0'),
+    };
+  };
+
+  it('実測リスクは 0.25 / 0.5 / 0.75 の閾値で 0〜4 に落ちる', () => {
+    expect(levelsFor(0, 0).heat).toBe(0);
+    expect(levelsFor(24, 0).heat).toBe(1);
+    expect(levelsFor(25, 0).heat).toBe(2);
+    expect(levelsFor(50, 0).heat).toBe(3);
+    expect(levelsFor(75, 0).heat).toBe(4);
+    expect(levelsFor(100, 0).heat).toBe(4);
+  });
+
+  it('想定リスクは 0.34 / 0.67 の閾値で 0〜3 に落ちる（実測より粗い）', () => {
+    expect(levelsFor(0, 0).infer).toBe(0);
+    expect(levelsFor(0, 33).infer).toBe(1);
+    expect(levelsFor(0, 34).infer).toBe(2);
+    expect(levelsFor(0, 67).infer).toBe(3);
+    expect(levelsFor(0, 100).infer).toBe(3);
+  });
+
+  it('負値・非有限は必ずレベル0（「事実が無い」の表現）', () => {
+    expect(levelsFor(-5, -5).heat).toBe(0);
+    expect(levelsFor(Number.NaN, Number.NaN).heat).toBe(0);
+    expect(levelsFor(Number.NaN, Number.NaN).infer).toBe(0);
+  });
+});

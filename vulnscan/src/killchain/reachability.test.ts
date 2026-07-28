@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { symbolId as sharedSymbolId } from '../context/symbols.js';
 import type { CallGraph, SymbolTable } from '../types/context.js';
 import type { Finding } from '../types/finding.js';
 import {
@@ -139,6 +140,31 @@ describe('シンボル解決', () => {
 
   it('パス表記が違っても一致させる', () => {
     expect(findEnclosingSymbol(table, './src/user.ts', 15)?.name).toBe('getUser');
+  });
+
+  it('【統合で改善】同じ幅なら class より内側の定義を優先する', () => {
+    // SymbolLocator.locate のタイブレーク規則。再実装版には無かったため、
+    // callgraph.ts が組んだノードIDと killchain が解決するIDが食い違い、
+    // 到達可能性が静かに false になりうる状態だった。
+    const tied = makeSymbolTable([
+      { name: 'Wrapper', kind: 'class', file: 'src/tie.ts', startLine: 1, endLine: 20 },
+      { name: 'handler', kind: 'function', file: 'src/tie.ts', startLine: 1, endLine: 20 },
+    ]);
+    expect(findEnclosingSymbol(tied, 'src/tie.ts', 10)?.name).toBe('handler');
+  });
+
+  it('【統合で改善】repoRoot 付きの絶対パス・重複スラッシュも解決できる', () => {
+    expect(findEnclosingSymbol(table, '/repo/src/user.ts', 15, '/repo')?.name).toBe('getUser');
+    expect(findEnclosingSymbol(table, '//src/user.ts', 15)?.name).toBe('getUser');
+    expect(findEnclosingSymbol(table, 'src\\user.ts', 15)?.name).toBe('getUser');
+  });
+
+  it('解決したシンボルIDは context/symbols.ts の規約と一致する', () => {
+    // `${file}:${name}` はグラフ・SymbolTable.byId・EntryPoint.symbolId を
+    // 繋ぐ唯一の結合規約なので、共有実装と同じ文字列でなければならない。
+    expect(symbolIdOf({ file: 'src/user.ts', name: 'getUser' })).toBe(
+      sharedSymbolId('src/user.ts', 'getUser'),
+    );
   });
 
   it('範囲外なら null、近傍探索なら最寄りを返す', () => {

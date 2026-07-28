@@ -12,6 +12,7 @@ import type { Finding, RawFinding } from '../types/finding.js';
 import { manageFindings } from './index.js';
 import { loadConfig } from '../config/index.js';
 import { applyBaseline, emptyBaseline, loadBaseline, saveBaseline } from './baseline.js';
+import { matchGlob as sharedMatchGlob } from '../context/glob.js';
 import { globToRegExp, loadIgnoreList, matchIgnoreRule, parseIgnoreList } from './ignore.js';
 import type { FetchLike } from './osv.js';
 
@@ -530,6 +531,69 @@ describe('globToRegExp', () => {
   it('メタ文字をエスケープする', () => {
     expect(globToRegExp('a+b.ts').test('a+b.ts')).toBe(true);
     expect(globToRegExp('a+b.ts').test('aab.ts')).toBe(false);
+  });
+
+  it('末尾 / のディレクトリ指定は配下すべてに一致する', () => {
+    expect(globToRegExp('src/legacy/').test('src/legacy/a.ts')).toBe(true);
+    expect(globToRegExp('src/legacy/').test('src/other/a.ts')).toBe(false);
+  });
+
+  /* --- ここから下は共有実装（context/glob.ts）へ寄せたことで増えた機能 --- */
+
+  it('【統合で改善】{a,b} を展開する（独自実装ではリテラル扱いだった）', () => {
+    expect(globToRegExp('src/*.{ts,tsx}').test('src/a.ts')).toBe(true);
+    expect(globToRegExp('src/*.{ts,tsx}').test('src/a.tsx')).toBe(true);
+    expect(globToRegExp('src/*.{ts,tsx}').test('src/a.js')).toBe(false);
+  });
+
+  it('【統合で改善】[abc] / [!abc] の文字クラスを解釈する', () => {
+    expect(globToRegExp('a[bc].ts').test('ab.ts')).toBe(true);
+    expect(globToRegExp('a[bc].ts').test('ad.ts')).toBe(false);
+    expect(globToRegExp('a[!bc].ts').test('ad.ts')).toBe(true);
+    expect(globToRegExp('a[!bc].ts').test('ab.ts')).toBe(false);
+  });
+
+  it('【統合で改善】.gitignore 側（context/glob.ts）と解釈が一致する', () => {
+    for (const pattern of ['src/*.{ts,tsx}', 'a[bc].ts', 'src/**', '**/*.test.ts']) {
+      for (const path of ['src/a.ts', 'src/a.tsx', 'ab.ts', 'ad.ts', 'src/sub/a.test.ts']) {
+        expect(globToRegExp(pattern).test(path)).toBe(sharedMatchGlob(pattern, path));
+      }
+    }
+  });
+
+  it('【統合で改善】変換不能なパターンでも throw せず、何にもマッチしない', () => {
+    // 独自実装は new RegExp が throw する前提だったが、共有版は throw しない契約。
+    const list = parseIgnoreList('src/[a-\n');
+    expect(list.errors).toEqual([]);
+    expect(list.rules).toHaveLength(1);
+  });
+});
+
+describe('matchIgnoreRule のパス正規化', () => {
+  /** 抑制判定に必要な最小限の Finding */
+  const findingAt = (file: string): Finding =>
+    ({
+      id: 'VS-000000000001',
+      fingerprint: 'a'.repeat(64),
+      cwe: 'CWE-89',
+      location: { file, startLine: 1, endLine: 1 },
+    }) as unknown as Finding;
+
+  it("【統合で改善】先頭 './' が付いた Finding も取りこぼさない", () => {
+    const list = parseIgnoreList('src/legacy/**');
+    expect(matchIgnoreRule(findingAt('src/legacy/a.ts'), list)?.kind).toBe('glob');
+    expect(matchIgnoreRule(findingAt('./src/legacy/a.ts'), list)?.kind).toBe('glob');
+  });
+
+  it('【統合で改善】Windows 区切り・重複スラッシュも吸収する', () => {
+    const list = parseIgnoreList('src/legacy/**');
+    expect(matchIgnoreRule(findingAt('src\\legacy\\a.ts'), list)?.kind).toBe('glob');
+    expect(matchIgnoreRule(findingAt('//src/legacy/a.ts'), list)?.kind).toBe('glob');
+  });
+
+  it('関係ないパスは従来どおり素通しする', () => {
+    const list = parseIgnoreList('src/legacy/**');
+    expect(matchIgnoreRule(findingAt('src/app/a.ts'), list)).toBeNull();
   });
 });
 

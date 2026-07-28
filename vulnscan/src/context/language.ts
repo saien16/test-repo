@@ -118,26 +118,6 @@ export function isAnalyzable(language: string): boolean {
   return ANALYZABLE.has(language);
 }
 
-/**
- * 構文が C 系（波括弧でブロックを表す）かどうか。
- * `.vue` / `.svelte` は内部の script が JS なので同系として扱う。
- */
-export function isBraceLanguage(language: string): boolean {
-  return (
-    language === 'typescript' ||
-    language === 'javascript' ||
-    language === 'go' ||
-    language === 'java' ||
-    language === 'php' ||
-    language === 'vue' ||
-    language === 'svelte' ||
-    language === 'csharp' ||
-    language === 'c' ||
-    language === 'cpp' ||
-    language === 'rust'
-  );
-}
-
 /** ファイル一覧から言語構成比を集計する（unknown は除外） */
 export function summarizeLanguages(files: readonly SourceFile[]): LanguageInfo[] {
   const counts = new Map<string, number>();

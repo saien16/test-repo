@@ -53,6 +53,8 @@ import {
   describeFactors,
 } from './confidence.js';
 import type { ComponentPlatform } from './platform.js';
+// clamp01 / round1 は util/num.ts に一元化した（統合前は計7箇所に散在）。
+import { round1 } from '../util/num.js';
 
 /** 素点の基準スケール。上振れ要因のための余地(headroom)を残して 100 未満に置く */
 export const BASE_SCALE = 60;
@@ -148,9 +150,6 @@ export interface InferredResult {
   rawRisk: number;
 }
 
-function round1(x: number): number {
-  return Math.round(x * 10) / 10;
-}
 
 /** データ機微度配列のうち最も重いものを選ぶ */
 function dominantSensitivity(values: readonly DataSensitivity[]): DataSensitivity {

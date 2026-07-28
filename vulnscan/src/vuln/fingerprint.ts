@@ -8,6 +8,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { normalizeRepoRelPath } from '../util/path.js';
 
 // ブロックコメント（C系ブロックコメント / HTMLコメント / Pythonのドキュメント文字列）
 const BLOCK_COMMENT_RE = /\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|"""[\s\S]*?"""|'''[\s\S]*?'''/g;
@@ -35,17 +36,14 @@ export function normalizeCodeSnippet(code: string): string {
     .trim();
 }
 
-/** リポジトリルート相対の POSIX パスに正規化する */
+/**
+ * リポジトリルート相対の POSIX パスに正規化する。
+ * 実体は `util/path.ts` の {@link normalizeRepoRelPath}（唯一の定義）。
+ * 指紋は「同じ場所を同じ文字列で表す」ことが前提なので、
+ * ここが他の正規化とずれると差分検出が壊れる。
+ */
 export function normalizeFilePath(file: string, repoRoot?: string): string {
-  let p = (file ?? '').replace(/\\/g, '/');
-  if (repoRoot) {
-    const root = repoRoot.replace(/\\/g, '/').replace(/\/+$/, '');
-    if (root && p.startsWith(`${root}/`)) {
-      p = p.slice(root.length + 1);
-    }
-  }
-  p = p.replace(/^\.\//, '').replace(/^\/+/, '');
-  return p;
+  return normalizeRepoRelPath(file, repoRoot);
 }
 
 /** sha256 の16進文字列 */

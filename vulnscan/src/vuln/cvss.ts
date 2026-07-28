@@ -8,7 +8,14 @@
 
 import type { EntryPoint, ScanContext } from '../types/context.js';
 import type { Cvss3Metrics, Cvss3Result, RawFinding, Severity } from '../types/finding.js';
-import { ciaFromCatalog, likelihoodOf, lookupCwe as lookupCatalogCwe } from './catalog.js';
+import {
+  ciaFromCatalog,
+  extractCweId,
+  likelihoodOf,
+  lookupCwe as lookupCatalogCwe,
+} from './catalog.js';
+import { round1 } from '../util/num.js';
+import { normalizeRelPath } from '../util/path.js';
 import { owaspForCwe } from './knowledge.js';
 
 /* ------------------------------------------------------------------ *
@@ -78,10 +85,6 @@ function roundup(input: number, version: '3.0' | '3.1'): number {
   return version === '3.1' ? roundupV31(input) : roundupV30(input);
 }
 
-/** breakdown 表示用に小数第1位へ丸める（公式計算機の表示に合わせる） */
-function round1(value: number): number {
-  return Math.round(value * 10) / 10;
-}
 
 /* ------------------------------------------------------------------ *
  * 深刻度レーティング
@@ -401,7 +404,7 @@ export function inferCvss3MetricsWithReasons(
   ctx: ScanContext,
 ): Cvss3Inference {
   const reasons: string[] = [];
-  const cwe = normalizeCweId(finding.cwe);
+  const cwe = extractCweId(finding.cwe);
 
   // --- 1. ベースラインの選択 ---------------------------------------
   let metrics: Cvss3Metrics;
@@ -620,13 +623,13 @@ const REMOTE_ENTRY_KINDS = new Set<EntryPoint['kind']>([
  */
 function analyzeReachability(finding: RawFinding, ctx: ScanContext): ReachabilityInfo {
   const files = new Set<string>();
-  if (finding.location?.file) files.add(normalizePathForCompare(finding.location.file));
+  if (finding.location?.file) files.add(normalizeRelPath(finding.location.file));
   for (const step of finding.dataFlow ?? []) {
-    if (step.file) files.add(normalizePathForCompare(step.file));
+    if (step.file) files.add(normalizeRelPath(step.file));
   }
 
   const matched = (ctx.entryPoints ?? []).filter((ep) =>
-    files.has(normalizePathForCompare(ep.file)),
+    files.has(normalizeRelPath(ep.file)),
   );
 
   const remote = matched.filter((ep) => REMOTE_ENTRY_KINDS.has(ep.kind));
@@ -652,14 +655,3 @@ function isAuthenticatedEntryPoint(ep: EntryPoint): boolean {
   return false;
 }
 
-/** 比較用のパス正規化（区切り文字と先頭 './' を揃える） */
-function normalizePathForCompare(p: string): string {
-  return p.replace(/\\/g, '/').replace(/^\.\//, '');
-}
-
-/** 'cwe-89' / '89' / 'CWE-89' を 'CWE-89' に正規化する。数値が取れなければ null */
-export function normalizeCweId(raw: string | undefined | null): string | null {
-  if (!raw) return null;
-  const m = /(\d+)/.exec(String(raw));
-  return m ? `CWE-${m[1]}` : null;
-}

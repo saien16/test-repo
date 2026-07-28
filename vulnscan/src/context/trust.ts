@@ -563,6 +563,36 @@ const RULES: readonly BoundaryRule[] = [
   },
 ];
 
+/**
+ * 言語ごとの適用ルールをモジュール初期化時に1回だけ振り分ける。
+ *
+ * 行ごとに RULES 全件（82件）を回すと、JS ファイルなら実際に使う22件以外の
+ * 60件まで毎行実行して捨てることになる。バケットは RULES の並び順のまま作るので
+ * 検出順・上限による打ち切り位置は変わらない。
+ * 言語非依存ルール（languages: null）は全バケットに含める。
+ */
+const LANGUAGE_AGNOSTIC_RULES: readonly BoundaryRule[] = RULES.filter(
+  (r) => r.languages === null,
+);
+
+const RULES_BY_LANGUAGE: ReadonlyMap<string, readonly BoundaryRule[]> = (() => {
+  const languages = new Set<string>();
+  for (const rule of RULES) {
+    for (const lang of rule.languages ?? []) languages.add(lang);
+  }
+  const map = new Map<string, BoundaryRule[]>();
+  for (const lang of languages) map.set(lang, []);
+  for (const rule of RULES) {
+    for (const lang of rule.languages ?? languages) map.get(lang)?.push(rule);
+  }
+  return map;
+})();
+
+/** その言語に実際に適用されるルールだけを返す */
+function rulesFor(language: string): readonly BoundaryRule[] {
+  return RULES_BY_LANGUAGE.get(language) ?? LANGUAGE_AGNOSTIC_RULES;
+}
+
 /** 明らかにプレースホルダな値は秘密情報として扱わない */
 const SECRET_PLACEHOLDER = /(?:example|changeme|placeholder|your[_-]?|xxx+|\*{3,}|<[^>]+>|process\.env|os\.environ|\$\{)/i;
 
@@ -586,15 +616,20 @@ export function detectTrustBoundaries(
     try {
       const seen = new Set<string>();
       const lines = source.masked.noComment;
+      const rules = rulesFor(source.language);
       let count = 0;
 
       for (let i = 0; i < lines.length && count < MAX_PER_FILE; i++) {
         const line = lines[i] ?? '';
         if (line.trim() === '') continue;
+        // プレースホルダ判定は行単位で不変。マッチごとに同じ行を再検査しないよう、
+        // 最初に必要になった時点で1回だけ評価してこの行の間だけ持ち回す
+        // （secret ルールに当たらない行では評価自体を行わない）。
+        let placeholderCache: boolean | undefined;
+        const isPlaceholderLine = (): boolean =>
+          (placeholderCache ??= SECRET_PLACEHOLDER.test(line));
 
-        for (const rule of RULES) {
-          if (rule.languages && !rule.languages.includes(source.language)) continue;
-
+        for (const rule of rules) {
           rule.re.lastIndex = 0;
           let match: RegExpExecArray | null;
           while ((match = rule.re.exec(line)) !== null) {
@@ -603,7 +638,7 @@ export function detectTrustBoundaries(
               rule.re.lastIndex++;
               continue;
             }
-            if (rule.category === 'secret' && SECRET_PLACEHOLDER.test(line)) continue;
+            if (rule.category === 'secret' && isPlaceholderLine()) continue;
 
             const expression = truncate(raw);
             const key = `${rule.type}|${rule.category}|${i}|${expression}`;

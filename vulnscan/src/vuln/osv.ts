@@ -11,7 +11,9 @@
 
 import type { Dependency } from '../types/context.js';
 import type { Cvss3Metrics, Finding } from '../types/finding.js';
-import { calculateCvss3, cvss3RatingToSeverity, normalizeCweId, parseCvss3Vector } from './cvss.js';
+import { mapPool } from '../llm/pool.js';
+import { extractCweId } from './catalog.js';
+import { calculateCvss3, cvss3RatingToSeverity, parseCvss3Vector } from './cvss.js';
 import { computeDependencyFingerprint, fingerprintToId } from './fingerprint.js';
 import { buildReferences, lookupCwe } from './knowledge.js';
 
@@ -143,30 +145,25 @@ export async function scanDependencies(
   const uniqueIds = Array.from(new Set(Array.from(idsByDep.values()).flat()));
   const details = new Map<string, OsvVulnerability>();
 
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(DETAIL_CONCURRENCY, uniqueIds.length) }, async () => {
-    for (;;) {
-      const index = cursor++;
-      if (index >= uniqueIds.length) return;
-      const id = uniqueIds[index] as string;
-      try {
-        const res = await fetchImpl(`${OSV_BASE_URL}/v1/vulns/${encodeURIComponent(id)}`, {
-          method: 'GET',
-          headers: { accept: 'application/json' },
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        if (!res.ok) {
-          errors.push(`OSV 詳細取得に失敗しました (${id}: HTTP ${res.status})`);
-          continue;
-        }
-        const json = (await res.json()) as OsvVulnerability;
-        if (json && typeof json.id === 'string') details.set(id, json);
-      } catch (e) {
-        errors.push(`OSV 詳細取得に失敗しました (${id}): ${describeError(e)}`);
+  // 同時実行数の制限は `llm/pool.ts` の mapPool に任せる
+  // （以前はここに1行ずつ対応する手書きのワーカープールがあった）。
+  await mapPool(uniqueIds, DETAIL_CONCURRENCY, async (id) => {
+    try {
+      const res = await fetchImpl(`${OSV_BASE_URL}/v1/vulns/${encodeURIComponent(id)}`, {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) {
+        errors.push(`OSV 詳細取得に失敗しました (${id}: HTTP ${res.status})`);
+        return;
       }
+      const json = (await res.json()) as OsvVulnerability;
+      if (json && typeof json.id === 'string') details.set(id, json);
+    } catch (e) {
+      errors.push(`OSV 詳細取得に失敗しました (${id}): ${describeError(e)}`);
     }
   });
-  await Promise.all(workers);
 
   // --- 3. Finding を組み立てる ---
   for (const [depIndex, ids] of Array.from(idsByDep.entries()).sort((a, b) => a[0] - b[0])) {
@@ -227,7 +224,7 @@ function buildDependencyFinding(
     .map((r) => r.url)
     .filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u))
     .slice(0, 5);
-  const references = buildReferences(normalizeCweId(cwe), 'A06:2021-Vulnerable and Outdated Components', [
+  const references = buildReferences(extractCweId(cwe), 'A06:2021-Vulnerable and Outdated Components', [
     `https://osv.dev/vulnerability/${vulnId}`,
     ...(cve ? [`https://nvd.nist.gov/vuln/detail/${cve}`] : []),
     ...advisoryUrls,
@@ -241,7 +238,7 @@ function buildDependencyFinding(
     : `${dep.name} ${dep.version} に修正版の情報がありません。アドバイザリ(${vulnId})を確認し、回避策の適用または代替パッケージへの移行を検討してください。`;
 
   return {
-    cwe: normalizeCweId(cwe) ?? 'CWE-1395',
+    cwe: extractCweId(cwe) ?? 'CWE-1395',
     category: 'A06:2021-Vulnerable and Outdated Components',
     title: `${dep.name}@${dep.version}: ${label} - ${truncate(summary, 120)}`,
     severity: cvss3RatingToSeverity(cvss.baseSeverity),
@@ -304,7 +301,7 @@ function extractCweIds(dbSpecific: Record<string, unknown> | undefined): string[
   const raw = dbSpecific?.['cwe_ids'];
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((v) => normalizeCweId(typeof v === 'string' ? v : null))
+    .map((v) => extractCweId(typeof v === 'string' ? v : null))
     .filter((v): v is string => v !== null);
 }
 

@@ -195,8 +195,8 @@ function loadCatalog(): CatalogIndex {
     for (const raw of Object.values(parsed.entries ?? {})) {
       const entry: CweEntry = {
         ...raw,
-        id: toCweId(raw.id) ?? raw.id,
-        parents: raw.parents.map((p) => toCweId(p)).filter((p): p is string => p !== null),
+        id: extractCweId(raw.id) ?? raw.id,
+        parents: raw.parents.map((p) => extractCweId(p)).filter((p): p is string => p !== null),
       };
       byId.set(entry.id, entry);
     }
@@ -224,11 +224,52 @@ export function catalogAvailable(): boolean {
   return loadCatalog().byId.size > 0;
 }
 
-/** 'cwe-89' / '89' / 'CWE-89' を 'CWE-89' に揃える。数値が取れなければ null */
-function toCweId(raw: string | number | undefined | null): string | null {
+/* ------------------------------------------------------------------ *
+ * CWE ID の正規化（ここが唯一の定義）
+ *
+ * 以前は cvss.ts / heatmap/catalog-adapter.ts / knowledge.ts / catalog.ts /
+ * killchain/attack-mapping.ts の5箇所に実装があり、しかも `normalizeCweId` と
+ * いう**同名の export が2つ**（厳格版と寛容版）存在した。同じ入力が
+ * モジュールをまたぐと結果が変わるため、「ヒートマップの列には載らないが
+ * Finding には載る CWE」といった不整合の原因になっていた。
+ *
+ * 用途が2つあるのは事実なので、挙動の違いを名前で明示して両方置く:
+ *   - {@link normalizeCweId} … 厳格。ID そのものだけを受け付ける
+ *   - {@link extractCweId}   … 寛容。文章混じりの文字列からも数字を拾う
+ *
+ * どちらもゼロ埋めは落とす。MITRE のカタログ側の ID は 'CWE-89' であり
+ * 'CWE-089' のまま引くと必ず外れるため。
+ * ------------------------------------------------------------------ */
+
+/** '089' → '89'。全部 0 のときは '0' を残す */
+function stripLeadingZeros(digits: string): string {
+  return digits.replace(/^0+(?=\d)/, '');
+}
+
+/**
+ * CWE ID 表記を 'CWE-89' 形式へ**厳格に**正規化する。
+ *
+ * 受け付けるのは ID 単体のみ（'CWE-89' / 'cwe_89' / 'CWE 89' / '89'）。
+ * 'CWE-89 の疑い' のような文章は null を返す。
+ * カタログの列を作るなど「確実に ID であるもの」だけを通したい場面で使う。
+ */
+export function normalizeCweId(raw: string | number | undefined | null): string | null {
+  if (raw === undefined || raw === null) return null;
+  const m = /^(?:cwe[-_\s]?)?(\d+)$/i.exec(String(raw).trim());
+  return m?.[1] === undefined ? null : `CWE-${stripLeadingZeros(m[1])}`;
+}
+
+/**
+ * 文字列から CWE ID を**寛容に**取り出して 'CWE-89' 形式へ揃える。
+ *
+ * 最初に現れた数字の並びを ID とみなすため、'CWE-89 (SQLi)' や
+ * 'see cwe89' のような表記からも拾える。LLM の出力や外部DBの
+ * `database_specific` など、書式が保証されない入力に使う。
+ */
+export function extractCweId(raw: string | number | undefined | null): string | null {
   if (raw === undefined || raw === null) return null;
   const m = /(\d+)/.exec(String(raw));
-  return m ? `CWE-${m[1]}` : null;
+  return m?.[1] === undefined ? null : `CWE-${stripLeadingZeros(m[1])}`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -237,7 +278,7 @@ function toCweId(raw: string | number | undefined | null): string | null {
 
 /** CWE ID からカタログエントリを引く。'CWE-89' も '89' も受け付ける。 */
 export function lookupCwe(cweId: string): CweEntry | null {
-  const id = toCweId(cweId);
+  const id = extractCweId(cweId);
   if (id === null) return null;
   return loadCatalog().byId.get(id) ?? null;
 }

@@ -19,6 +19,7 @@
 
 import type { ComponentKind } from '../types/architecture.js';
 import type { Citation } from '../types/evidence.js';
+import { normalizeRelPath } from '../util/path.js';
 
 /** 引用抜粋の最大長。プロンプトとレポートが膨らまないよう切り詰める */
 export const MAX_EXCERPT_CHARS = 160;
@@ -144,14 +145,12 @@ export function truncate(text: string, limit = MAX_EXCERPT_CHARS): string {
   return s.length <= limit ? s : `${s.slice(0, limit)}…`;
 }
 
-/** 比較用にパスを正規化する（Windows 区切り・先頭 ./ ・先頭 / を吸収） */
-export function normalizeRepoPath(p: string): string {
-  let out = String(p ?? '').replace(/\\/g, '/');
-  while (out.startsWith('./')) out = out.slice(2);
-  while (out.length > 1 && out.endsWith('/')) out = out.slice(0, -1);
-  while (out.startsWith('/')) out = out.slice(1);
-  return out;
-}
+/**
+ * 比較用にパスを正規化する。
+ * 実体は `util/path.ts` の {@link normalizeRelPath}（唯一の定義）。
+ * 名前は architecture 側の呼び出し元互換のために残している。
+ */
+export { normalizeRelPath as normalizeRepoPath };
 
 /** needle を含む最初の行番号（1始まり）。見つからなければ null */
 export function findLineNumber(content: string, needle: string): number | null {
@@ -172,10 +171,10 @@ export function findLineNumber(content: string, needle: string): number | null {
  */
 export function citationFor(file: string, content: string, needle: string): Citation {
   const line = findLineNumber(content, needle);
-  if (line === null) return { file: normalizeRepoPath(file) };
+  if (line === null) return { file: normalizeRelPath(file) };
   const lines = content.split(/\r?\n/);
   const text = lines[line - 1] ?? needle;
-  return { file: normalizeRepoPath(file), line, excerpt: truncate(text) };
+  return { file: normalizeRelPath(file), line, excerpt: truncate(text) };
 }
 
 /**
@@ -189,15 +188,15 @@ export function citationForKey(file: string, content: string, key: string): Cita
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i] ?? '';
     if (pattern.test(text)) {
-      return { file: normalizeRepoPath(file), line: i + 1, excerpt: truncate(text) };
+      return { file: normalizeRelPath(file), line: i + 1, excerpt: truncate(text) };
     }
   }
-  return { file: normalizeRepoPath(file) };
+  return { file: normalizeRelPath(file) };
 }
 
 /** ファイル全体を根拠とする引用（「そのファイルが存在すること」自体が事実の場合） */
 export function fileCitation(file: string): Citation {
-  return { file: normalizeRepoPath(file) };
+  return { file: normalizeRelPath(file) };
 }
 
 /** 同じ内容の引用を畳む */

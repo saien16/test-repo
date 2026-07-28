@@ -6,24 +6,28 @@
  * 候補を絞り込む。到達可能性の根拠（呼び出しパス）はプロンプトにも載せる。
  */
 
+import { SymbolLocator, symbolId } from '../context/symbols.js';
 import type { CallGraph, EntryPoint, SymbolInfo, SymbolTable } from '../types/context.js';
 import type { Finding } from '../types/finding.js';
+import { normalizeRepoRelPath } from '../util/path.js';
 
-/** パス表記のゆらぎ（'./a/b', 'a\\b', '//'）を吸収する */
+/**
+ * パス表記のゆらぎ（'./a/b', 'a\\b', '//'）を吸収する。
+ * 実体は `util/path.ts` の {@link normalizeRepoRelPath}（唯一の定義）。
+ */
 export function normalizePath(raw: string, repoRoot?: string): string {
-  let p = String(raw ?? '').replace(/\\/g, '/');
-  if (repoRoot !== undefined && repoRoot !== '') {
-    const root = repoRoot.replace(/\\/g, '/').replace(/\/+$/, '');
-    if (root !== '' && p.startsWith(`${root}/`)) p = p.slice(root.length + 1);
-  }
-  p = p.replace(/\/{2,}/g, '/');
-  while (p.startsWith('./')) p = p.slice(2);
-  return p.replace(/^\/+/, '');
+  return normalizeRepoRelPath(raw, repoRoot);
 }
 
-/** SymbolTable の索引キー `${file}:${name}` を組み立てる */
+/**
+ * SymbolTable の索引キー `${file}:${name}` を組み立てる。
+ *
+ * この文字列は呼び出しグラフのノードID・`SymbolTable.byId`・
+ * `EntryPoint.symbolId` を繋ぐ**唯一の結合規約**なので、
+ * `context/symbols.ts` の定義をそのまま使う（自前で組み立てない）。
+ */
 export function symbolIdOf(symbol: Pick<SymbolInfo, 'file' | 'name'>): string {
-  return `${symbol.file}:${symbol.name}`;
+  return symbolId(symbol.file, symbol.name);
 }
 
 /** 呼び出しグラフの隣接表 */
@@ -130,9 +134,80 @@ export function pathMinConfidence(adj: Adjacency, path: readonly string[]): numb
   return min;
 }
 
+/* ------------------------------------------------------------------ *
+ * シンボル位置の解決
+ *
+ * 以前はここで全シンボルを線形走査していた。`grouping.ts` は Finding 1件につき
+ * 3回呼ぶため O(3 × Finding数 × 全シンボル数) になり、S=6万・F=200 では
+ * `normalizePath` だけで約9,600万回走っていた。
+ *
+ * さらに「同じ幅なら class より内側を優先」というタイブレーク規則が
+ * `SymbolLocator.locate` にはあり再実装側には無かったため、`callgraph.ts` が
+ * 組んだノードIDと killchain が解決するシンボルIDが食い違い、
+ * 到達可能性が静かに false になりうる状態だった。
+ *
+ * そこで `context/symbols.ts` の {@link SymbolLocator} を唯一の判定器として使う。
+ * repoRoot の剥がしだけは killchain 側の事情なので、
+ * 正規化済みファイル名で張り直した索引を (SymbolTable, repoRoot) 単位で
+ * キャッシュしてから locate に渡す。
+ * ------------------------------------------------------------------ */
+
+interface SymbolIndex {
+  /** 正規化済みファイル名で構築した SymbolLocator */
+  readonly locator: SymbolLocator;
+  /** 正規化済みシンボルID → 元の SymbolInfo（呼び出しグラフのIDは元の file 表記のまま） */
+  readonly original: ReadonlyMap<string, SymbolInfo>;
+  /** 正規化済みファイル名 → そのファイルのシンボル一覧（近傍探索用） */
+  readonly byFile: ReadonlyMap<string, SymbolInfo[]>;
+}
+
+/** SymbolTable は巨大なので、索引はテーブルの寿命に合わせて弱参照で持つ */
+const indexCache = new WeakMap<SymbolTable, Map<string, SymbolIndex>>();
+
+function buildIndex(table: SymbolTable, repoRoot: string | undefined): SymbolIndex {
+  const symbols = table?.symbols ?? [];
+  const normalized: SymbolInfo[] = [];
+  const original = new Map<string, SymbolInfo>();
+  const byFile = new Map<string, SymbolInfo[]>();
+
+  for (const s of symbols) {
+    const file = normalizeRepoRelPath(s.file, repoRoot);
+    normalized.push(file === s.file ? s : { ...s, file });
+    // 同名が複数あれば最初のものを採用する（線形走査版と同じく先着優先）
+    const id = symbolId(file, s.name);
+    if (!original.has(id)) original.set(id, s);
+    const list = byFile.get(file);
+    if (list) list.push(s);
+    else byFile.set(file, [s]);
+  }
+
+  return {
+    locator: new SymbolLocator({ symbols: normalized, byId: {} }),
+    original,
+    byFile,
+  };
+}
+
+function symbolIndexOf(table: SymbolTable, repoRoot: string | undefined): SymbolIndex {
+  const key = repoRoot ?? '';
+  let byRoot = indexCache.get(table);
+  if (byRoot === undefined) {
+    byRoot = new Map();
+    indexCache.set(table, byRoot);
+  }
+  let index = byRoot.get(key);
+  if (index === undefined) {
+    index = buildIndex(table, repoRoot);
+    byRoot.set(key, index);
+  }
+  return index;
+}
+
 /**
  * file:line を含む最も内側のシンボルを返す。
- * class と function が入れ子なら範囲の狭い方（＝内側）を選ぶ。
+ *
+ * 判定規則は {@link SymbolLocator} に委ねる（狭い範囲＝内側、
+ * 同じ幅なら class より内側の定義を優先）。該当が無ければ null。
  */
 export function findEnclosingSymbol(
   table: SymbolTable,
@@ -140,33 +215,28 @@ export function findEnclosingSymbol(
   line: number,
   repoRoot?: string,
 ): SymbolInfo | null {
-  const target = normalizePath(file, repoRoot);
-  let best: SymbolInfo | null = null;
-  let bestSpan = Number.POSITIVE_INFINITY;
-  for (const s of table?.symbols ?? []) {
-    if (normalizePath(s.file, repoRoot) !== target) continue;
-    if (line < s.startLine || line > s.endLine) continue;
-    const span = s.endLine - s.startLine;
-    if (span < bestSpan) {
-      best = s;
-      bestSpan = span;
-    }
-  }
-  return best;
+  const index = symbolIndexOf(table, repoRoot);
+  const target = normalizeRepoRelPath(file, repoRoot);
+  if (!index.byFile.has(target)) return null;
+  // locate は該当なしのとき `${file}:<module>` を返す。
+  // 実在する <module> シンボルならそれが最外周の囲みなので採用し、
+  // 実在しなければ「囲むシンボル無し」として null にする。
+  return index.original.get(index.locator.locate(target, line)) ?? null;
 }
 
-/** 行を含むシンボルが無い場合の近傍フォールバック（直前に始まるシンボル） */
+/** 行を含むシンボルが無い場合の近傍フォールバック（開始行が最も近いシンボル） */
 export function findNearestSymbol(
   table: SymbolTable,
   file: string,
   line: number,
   repoRoot?: string,
 ): SymbolInfo | null {
-  const target = normalizePath(file, repoRoot);
+  const index = symbolIndexOf(table, repoRoot);
+  const list = index.byFile.get(normalizeRepoRelPath(file, repoRoot));
+  if (list === undefined) return null;
   let best: SymbolInfo | null = null;
   let bestDelta = Number.POSITIVE_INFINITY;
-  for (const s of table?.symbols ?? []) {
-    if (normalizePath(s.file, repoRoot) !== target) continue;
+  for (const s of list) {
     const delta = Math.abs(s.startLine - line);
     if (delta < bestDelta) {
       best = s;

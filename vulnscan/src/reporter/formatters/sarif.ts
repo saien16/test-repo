@@ -8,12 +8,23 @@
  *   - rule.properties["security-severity"] に数値文字列を入れる
  *     （GitHub はここを見て Critical/High/Medium/Low を決める）
  *   - partialFingerprints に安定した指紋を入れてアラートの重複を防ぐ
+ *
+ * セキュリティ上の前提:
+ *   `rule.help.markdown` は GitHub Code Scanning が Markdown として
+ *   （生HTMLを含めて）レンダリングするフィールドである。
+ *   ここへ流し込む値（Findingのタイトル・LLMの生成文・参考リンク）は
+ *   スキャン対象リポジトリ由来の未信頼入力なので、必ずエスケープする。
+ *   組み立てには `md` タグ付きテンプレートを使い、補間値が素通りしないようにする。
+ *   URL は `isSafeUrl` でスキームを検証し、http(s) 以外はリンクにしない。
+ *
+ *   それ以外のフィールド（message.text / shortDescription.text など）は
+ *   SARIF 仕様上プレーンテキストとして扱われるため、エスケープしない。
  */
 
 import type { Finding } from '../../types/finding.js';
 import type { AnalyzedReport, ScanResult } from '../../types/report.js';
 import { securitySeverityValue, toSarifLevel } from '../severity.js';
-import { truncate } from '../text.js';
+import { isSafeUrl, md, truncate } from '../text.js';
 
 export const SARIF_VERSION = '2.1.0';
 export const SARIF_SCHEMA = 'https://json.schemastore.org/sarif-2.1.0.json';
@@ -233,18 +244,22 @@ function buildRules(findings: readonly Finding[]): { rules: SarifRule[]; index: 
     }
 
     const helpMarkdown = [
-      `## ${ruleId}`,
+      md`## ${ruleId}`,
       '',
-      `**代表例**: ${representative.title}`,
+      md`**代表例**: ${representative.title}`,
       '',
       '### なぜ問題か',
-      representative.reasoning || '（説明なし）',
+      md`${representative.reasoning || '（説明なし）'}`,
       '',
       '### 修正方針',
-      representative.remediation || '（修正方針の記載なし）',
+      md`${representative.remediation || '（修正方針の記載なし）'}`,
       '',
       ...(representative.references.length > 0
-        ? ['### 参考', ...representative.references.map((r) => `- ${r}`)]
+        ? [
+            '### 参考',
+            // http(s) 以外（javascript: など）はリンクにせず素のテキストとして出す
+            ...representative.references.map((r) => (isSafeUrl(r) ? md`- <${r}>` : md`- ${r}`)),
+          ]
         : []),
     ].join('\n');
 

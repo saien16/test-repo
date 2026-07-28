@@ -26,11 +26,19 @@ import {
   lensForCwe,
   likelihoodOf,
   lookupCwe,
+  normalizeCweId,
   type CweLikelihood,
 } from '../vuln/catalog.js';
 
 export type { CweLikelihood } from '../vuln/catalog.js';
 export { lensForCwe } from '../vuln/catalog.js';
+
+/**
+ * CWE ID 表記を 'CWE-89' 形式へ正規化する（厳格版）。
+ * 実体は `vuln/catalog.ts` にある唯一の定義。以前はここに同名の別実装があり、
+ * 寛容版（cvss.ts）と結果が食い違っていた。
+ */
+export { normalizeCweId } from '../vuln/catalog.js';
 
 /** CIA（機密性・完全性・可用性）への影響有無 */
 export interface CweCia {
@@ -66,12 +74,6 @@ export interface PlatformQuery {
 
 /** どのカテゴリにも畳めなかったCWEの受け皿（カタログ側の既定カテゴリ） */
 export const OTHER_CATEGORY_ID = 'other';
-
-/** CWE ID 表記を 'CWE-89' 形式へ正規化する。'89' や 'cwe_89' も受け付ける */
-export function normalizeCweId(raw: string): string | null {
-  const m = /^(?:cwe[-_\s]?)?(\d+)$/i.exec(raw.trim());
-  return m ? `CWE-${m[1]}` : null;
-}
 
 /** 悪用可能性の並び順（代表CWEを選ぶときに使う） */
 const LIKELIHOOD_RANK: Record<CweLikelihood, number> = {

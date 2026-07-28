@@ -12,7 +12,7 @@
  */
 
 import type { CallEdge, CallGraph, SymbolInfo, SymbolTable } from '../types/context.js';
-import { MODULE_SYMBOL_NAME, SymbolLocator, symbolId, type AnalyzableSource } from './symbols.js';
+import { SymbolLocator, symbolId, type AnalyzableSource } from './symbols.js';
 
 /** `receiver.name(` / `name(` を拾う */
 const CALL_PATTERN = /(?:([A-Za-z_$][\w$]*)\s*(?:\.|->|::)\s*)?([A-Za-z_$][\w$]*)\s*\(/g;
@@ -150,6 +150,9 @@ export function buildCallGraph(
 
         CALL_PATTERN.lastIndex = 0;
         let match: RegExpExecArray | null;
+        // locate() はファイル内シンボル数に比例する線形走査で、結果は行内で不変。
+        // 1行に複数の呼び出しがあっても1回で済むよう、最初に必要になった時点で解決する。
+        let from: string | undefined;
         while ((match = CALL_PATTERN.exec(line)) !== null) {
           const receiver = match[1];
           const name = match[2];
@@ -157,7 +160,7 @@ export function buildCallGraph(
           // 定義行のシグネチャ自体は呼び出しではない
           if (defined?.has(name)) continue;
 
-          const from = locator.locate(source.path, lineNo);
+          from ??= locator.locate(source.path, lineNo);
           const { to, confidence } = resolve(name, source.path, Boolean(receiver), index);
 
           const key = `${from}->${to}@${source.path}:${lineNo}`;
@@ -198,9 +201,4 @@ export function buildCallGraph(
   for (const [key, values] of callerMap) callers[key] = [...values];
 
   return { edges, callees, callers };
-}
-
-/** ファイル直下（関数外）のコードを指す疑似シンボルID */
-export function moduleSymbolId(file: string): string {
-  return symbolId(file, MODULE_SYMBOL_NAME);
 }

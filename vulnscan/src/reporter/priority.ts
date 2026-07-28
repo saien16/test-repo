@@ -13,6 +13,7 @@
 import type { Finding } from '../types/finding.js';
 import type { AttackChain } from '../types/killchain.js';
 import type { AnalyzedReport } from '../types/report.js';
+import { likelihoodJa } from './labels.js';
 import { SEVERITY_LABEL_JA, SEVERITY_WEIGHT, isActiveFinding, severityRank } from './severity.js';
 import { firstSentence, truncate } from './text.js';
 
@@ -421,26 +422,4 @@ export function buildKeyFindings(
     lines.push('対応を要するFindingは検出されませんでした。');
   }
   return lines.slice(0, limit);
-}
-
-export function likelihoodJa(likelihood: AttackChain['likelihood']): string {
-  switch (likelihood) {
-    case 'high':
-      return '高';
-    case 'medium':
-      return '中';
-    default:
-      return '低';
-  }
-}
-
-export function effortJa(effort: Effort): string {
-  switch (effort) {
-    case 'low':
-      return '小';
-    case 'medium':
-      return '中';
-    default:
-      return '大';
-  }
 }

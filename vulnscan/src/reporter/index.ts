@@ -18,49 +18,17 @@ import { renderJson } from './formatters/json.js';
 import { renderMarkdown } from './formatters/markdown.js';
 import { renderSarif } from './formatters/sarif.js';
 
-export { analyzeResult, analyzeMechanically, type MechanicalAnalysis } from './analyze.js';
-export { summarize, type SummarizeExtra } from './summarize.js';
-export { determineExitCode, evaluateGate, type GateDecision } from './gate.js';
-
-export { renderCli } from './formatters/cli.js';
-export { renderJson, buildJsonReport, type JsonReport } from './formatters/json.js';
-export { renderSarif, buildSarifLog, type SarifLog } from './formatters/sarif.js';
-export { renderMarkdown } from './formatters/markdown.js';
-export { renderHtml } from './formatters/html.js';
-
-export {
-  buildFindingSignals,
-  buildPrioritizedActions,
-  buildKeyFindings,
-  rankSignals,
-  type FindingSignal,
-  type PrioritizedAction,
-} from './priority.js';
-export {
-  buildFallbackNarrative,
-  generateNarrative,
-  NarrativeSchema,
-  type Narrative,
-  type NarrativeInput,
-  type NarrativeOutcome,
-} from './narrative.js';
-export {
-  SEVERITY_ORDER,
-  SEVERITY_LABEL_JA,
-  isActiveFinding,
-  isGateTarget,
-  severityRank,
-  toSarifLevel,
-} from './severity.js';
-
-/** フォーマットに対応するファイル拡張子（出力先の決定に使う） */
-export const FORMAT_EXTENSION: Record<ReportOptions['format'], string> = {
-  cli: '.txt',
-  json: '.json',
-  sarif: '.sarif',
-  markdown: '.md',
-  html: '.html',
-};
+/*
+ * ここで再公開するのは、レポーターの外（CLI・オーケストレータ）から
+ * 実際に呼ばれる入口だけに限る。
+ *
+ * 内部ヘルパまで barrel に並べると公開APIに見えてしまい、
+ * シグネチャを変えるたびに「外部利用があるかもしれない」という判断が要る。
+ * レポーター内部のモジュールやテストは具象モジュールを直接 import すること。
+ */
+export { analyzeResult } from './analyze.js';
+export { summarize } from './summarize.js';
+export { determineExitCode } from './gate.js';
 
 /**
  * 分析済みの中間表現を、指定フォーマットの文字列にレンダリングする。

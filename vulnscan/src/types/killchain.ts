@@ -2,29 +2,46 @@
  * ④ キルチェーン分析のデータモデル。
  */
 
+/**
+ * サイバーキルチェーン段階。**この配列が唯一の真実**で、union は導出する。
+ *
+ * この配列は `killchain/schema.ts` で LLM に渡す `z.enum()` の値そのものになる。
+ * union と配列が別々に手書きされていると、段階を足して配列への追加を忘れた場合に
+ * **LLM がその段階を返せなくなる**のに型エラーが出ない。
+ */
+export const KILL_CHAIN_PHASES = [
+  'reconnaissance',
+  'weaponization',
+  'delivery',
+  'exploitation',
+  'installation',
+  'command-and-control',
+  'actions-on-objectives',
+] as const;
+
 /** サイバーキルチェーン段階 */
-export type KillChainPhase =
-  | 'reconnaissance'
-  | 'weaponization'
-  | 'delivery'
-  | 'exploitation'
-  | 'installation'
-  | 'command-and-control'
-  | 'actions-on-objectives';
+export type KillChainPhase = (typeof KILL_CHAIN_PHASES)[number];
+
+/**
+ * MITRE ATT&CK 戦術。**この配列が唯一の真実**で、union は導出する。
+ * 理由は {@link KILL_CHAIN_PHASES} と同じ（`z.enum()` の値になる）。
+ */
+export const ATTACK_TACTICS = [
+  'initial-access',
+  'execution',
+  'persistence',
+  'privilege-escalation',
+  'defense-evasion',
+  'credential-access',
+  'discovery',
+  'lateral-movement',
+  'collection',
+  'exfiltration',
+  'impact',
+] as const;
 
 /** MITRE ATT&CK 戦術 */
-export type AttackTactic =
-  | 'initial-access'
-  | 'execution'
-  | 'persistence'
-  | 'privilege-escalation'
-  | 'defense-evasion'
-  | 'credential-access'
-  | 'discovery'
-  | 'lateral-movement'
-  | 'collection'
-  | 'exfiltration'
-  | 'impact';
+export type AttackTactic = (typeof ATTACK_TACTICS)[number];
 
 export interface ChainStep {
   order: number;

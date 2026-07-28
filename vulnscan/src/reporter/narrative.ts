@@ -12,12 +12,12 @@ import { createHash } from 'node:crypto';
 import * as z from 'zod/v4';
 import type { LlmClient } from '../llm/client.js';
 import type { VulnScanConfig } from '../types/config.js';
-import type { Finding } from '../types/finding.js';
 import type { AttackChain } from '../types/killchain.js';
 import type { ScanContext } from '../types/context.js';
 import type { ScanSummary } from '../types/report.js';
 import { SEVERITY_LABEL_JA, SEVERITY_ORDER } from './severity.js';
-import { likelihoodJa, type FindingSignal, type PrioritizedAction } from './priority.js';
+import { likelihoodJa } from './labels.js';
+import type { FindingSignal, PrioritizedAction } from './priority.js';
 import { truncate } from './text.js';
 
 /**
@@ -79,7 +79,7 @@ const MAX_CHAINS_IN_DIGEST = 5;
 const MAX_ACTIONS_IN_DIGEST = 8;
 
 /** LLMに渡すダイジェストを組み立てる */
-export function buildDigest(input: NarrativeInput): string {
+function buildDigest(input: NarrativeInput): string {
   const { context, summary, ranked, chains, actions } = input;
   const lines: string[] = [];
 
@@ -181,7 +181,7 @@ export function buildDigest(input: NarrativeInput): string {
 }
 
 /** LLM呼び出しが失敗した理由を人が読める形に */
-export function describeLlmFailure(reason: string, detail?: string | null): string {
+function describeLlmFailure(reason: string, detail?: string | null): string {
   switch (reason) {
     case 'refusal':
       return `LLMによる文章生成が安全分類器に拒否されました${detail ? `（カテゴリ: ${detail}）` : ''}。以下は機械生成の要約です。`;
@@ -213,7 +213,7 @@ function cleanExecutiveSummary(summary: ScanSummary): string {
 }
 
 /** 経営層向け要約の機械生成版 */
-export function fallbackExecutiveSummary(
+function fallbackExecutiveSummary(
   summary: ScanSummary,
   chains: readonly AttackChain[],
   actions: readonly PrioritizedAction[],
@@ -266,7 +266,7 @@ export function fallbackExecutiveSummary(
 }
 
 /** リスク全体像の機械生成版 */
-export function fallbackRiskNarrative(
+function fallbackRiskNarrative(
   summary: ScanSummary,
   ranked: readonly FindingSignal[],
   chains: readonly AttackChain[],
@@ -340,7 +340,7 @@ export function fallbackRiskNarrative(
 }
 
 /** 前回比較コメントの機械生成版 */
-export function fallbackTrendNarrative(summary: ScanSummary): string {
+function fallbackTrendNarrative(summary: ScanSummary): string {
   const { newCount, fixedCount, persistentCount } = summary;
   const parts: string[] = [
     `前回スキャンとの比較では、新規 ${newCount} 件・継続 ${persistentCount} 件・解消 ${fixedCount} 件でした。`,

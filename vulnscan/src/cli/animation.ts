@@ -23,7 +23,7 @@
  *   8. 端末幅を超えない（`reporter/text.ts` の表示幅計算を使う）。
  */
 
-import type { StageName } from '../core/orchestrator.js';
+import { STAGE_SEQUENCE, type StageName } from '../core/orchestrator.js';
 import { createStyler, type Styler } from '../reporter/ansi.js';
 import { displayWidth, truncate } from '../reporter/text.js';
 
@@ -71,16 +71,15 @@ export interface AnimationOptions {
  * 表示の語彙
  * ------------------------------------------------------------------ */
 
-/** 表示順。orchestrator のパイプライン順と一致させること */
-export const STAGE_ORDER: readonly StageName[] = [
-  'context',
-  'analyze',
-  'vuln',
-  'killchain',
-  'architecture',
-  'heatmap',
-  'report',
-];
+/**
+ * 表示順。orchestrator のパイプライン順そのものを使う。
+ *
+ * 以前はここに同じ並びを手書きしており、`readonly StageName[]` という型では
+ * 要素の欠落を検出できなかった（テストも STAGE_ORDER を回す形なので
+ * 原理的に漏れを検出できない）。順序配列を1つにすることで
+ * 「順序配列に足す」＝「型に足す」になる。
+ */
+export const STAGE_ORDER = STAGE_SEQUENCE;
 
 /**
  * ステージの「詠唱名」。

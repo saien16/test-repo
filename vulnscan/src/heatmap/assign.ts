@@ -6,7 +6,9 @@
  * 「どこにも置けなかったから消えた」Finding が一番危ない。
  */
 
-import { normalizePath } from '../context/glob.js';
+// パス正規化は util/path.ts に統合済み。glob.ts 版は先頭 '/' を1つしか剥がさず、
+// '//src/a.ts' のような入力で構成要素への前方一致が外れていた。
+import { normalizeRelPath as normalizePath } from '../util/path.js';
 import type { ArchitectureComponent, ArchitectureModel } from '../types/architecture.js';
 import type { ScanContext } from '../types/context.js';
 import type { Finding } from '../types/finding.js';
