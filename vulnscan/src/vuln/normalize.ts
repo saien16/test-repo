@@ -6,7 +6,7 @@ import type { ScanContext } from '../types/context.js';
 import type { Finding, RawFinding, Severity } from '../types/finding.js';
 import { calculateCvss3, inferCvss3MetricsWithReasons, normalizeCweId } from './cvss.js';
 import { computeFingerprint, fingerprintToId, normalizeFilePath } from './fingerprint.js';
-import { buildReferences, lookupCwe, owaspUrl } from './knowledge.js';
+import { buildReferences, lookupCwe, owaspForCwe, owaspUrl } from './knowledge.js';
 
 /** 深刻度の強さ（比較用） */
 const SEVERITY_RANK: Record<Severity, number> = {
@@ -48,8 +48,18 @@ export function normalizeFinding(raw: RawFinding, ctx: ScanContext, now: string)
   const { metrics, reasons } = inferCvss3MetricsWithReasons(raw, ctx);
   const cvss = calculateCvss3(metrics, '3.1');
 
-  // 知識ベースにカテゴリがあればそれを正とする（LLM の申告ゆれを吸収）
-  const category = kb?.owasp ?? (owaspUrl(raw.category) ? raw.category : (raw.category ?? ''));
+  // OWASP カテゴリの決め方（確度の高い順）:
+  //   1. 手作り知識ベースの直接対応（70件）
+  //   2. LLM が申告した、URL に解決できる正しい形式のカテゴリ
+  //   3. CWE の親を辿って手作り知識ベースを持つ祖先から継承したもの（推測）
+  //   4. LLM の申告をそのまま
+  const inherited = cweId ? owaspForCwe(cweId) : null;
+  const category =
+    kb?.owasp ??
+    (owaspUrl(raw.category) ? raw.category : undefined) ??
+    inherited?.category ??
+    raw.category ??
+    '';
 
   const reasoning = [
     raw.reasoning ?? '',

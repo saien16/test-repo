@@ -36,6 +36,28 @@ export interface ScanConfig {
   maxFileBytes: number;
 }
 
+/**
+ * 設定値の出所。信頼境界の判定に使う。
+ *   - 'default'     : 組み込みの既定値
+ *   - 'config-file' : スキャン対象リポジトリの `.vulnscan.yml`（**未信頼**）
+ *   - 'cli'         : CLIフラグ（オペレータが明示指定した値＝信頼できる）
+ */
+export type ConfigSource = 'default' | 'config-file' | 'cli';
+
+/** パス系設定の出所。リポジトリ外を指すことを許すかの判断に使う */
+export interface PathSources {
+  baselinePath: ConfigSource;
+  ignorePath: ConfigSource;
+}
+
+/** 出所が信頼境界の内側（オペレータ由来）かどうか */
+export function isOperatorProvidedPath(
+  config: { pathSources?: PathSources } | undefined,
+  key: keyof PathSources,
+): boolean {
+  return config?.pathSources?.[key] === 'cli';
+}
+
 export interface VulnScanConfig {
   llm: LlmConfig;
   scan: ScanConfig;
@@ -58,6 +80,11 @@ export interface VulnScanConfig {
    * これ未満の推測はセルに反映せず、死角判定にも使わない。
    */
   minInferenceConfidence: number;
+  /**
+   * パス系設定の出所。loadConfig が必ず算出して上書きするため、
+   * `.vulnscan.yml` から指定しても採用されない（信頼の詐称を防ぐ）。
+   */
+  pathSources?: PathSources;
 }
 
 export const DEFAULT_CONFIG: VulnScanConfig = {
@@ -100,4 +127,5 @@ export const DEFAULT_CONFIG: VulnScanConfig = {
   architecture: true,
   heatmap: true,
   minInferenceConfidence: 0.3,
+  pathSources: { baselinePath: 'default', ignorePath: 'default' },
 };

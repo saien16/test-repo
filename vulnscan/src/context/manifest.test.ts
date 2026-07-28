@@ -158,6 +158,57 @@ describe('collectDependencies', () => {
     ).not.toThrow();
     expect(warnings).toHaveLength(1);
   });
+
+  it('依存名として妥当でない文字列を除外する（マニフェストは未信頼入力）', () => {
+    const warnings: string[] = [];
+    const deps = collectDependencies(
+      [
+        {
+          path: 'package.json',
+          content: JSON.stringify({
+            dependencies: {
+              '<img src=x onerror=alert(1)>': '1.0.0',
+              'evil`pkg`': '1.0.0',
+              'name with space': '1.0.0',
+              express: '^4.18.2',
+            },
+          }),
+        },
+      ],
+      warnings,
+    );
+    expect(deps.map((d) => d.name)).toEqual(['express']);
+    expect(warnings).toHaveLength(1);
+    // 警告に不正な名前そのものを持ち込まない
+    expect(warnings[0]!).not.toContain('<img');
+    expect(warnings[0]!).toContain('package.json');
+  });
+
+  it('各エコシステムの正当な名前は除外しない', () => {
+    const warnings: string[] = [];
+    const deps = collectDependencies(
+      [
+        {
+          path: 'package.json',
+          content: JSON.stringify({ dependencies: { '@scope/pkg': '1.0.0' } }),
+        },
+        { path: 'go.mod', content: 'require github.com/gin-gonic/gin v1.9.1' },
+        {
+          path: 'pom.xml',
+          content:
+            '<dependency><groupId>org.springframework.boot</groupId>' +
+            '<artifactId>spring-boot-starter-web</artifactId><version>3.2.0</version></dependency>',
+        },
+      ],
+      warnings,
+    );
+    expect(deps.map((d) => d.name).sort()).toEqual([
+      '@scope/pkg',
+      'github.com/gin-gonic/gin',
+      'org.springframework.boot:spring-boot-starter-web',
+    ]);
+    expect(warnings).toEqual([]);
+  });
 });
 
 describe('detectFrameworks', () => {

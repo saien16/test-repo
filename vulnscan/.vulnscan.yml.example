@@ -45,6 +45,10 @@ failOn: high
 # 新規検出のみでゲートする（既存の負債でCIを落とさない）
 failOnNewOnly: false
 
+# パス系設定はスキャン対象リポジトリの中だけを指せます。
+# 絶対パスや `..` でリポジトリ外へ出る指定は拒否され、既定値が使われます
+# （設定ファイルは解析対象リポジトリの一部であり、未信頼入力として扱うため）。
+# リポジトリ外を指したい場合は CLI の --baseline で指定してください。
 baselinePath: .vulnscan/baseline.json
 ignorePath: .vulnignore
 

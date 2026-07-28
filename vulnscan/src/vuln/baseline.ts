@@ -9,8 +9,9 @@
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { dirname } from 'node:path';
 import type { Finding, TriageStatus } from '../types/finding.js';
+import { resolveRepoPath, toDisplayPath, type ResolveRepoPathOptions } from '../util/path.js';
 
 /** ベースラインファイルのスキーマ */
 export interface BaselineFile {
@@ -29,9 +30,20 @@ export function emptyBaseline(): BaselineFile {
   return { version: BASELINE_SCHEMA_VERSION, generatedAt: '', findings: [] };
 }
 
-/** repoRoot を基準に相対パスを解決する */
-export function resolvePath(path: string, repoRoot: string): string {
-  return isAbsolute(path) ? path : resolve(repoRoot || process.cwd(), path);
+/**
+ * repoRoot を基準に相対パスを解決する。
+ *
+ * 既定ではリポジトリ外（絶対パス・`..` 脱出）を拒否して null を返す。
+ * スキャン対象リポジトリの `.vulnscan.yml` は未信頼入力なので、
+ * そこから来たパスで任意の場所を読み書きさせないための封じ込め。
+ * オペレータがCLIフラグで指定した値だけ `allowOutside` を渡す。
+ */
+export function resolvePath(
+  path: string,
+  repoRoot: string,
+  options: ResolveRepoPathOptions = {},
+): string | null {
+  return resolveRepoPath(repoRoot, path, options);
 }
 
 export interface LoadBaselineResult {
@@ -44,21 +56,38 @@ export interface LoadBaselineResult {
 /**
  * ベースラインJSONを読み込む。
  * 未存在は正常系（初回スキャン）。壊れている場合は errors に積んで空として扱う。
+ *
+ * エラーメッセージには絶対パスも生の例外メッセージも載せない。
+ * レポートはCI成果物やPRコメントとして公開されうるため、
+ * ホストのディレクトリ構成やファイル先頭の内容（JSON.parse の SyntaxError に
+ * 含まれる）が漏れないようにする。
  */
-export async function loadBaseline(path: string, repoRoot: string): Promise<LoadBaselineResult> {
-  const full = resolvePath(path, repoRoot);
+export async function loadBaseline(
+  path: string,
+  repoRoot: string,
+  options: ResolveRepoPathOptions = {},
+): Promise<LoadBaselineResult> {
+  const full = resolvePath(path, repoRoot, options);
+  if (full === null) {
+    return {
+      baseline: emptyBaseline(),
+      existed: false,
+      errors: ['ベースラインのパスがリポジトリ外を指しているため読み込みませんでした'],
+    };
+  }
+  const shown = toDisplayPath(repoRoot, full);
   let text: string;
   try {
     text = await readFile(full, 'utf8');
   } catch (e) {
-    const code = (e as NodeJS.ErrnoException)?.code;
+    const code = errnoCode(e);
     if (code === 'ENOENT') {
       return { baseline: emptyBaseline(), existed: false, errors: [] };
     }
     return {
       baseline: emptyBaseline(),
       existed: false,
-      errors: [`ベースラインの読み込みに失敗しました (${full}): ${describe(e)}`],
+      errors: [`ベースラインを読み込めませんでした (${shown}${code ? ` / ${code}` : ''})`],
     };
   }
 
@@ -80,11 +109,12 @@ export async function loadBaseline(path: string, repoRoot: string): Promise<Load
       existed: true,
       errors: [],
     };
-  } catch (e) {
+  } catch {
+    // 例外メッセージ（SyntaxError はファイル先頭数十バイトを含む）は載せない
     return {
       baseline: emptyBaseline(),
       existed: false,
-      errors: [`ベースラインJSONの解析に失敗しました (${full}): ${describe(e)}`],
+      errors: [`ベースラインJSONを解析できませんでした (${shown})`],
     };
   }
 }
@@ -170,13 +200,19 @@ function inheritStatus(status: TriageStatus | undefined): TriageStatus {
 /**
  * 新しいベースラインを書き出す。
  * 修正済み(diffStatus='fixed')の Finding は次回以降不要なので保存しない。
+ *
+ * リポジトリ外への書き出しは既定で拒否する（任意ファイル書き込みの防止）。
  */
 export async function saveBaseline(
   findings: Finding[],
   path: string,
   repoRoot = process.cwd(),
+  options: ResolveRepoPathOptions = {},
 ): Promise<string> {
-  const full = resolvePath(path, repoRoot);
+  const full = resolvePath(path, repoRoot, options);
+  if (full === null) {
+    throw new Error('ベースラインの保存先がリポジトリ外を指しているため書き出しを中止しました');
+  }
   const payload: BaselineFile = {
     version: BASELINE_SCHEMA_VERSION,
     generatedAt: new Date().toISOString(),
@@ -187,6 +223,8 @@ export async function saveBaseline(
   return full;
 }
 
-function describe(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
+/** errno コード（ENOENT など）だけを取り出す。任意の例外文字列は返さない。 */
+function errnoCode(e: unknown): string | null {
+  const code = (e as NodeJS.ErrnoException)?.code;
+  return typeof code === 'string' && /^[A-Z0-9_]{1,32}$/.test(code) ? code : null;
 }

@@ -11,7 +11,7 @@ import { runScan, type StageName } from '../core/orchestrator.js';
 import { LlmClient } from '../llm/client.js';
 import { analyzeResult, generateReport, determineExitCode } from '../reporter/index.js';
 import { saveBaseline } from '../vuln/index.js';
-import type { VulnScanConfig } from '../types/config.js';
+import { isOperatorProvidedPath, type VulnScanConfig } from '../types/config.js';
 import type { ReportFormat, ReportOptions } from '../types/report.js';
 
 const STAGE_LABELS: Record<StageName, string> = {
@@ -112,7 +112,12 @@ async function runScanCommand(target: string, opts: CliOptions): Promise<void> {
   }
 
   if (opts.updateBaseline) {
-    await saveBaseline(result.findings, resolve(repoRoot, config.baselinePath));
+    // 事前に絶対パス化するとリポジトリ内への封じ込め判定を素通りしてしまうため、
+    // 設定値と repoRoot をそのまま渡して saveBaseline 側で解決させる。
+    // リポジトリ外を許すのは --baseline で明示指定された場合だけ。
+    await saveBaseline(result.findings, config.baselinePath, repoRoot, {
+      allowOutside: isOperatorProvidedPath(config, 'baselinePath'),
+    });
     log(`✔ ベースラインを更新しました: ${config.baselinePath}`);
   }
 

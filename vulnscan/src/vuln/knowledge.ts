@@ -1,7 +1,21 @@
 /**
  * CWE / OWASP Top 10 の知識ベース。
  * 外部ネットワークに依存せずオフラインで参照できるよう、主要な項目をハードコードしている。
+ *
+ * 二層構造:
+ *   1. 手作りオーバーレイ（{@link CWE_KB}、70件）
+ *      日本語名・日本語説明・OWASP Top 10 2021 マッピングを持つ。常に優先される。
+ *      MITRE のカタログには OWASP Top Ten 2007/2004 の対応しか無く 2021 が無いため、
+ *      この手作りマッピングのほうが価値が高い。
+ *   2. MITRE CWE カタログ（`./catalog.js`、959件）
+ *      オーバーレイに無い CWE の英語名・説明・親子関係を補う。
+ *
+ * OWASP 2021 のカテゴリはオーバーレイにしか無いので、カタログ側の CWE には
+ * 親を辿って（{@link cweAncestors}）オーバーレイを持つ祖先のカテゴリを継承させる。
+ * 継承したものは推測なので、{@link owaspForCwe} は `inherited` フラグで区別する。
  */
+
+import { cweAncestors, lookupCwe as lookupCatalogCwe, type CweEntry as CweCatalogEntry } from './catalog.js';
 
 /** OWASP Top 10 2021 のカテゴリ識別子 */
 export type OwaspCategoryId =
@@ -468,7 +482,14 @@ export const CWE_KB: Record<string, CweEntry> = {
   },
 };
 
-/** CWE ID から知識エントリを引く（未知なら undefined） */
+/**
+ * CWE ID から手作りオーバーレイの知識エントリを引く（未知なら undefined）。
+ *
+ * 注: 「日本語名と OWASP 2021 カテゴリを持つ curated な 70 件か？」の判定に
+ * 使われている箇所があるため（`osv.ts` の CWE 選択など）、
+ * ここではカタログへのフォールバックを行わない。
+ * カタログを含めた統合ビューが欲しい場合は {@link lookupCweInfo} を使うこと。
+ */
 export function lookupCwe(cweId: string): CweEntry | undefined {
   return CWE_KB[cweId];
 }
@@ -502,9 +523,132 @@ export function buildReferences(
   };
 
   if (cweId) push(cweUrl(cweId));
-  // OWASP カテゴリは知識ベース優先、無ければ LLM が申告したカテゴリを使う
-  const kbCategory = cweId ? lookupCwe(cweId)?.owasp : undefined;
-  push(owaspUrl(kbCategory ?? category));
+  // OWASP カテゴリの確度の高い順:
+  //   1. 手作り知識ベースの直接対応
+  //   2. 呼び出し側が持っているカテゴリ（LLM 申告 / 依存スキャンの既定値）
+  //   3. CWE の親を辿って手作り知識ベースを持つ祖先から継承したもの（推測）
+  const inherited = cweId ? owaspForCwe(cweId) : null;
+  const direct = inherited && !inherited.inherited ? inherited.category : undefined;
+  push(owaspUrl(direct ?? category ?? inherited?.category));
   for (const url of extra) push(url);
   return refs;
+}
+
+/* ------------------------------------------------------------------ *
+ * MITRE CWE カタログ（959件）との統合
+ * ------------------------------------------------------------------ */
+
+/** 'cwe-89' / '89' / 'CWE-89' を 'CWE-89' に揃える。数値が取れなければ null */
+function toCweId(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  const m = /(\d+)/.exec(String(raw));
+  return m ? `CWE-${m[1]}` : null;
+}
+
+/** 情報の出所。事実（MITRE）と手作りの解釈を混同しないための印。 */
+export type CweInfoSource = 'curated' | 'catalog' | 'curated+catalog';
+
+/** 手作りオーバーレイと MITRE カタログを重ね合わせた CWE 情報 */
+export interface CweInfo {
+  /** 'CWE-89' 形式に正規化した ID */
+  id: string;
+  /** 表示名。手作り日本語名があればそれ、無ければ MITRE の英語名 */
+  name: string;
+  /** MITRE の英語正式名称（カタログにも手作りにも無ければ null） */
+  englishName: string | null;
+  /** 説明。手作り日本語説明があればそれ、無ければ MITRE の英語説明 */
+  description: string;
+  /** OWASP Top 10 2021 カテゴリ（手作り、または祖先から継承。無ければ null） */
+  owasp: OwaspCategoryId | null;
+  /** owasp が祖先からの継承（＝推測）なら true */
+  owaspInherited: boolean;
+  /** 継承元の CWE ID（継承していなければ null） */
+  owaspVia: string | null;
+  /** どこ由来の情報か */
+  source: CweInfoSource;
+  /** MITRE カタログの生エントリ（無ければ null） */
+  catalog: CweCatalogEntry | null;
+}
+
+/**
+ * OWASP Top 10 2021 のカテゴリを決める。
+ *
+ * 1. 手作りオーバーレイに直接の対応があればそれを返す（`inherited: false` ＝ 事実に近い）
+ * 2. 無ければ親を辿り、最初に見つかったオーバーレイ持ちの祖先のカテゴリを継承する
+ *    （`inherited: true` ＝ 推測。レポートではこの区別を落とさないこと）
+ * 3. どちらも当たらなければ null
+ */
+export function owaspForCwe(
+  cweId: string,
+): { category: OwaspCategoryId; inherited: boolean; via: string | null } | null {
+  const id = toCweId(cweId);
+  if (id === null) return null;
+
+  const direct = CWE_KB[id];
+  if (direct) return { category: direct.owasp, inherited: false, via: null };
+
+  for (const ancestor of cweAncestors(id)) {
+    const hit = CWE_KB[ancestor.id];
+    if (hit) return { category: hit.owasp, inherited: true, via: ancestor.id };
+  }
+  return null;
+}
+
+/**
+ * 手作りオーバーレイ（優先）と MITRE カタログ（フォールバック）を
+ * 重ね合わせた CWE 情報を返す。どちらにも無ければ null。
+ */
+export function lookupCweInfo(cweId: string): CweInfo | null {
+  const id = toCweId(cweId);
+  if (id === null) return null;
+
+  const curated = CWE_KB[id];
+  const catalog = lookupCatalogCwe(id);
+  if (!curated && !catalog) return null;
+
+  const owasp = owaspForCwe(id);
+  const source: CweInfoSource = curated
+    ? catalog
+      ? 'curated+catalog'
+      : 'curated'
+    : 'catalog';
+
+  return {
+    id,
+    name: curated?.name ?? catalog?.name ?? id,
+    englishName: curated?.englishName ?? catalog?.name ?? null,
+    description: curated?.description ?? catalog?.description ?? '',
+    owasp: owasp?.category ?? null,
+    owaspInherited: owasp?.inherited ?? false,
+    owaspVia: owasp?.via ?? null,
+    source,
+    catalog,
+  };
+}
+
+/**
+ * 知識ベースのカバレッジ集計（レポートで「どこまで裏が取れているか」を示すため）。
+ * curated は手作り70件、inherited は祖先から OWASP を継承できた件数。
+ */
+export function knowledgeCoverage(catalogIds: string[]): {
+  curated: number;
+  owaspDirect: number;
+  owaspInherited: number;
+  owaspNone: number;
+} {
+  let owaspDirect = 0;
+  let owaspInherited = 0;
+  let owaspNone = 0;
+  for (const id of catalogIds) {
+    const hit = owaspForCwe(id);
+    if (!hit) owaspNone++;
+    else if (hit.inherited) owaspInherited++;
+    else owaspDirect++;
+  }
+  return {
+    curated: Object.keys(CWE_KB).length,
+    owaspDirect,
+    owaspInherited,
+    owaspNone,
+  };
 }

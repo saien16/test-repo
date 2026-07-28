@@ -8,6 +8,8 @@
 
 import type { EntryPoint, ScanContext } from '../types/context.js';
 import type { Cvss3Metrics, Cvss3Result, RawFinding, Severity } from '../types/finding.js';
+import { ciaFromCatalog, likelihoodOf, lookupCwe as lookupCatalogCwe } from './catalog.js';
+import { owaspForCwe } from './knowledge.js';
 
 /* ------------------------------------------------------------------ *
  * メトリクスの重み（公式仕様 Table 14 - 19）
@@ -252,6 +254,13 @@ function validateMetrics(m: Cvss3Metrics): Cvss3Metrics {
  * CWE ごとの典型的な基本メトリクス（推定の出発点）。
  * 「その脆弱性クラスが最も一般的な形で悪用された場合」を表す。
  * NVD が同種の CVE に付与しているベクタの中央値的な値を採用している。
+ *
+ * MITRE CWE カタログ（{@link ciaFromCatalog}）との関係:
+ *   カタログが与えるのは C/I/A の影響だけで、AV/AC/PR/UI/S は与えない。
+ *   一方この表は8メトリクス全てを NVD の実績値に合わせて調整してあり、
+ *   実スコアとの整合が検証済みなので、**この表にある CWE ではこちらを優先する**。
+ *   表に無い CWE（カタログ959件のうち約890件）ではカタログの C/I/A を使う。
+ *   どちらを使ったかは推定根拠（reasons）に必ず明記される。
  */
 const CWE_BASELINE: Record<string, Cvss3Metrics> = {
   // --- インジェクション系: 認証不要でネットワーク越しに完全な情報/完全性侵害 ---
@@ -376,12 +385,16 @@ export interface Cvss3Inference {
  * LLM が返した RawFinding（CVSSベクタを持たない）から基本メトリクスを推定する。
  *
  * 推定は次の順に「根拠が強いものほど後で上書きする」形で行う:
- *   1. CWE 別の典型ベースライン（無ければ OWASP カテゴリ → severity の順にフォールバック）
+ *   1. CWE 別の典型ベースライン
+ *      → 無ければ MITRE CWE カタログの consequences から C/I/A を導出
+ *      → それも無ければ OWASP カテゴリ → severity の順にフォールバック
  *   2. エントリポイントへの到達性（ctx.entryPoints）で AV / PR を補正
  *   3. dataFlow の有無・サニタイザの有無で AC を補正
  *   4. LLM が申告した severity で影響度(C/I/A)の上下限を補正
  *
  * すべての補正理由は reasons に日本語で記録され、レポートで開示できる。
+ * MITRE 由来（事実）と本ツールの調整（推測）が区別できるよう、
+ * カタログを使った場合はその旨を明記する。
  */
 export function inferCvss3MetricsWithReasons(
   finding: RawFinding,
@@ -393,15 +406,50 @@ export function inferCvss3MetricsWithReasons(
   // --- 1. ベースラインの選択 ---------------------------------------
   let metrics: Cvss3Metrics;
   const byCwe = cwe ? CWE_BASELINE[cwe] : undefined;
+  const catalogCia = cwe ? ciaFromCatalog(cwe) : null;
+
   if (byCwe) {
     metrics = { ...byCwe };
-    reasons.push(`${cwe} の典型的な攻撃シナリオを基準値として採用`);
+    reasons.push(`${cwe} の典型的な攻撃シナリオを基準値として採用（NVDの実績値に合わせた手調整ベースライン）`);
+    // カタログにも根拠がある場合、食い違いを黙って捨てずに開示する。
+    if (catalogCia && (catalogCia.C !== byCwe.C || catalogCia.I !== byCwe.I || catalogCia.A !== byCwe.A)) {
+      reasons.push(
+        `参考: MITRE CWE カタログの Common_Consequences からは ` +
+          `C:${catalogCia.C}/I:${catalogCia.I}/A:${catalogCia.A} が導かれるが、` +
+          `8メトリクス全体の整合が取れている手調整ベースラインを優先した`,
+      );
+    }
+  } else if (catalogCia) {
+    // カタログは C/I/A しか与えないので、攻撃容易性側(AV/AC/PR/UI/S)は
+    // OWASP カテゴリ（祖先からの継承を含む）→ severity の順に補う。
+    const skeleton = pickExploitabilitySkeleton(cwe, finding);
+    metrics = { ...skeleton.metrics, C: catalogCia.C, I: catalogCia.I, A: catalogCia.A };
+    reasons.push(
+      `${cwe} の影響度は MITRE CWE カタログ（Common_Consequences）由来: ` +
+        `C:${catalogCia.C}/I:${catalogCia.I}/A:${catalogCia.A}`,
+    );
+    reasons.push(`攻撃容易性(AV/AC/PR/UI/S)はカタログに情報が無いため${skeleton.label}で補完`);
+
+    // Likelihood_Of_Exploit も MITRE 由来の事実なので AC の推定に使う。
+    const likelihood = likelihoodOf(cwe ?? '');
+    if (likelihood === 'High' && metrics.AC === 'H') {
+      metrics.AC = 'L';
+      reasons.push('カタログの Likelihood_Of_Exploit が High のため AC を H → L に降格');
+    } else if (likelihood === 'Low' && metrics.AC === 'L') {
+      metrics.AC = 'H';
+      reasons.push('カタログの Likelihood_Of_Exploit が Low のため AC を L → H に引き上げ');
+    }
   } else {
-    const categoryKey = /^(A\d{2})/.exec(finding.category ?? '')?.[1];
+    const categoryKey = owaspKeyFor(cwe, finding);
     const byCategory = categoryKey ? CATEGORY_BASELINE[categoryKey] : undefined;
     if (byCategory) {
       metrics = { ...byCategory };
-      reasons.push(`CWE '${finding.cwe}' は未知のため OWASP カテゴリ ${categoryKey} の代表値を採用`);
+      const known = cwe !== null && lookupCatalogCwe(cwe) !== null;
+      reasons.push(
+        known
+          ? `CWE '${finding.cwe}' はカタログにあるが影響度を導ける consequences が無いため OWASP カテゴリ ${categoryKey} の代表値を採用`
+          : `CWE '${finding.cwe}' は未知のため OWASP カテゴリ ${categoryKey} の代表値を採用`,
+      );
     } else {
       metrics = { ...(SEVERITY_BASELINE[finding.severity] ?? SEVERITY_BASELINE.medium) };
       reasons.push(`CWE・カテゴリとも未知のため severity='${finding.severity}' の代表値を採用`);
@@ -469,6 +517,35 @@ export function inferCvss3MetricsWithReasons(
   applySeverityAdjustment(metrics, finding.severity, reasons);
 
   return { metrics, reasons };
+}
+
+/**
+ * OWASP Top 10 2021 のカテゴリ記号(A01..A10)を決める。
+ * LLM の申告 → 知識ベース（手作り、または CWE の祖先からの継承）の順に見る。
+ */
+function owaspKeyFor(cwe: string | null, finding: RawFinding): string | null {
+  const declared = /^(A\d{2})/.exec(finding.category ?? '')?.[1];
+  if (declared && CATEGORY_BASELINE[declared]) return declared;
+  const inherited = cwe ? owaspForCwe(cwe) : null;
+  const key = inherited ? /^(A\d{2})/.exec(inherited.category)?.[1] : undefined;
+  return key ?? null;
+}
+
+/**
+ * 攻撃容易性側のメトリクス（AV/AC/PR/UI/S）の出発点を選ぶ。
+ * カタログは影響度しか与えないため、この部分は別の根拠で埋める必要がある。
+ */
+function pickExploitabilitySkeleton(
+  cwe: string | null,
+  finding: RawFinding,
+): { metrics: Cvss3Metrics; label: string } {
+  const categoryKey = owaspKeyFor(cwe, finding);
+  const byCategory = categoryKey ? CATEGORY_BASELINE[categoryKey] : undefined;
+  if (byCategory) {
+    return { metrics: { ...byCategory }, label: `OWASP カテゴリ ${categoryKey} の代表値` };
+  }
+  const bySeverity = SEVERITY_BASELINE[finding.severity] ?? SEVERITY_BASELINE.medium;
+  return { metrics: { ...bySeverity }, label: `severity='${finding.severity}' の代表値` };
 }
 
 /** {@link inferCvss3MetricsWithReasons} のメトリクスのみを返す版 */

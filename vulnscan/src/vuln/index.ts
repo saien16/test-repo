@@ -8,7 +8,7 @@
  */
 
 import type { ScanContext } from '../types/context.js';
-import type { VulnScanConfig } from '../types/config.js';
+import { isOperatorProvidedPath, type VulnScanConfig } from '../types/config.js';
 import type { Finding, RawFinding } from '../types/finding.js';
 import { applyBaseline, loadBaseline } from './baseline.js';
 import { loadIgnoreList, matchIgnoreRule } from './ignore.js';
@@ -80,7 +80,10 @@ export async function manageFindings(
   let withDiff = merged;
   let fixed: Finding[] = [];
   if (config?.baselinePath) {
-    const loaded = await loadBaseline(config.baselinePath, repoRoot);
+    // リポジトリ由来の設定値ならリポジトリ内に封じ込める（任意ファイル読み取りの防止）
+    const loaded = await loadBaseline(config.baselinePath, repoRoot, {
+      allowOutside: isOperatorProvidedPath(config, 'baselinePath'),
+    });
     errors.push(...loaded.errors);
     const diff = applyBaseline(merged, loaded.baseline, now);
     withDiff = diff.findings;
@@ -90,7 +93,9 @@ export async function manageFindings(
   // --- 5. 抑制（.vulnignore と確信度しきい値） ---
   let suppressedCount = 0;
   const ignoreList = config?.ignorePath
-    ? await loadIgnoreList(config.ignorePath, repoRoot)
+    ? await loadIgnoreList(config.ignorePath, repoRoot, {
+        allowOutside: isOperatorProvidedPath(config, 'ignorePath'),
+      })
     : { rules: [], errors: [] };
   errors.push(...ignoreList.errors);
 
@@ -151,5 +156,43 @@ export {
   normalizeFilePath,
 } from './fingerprint.js';
 
-export { CWE_KB, lookupCwe, cweUrl, owaspUrl, buildReferences } from './knowledge.js';
-export type { CweEntry } from './knowledge.js';
+export {
+  CWE_KB,
+  lookupCwe,
+  cweUrl,
+  owaspUrl,
+  buildReferences,
+  lookupCweInfo,
+  owaspForCwe,
+  knowledgeCoverage,
+} from './knowledge.js';
+export type { CweEntry, CweInfo, CweInfoSource, OwaspCategoryId } from './knowledge.js';
+
+// MITRE CWE カタログ（959件）。手作り知識ベースと名前が衝突するので別名で公開する。
+export {
+  lookupCwe as lookupCatalogCwe,
+  catalogSize,
+  catalogSource,
+  allCwes,
+  cweAncestors,
+  cweCategory,
+  allCweCategories,
+  ciaFromCatalog,
+  likelihoodOf,
+  cwesForPlatform,
+  lensForCwe,
+  lensCoverage,
+  resolveCatalogPath,
+  catalogAvailable,
+  catalogLoadError,
+} from './catalog.js';
+export type {
+  CweEntry as CweCatalogEntry,
+  CweCategory,
+  CweCiaMetrics,
+  CweCiaFlags,
+  CweConsequence,
+  CweMitigation,
+  CweLikelihood,
+  PlatformQuery,
+} from './catalog.js';

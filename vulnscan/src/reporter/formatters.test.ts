@@ -11,7 +11,16 @@ import { renderCli } from './formatters/cli.js';
 import { renderHtml } from './formatters/html.js';
 import { renderJson } from './formatters/json.js';
 import { renderMarkdown } from './formatters/markdown.js';
-import { displayWidth, stripAnsi, wrapText } from './text.js';
+import {
+  displayWidth,
+  escapeMdCell,
+  escapeMdCode,
+  escapeMdCodeCell,
+  escapeMdText,
+  isSafeUrl,
+  stripAnsi,
+  wrapText,
+} from './text.js';
 
 function analyzedOf(result: ScanResult): AnalyzedReport {
   const m = analyzeMechanically(result);
@@ -189,6 +198,133 @@ describe('Markdownフォーマッタ', () => {
   });
 });
 
+describe('Markdownフォーマッタのエスケープ', () => {
+  /**
+   * スキャン対象リポジトリ由来の文字列はすべて未信頼入力。
+   * Markdownレポートは生HTML(<details>)を含むためHTMLが有効なレンダラで
+   * 表示される前提であり、タグ・バッククォート・パイプを無害化する必要がある。
+   */
+  const hostile = (): ScanResult =>
+    makeResult({
+      context: makeContext({
+        repoRoot: '/home/user/`whoami`',
+        git: {
+          branch: '<script>alert("branch")</script>',
+          headSha: 'abcdef1234567890',
+          changedFiles: [],
+        },
+        dependencies: [
+          {
+            name: '<img src=x onerror=alert(1)>',
+            version: '1.0.0 | 差し込み',
+            ecosystem: 'npm',
+            dev: false,
+            manifest: 'pkg/`evil`/package.json',
+          },
+        ],
+        warnings: ['<script>alert("warn")</script> という警告'],
+      }),
+      findings: [
+        makeFinding({
+          id: 'f-x',
+          title: '<script>alert("title")</script>',
+          location: { file: 'src/`inj`/<img src=x onerror=alert(2)>.ts', startLine: 1, endLine: 2 },
+          reasoning: '<img src=x onerror=alert(3)>',
+          remediation: '</details><script>alert(4)</script>',
+          references: ['javascript:alert(5)', 'https://example.com/ok', 'https://ex.com/<script>'],
+          dataFlow: [
+            {
+              file: 'src/`flow`.ts',
+              line: 3,
+              code: 'const a = 1;',
+              role: 'source',
+              description: '説明 | パイプ入り <b>tag</b>',
+            },
+          ],
+          mergedFrom: ['<script>alert(6)</script>'],
+          affectedPackage: {
+            name: '<img src=x>',
+            version: '1.0.0',
+            ecosystem: 'npm',
+            fixedVersion: '2.0.0',
+          },
+        }),
+      ],
+      chains: [
+        makeChain({
+          title: '<script>alert("chain")</script>',
+          entryPoint: 'GET /`x`',
+          impact: '<img src=x onerror=alert(7)>',
+          reasoning: '</details><script>alert(8)</script>',
+          chokePoint: { findingId: 'f-x', rationale: '<b>choke</b>\n改行あり' },
+          steps: [
+            {
+              order: 1,
+              findingId: 'f-x',
+              killChainPhase: 'exploitation',
+              attackTactic: 'initial-access',
+              attackTechnique: 'T1190<script>alert(9)</script>',
+              description: '説明 | パイプ',
+              preconditions: ['<script>alert(10)</script>'],
+            },
+          ],
+        }),
+      ],
+      errors: ['<script>alert("err")</script> が起きました'],
+    });
+
+  const md = renderMarkdown(hostile(), analyzedOf(hostile()), { verbose: true });
+
+  it('HTMLタグをそのまま出力しない', () => {
+    expect(md).not.toContain('<script>');
+    expect(md).not.toContain('</script>');
+    expect(md).not.toContain('<img ');
+    expect(md).not.toContain('<b>');
+    // エスケープ済みの形では現れる
+    expect(md).toContain('&lt;script&gt;');
+    expect(md).toContain('&lt;img src=x onerror=alert(3)&gt;');
+  });
+
+  it('自前で出す <details> だけがHTMLとして残る', () => {
+    const opens = md.match(/<details>/g) ?? [];
+    const closes = md.match(/<\/details>/g) ?? [];
+    expect(opens.length).toBe(closes.length);
+    // remediation / chain.reasoning に仕込んだ </details> は閉じタグとして数えられない
+    expect(closes.length).toBeLessThanOrEqual(2);
+  });
+
+  it('コードスパンに入る値のバッククォートを無害化する', () => {
+    // 該当箇所・SBOM・対象パスはいずれもコードスパンなので閉じられてはいけない
+    expect(md).toContain("`src/'inj'/&lt;img src=x onerror=alert(2)&gt;.ts:1-2`");
+    expect(md).toContain("`pkg/'evil'/package.json`");
+    expect(md).toContain("`/home/user/'whoami'`");
+    expect(md).not.toContain('`evil`');
+    expect(md).not.toContain('`whoami`');
+    // コードスパンの開閉が釣り合っている（単独のバッククォートの総数が偶数）
+    const singles = (md.match(/(?<!`)`(?!`)/g) ?? []).length;
+    expect(singles % 2).toBe(0);
+  });
+
+  it('テーブルセルのパイプをエスケープする', () => {
+    expect(md).toContain('1.0.0 \\| 差し込み');
+    expect(md).toContain('説明 \\| パイプ');
+  });
+
+  it('参考リンクは http(s) のみリンクにする', () => {
+    expect(md).toContain('- <https://example.com/ok>');
+    // javascript: スキームはリンクにしない
+    expect(md).not.toContain('<javascript:');
+    expect(md).toContain('- javascript:alert(5)');
+    // URL内のタグもエスケープする
+    expect(md).toContain('https://ex.com/&lt;script&gt;');
+  });
+
+  it('実行時のエラー・警告もエスケープする', () => {
+    expect(md).toContain('&lt;script&gt;alert(&quot;err&quot;)&lt;/script&gt;'.replace(/&quot;/g, '"'));
+    expect(md).toContain('&lt;script&gt;alert("warn")&lt;/script&gt;');
+  });
+});
+
 describe('HTMLフォーマッタ', () => {
   const result = richResult();
   const html = renderHtml(result, analyzedOf(result), { verbose: false });
@@ -278,6 +414,41 @@ describe('generateReport', () => {
         verbose: false,
       }),
     ).toThrow(/未対応のレポート形式/);
+  });
+});
+
+describe('Markdownエスケープユーティリティ', () => {
+  it('escapeMdText はHTML特殊文字を実体参照にする', () => {
+    expect(escapeMdText('<script>alert(1)</script>')).toBe(
+      '&lt;script&gt;alert(1)&lt;/script&gt;',
+    );
+    expect(escapeMdText('a & b')).toBe('a &amp; b');
+    // 二重エスケープにならない順序であること
+    expect(escapeMdText('&lt;')).toBe('&amp;lt;');
+  });
+
+  it('escapeMdCode はバッククォートと改行を無害化する', () => {
+    expect(escapeMdCode('a`b`c')).toBe("a'b'c");
+    expect(escapeMdCode('a\nb')).toBe('a b');
+    expect(escapeMdCode('<img src=x>')).toBe('&lt;img src=x&gt;');
+  });
+
+  it('escapeMdCell はパイプと改行を潰す', () => {
+    expect(escapeMdCell('a|b\nc')).toBe('a\\|b c');
+    expect(escapeMdCell('<b>x</b>')).toBe('&lt;b&gt;x&lt;/b&gt;');
+  });
+
+  it('escapeMdCodeCell はバッククォートとパイプの両方を処理する', () => {
+    expect(escapeMdCodeCell('a`b|c')).toBe("a'b\\|c");
+  });
+
+  it('isSafeUrl は http(s) のみ許可する', () => {
+    expect(isSafeUrl('https://example.com/a')).toBe(true);
+    expect(isSafeUrl('http://example.com')).toBe(true);
+    expect(isSafeUrl('javascript:alert(1)')).toBe(false);
+    expect(isSafeUrl('data:text/html,<script>')).toBe(false);
+    expect(isSafeUrl('https://example.com/ <script>')).toBe(false);
+    expect(isSafeUrl('https://example.com/`x`')).toBe(false);
   });
 });
 

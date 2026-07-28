@@ -11,6 +11,7 @@
 
 import { readFile } from 'node:fs/promises';
 import type { Finding } from '../types/finding.js';
+import { toDisplayPath, type ResolveRepoPathOptions } from '../util/path.js';
 import { resolvePath } from './baseline.js';
 
 export type IgnoreRuleKind = 'fingerprint' | 'id' | 'cwe' | 'glob';
@@ -37,18 +38,35 @@ const FINGERPRINT_RE = /^[0-9a-f]{16,64}$/i;
 const ID_RE = /^VS-[0-9a-f]{6,}$/i;
 const CWE_RE = /^CWE-\d+$/i;
 
-/** .vulnignore を読み込む。存在しなければ空のリストを返す（エラーではない）。 */
-export async function loadIgnoreList(path: string, repoRoot: string): Promise<IgnoreList> {
-  const full = resolvePath(path, repoRoot);
+/**
+ * .vulnignore を読み込む。存在しなければ空のリストを返す（エラーではない）。
+ *
+ * パスはリポジトリ内へ封じ込める（未信頼の `.vulnscan.yml` から任意ファイルを
+ * 読ませないため）。エラーには絶対パスも生の例外メッセージも載せない。
+ */
+export async function loadIgnoreList(
+  path: string,
+  repoRoot: string,
+  options: ResolveRepoPathOptions = {},
+): Promise<IgnoreList> {
+  const full = resolvePath(path, repoRoot, options);
+  if (full === null) {
+    return {
+      rules: [],
+      errors: ['抑制リストのパスがリポジトリ外を指しているため読み込みませんでした'],
+    };
+  }
   try {
     const text = await readFile(full, 'utf8');
     return parseIgnoreList(text);
   } catch (e) {
     const code = (e as NodeJS.ErrnoException)?.code;
     if (code === 'ENOENT') return { rules: [], errors: [] };
+    const shown = toDisplayPath(repoRoot, full);
+    const safeCode = typeof code === 'string' && /^[A-Z0-9_]{1,32}$/.test(code) ? ` / ${code}` : '';
     return {
       rules: [],
-      errors: [`抑制リストの読み込みに失敗しました (${full}): ${e instanceof Error ? e.message : String(e)}`],
+      errors: [`抑制リストを読み込めませんでした (${shown}${safeCode})`],
     };
   }
 }

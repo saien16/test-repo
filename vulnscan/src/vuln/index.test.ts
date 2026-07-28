@@ -2,16 +2,16 @@
  * manageFindings（③脆弱性情報管理の統合）・ベースライン差分・抑制のテスト。
  */
 
-import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ScanContext } from '../types/context.js';
-import { DEFAULT_CONFIG, type VulnScanConfig } from '../types/config.js';
+import { DEFAULT_CONFIG, type PathSources, type VulnScanConfig } from '../types/config.js';
 import type { Finding, RawFinding } from '../types/finding.js';
 import { manageFindings } from './index.js';
 import { applyBaseline, emptyBaseline, loadBaseline, saveBaseline } from './baseline.js';
-import { globToRegExp, matchIgnoreRule, parseIgnoreList } from './ignore.js';
+import { globToRegExp, loadIgnoreList, matchIgnoreRule, parseIgnoreList } from './ignore.js';
 import type { FetchLike } from './osv.js';
 
 const NOW = '2026-07-28T00:00:00.000Z';
@@ -317,6 +317,162 @@ describe('.vulnignore による抑制', () => {
     const list = parseIgnoreList('CWE-89');
     const finding = { cwe: 'CWE-89', id: 'VS-1', fingerprint: 'a', location: { file: 'x' } } as unknown as Finding;
     expect(matchIgnoreRule(finding, list)?.kind).toBe('cwe');
+  });
+});
+
+describe('パストラバーサルの封じ込め', () => {
+  /** スキャン対象リポジトリの外に置かれた「読まれてはいけない」ファイル */
+  let outsideDir: string;
+  let secretPath: string;
+
+  beforeEach(async () => {
+    outsideDir = await mkdtemp(join(tmpdir(), 'vulnscan-outside-'));
+    secretPath = join(outsideDir, 'secret.json');
+    await writeFile(
+      secretPath,
+      JSON.stringify({ findings: [{ fingerprint: 'a'.repeat(64) }] }),
+      'utf8',
+    );
+  });
+
+  afterEach(async () => {
+    await rm(outsideDir, { recursive: true, force: true });
+  });
+
+  /** repoRoot から outsideDir へ抜ける相対パス */
+  const escapeTo = (target: string): string => `../${target.split('/').slice(-2).join('/')}`;
+
+  it('loadBaseline は絶対パスを拒否する', async () => {
+    const result = await loadBaseline(secretPath, repoRoot);
+    expect(result.existed).toBe(false);
+    expect(result.baseline.findings).toEqual([]);
+    expect(result.errors.some((e) => e.includes('リポジトリ外'))).toBe(true);
+  });
+
+  it('loadBaseline は `..` 脱出を拒否する', async () => {
+    const result = await loadBaseline(escapeTo(secretPath), repoRoot);
+    expect(result.baseline.findings).toEqual([]);
+    expect(result.errors.some((e) => e.includes('リポジトリ外'))).toBe(true);
+  });
+
+  it('loadBaseline は allowOutside 指定時のみリポジトリ外を読む（CLI由来の信頼）', async () => {
+    const result = await loadBaseline(secretPath, repoRoot, { allowOutside: true });
+    expect(result.existed).toBe(true);
+    expect(result.baseline.findings).toHaveLength(1);
+  });
+
+  it('loadIgnoreList は絶対パス・`..` 脱出を拒否する', async () => {
+    await writeFile(join(outsideDir, '.vulnignore'), 'CWE-89\n', 'utf8');
+    const abs = await loadIgnoreList(join(outsideDir, '.vulnignore'), repoRoot);
+    expect(abs.rules).toEqual([]);
+    expect(abs.errors.some((e) => e.includes('リポジトリ外'))).toBe(true);
+
+    const rel = await loadIgnoreList(escapeTo(join(outsideDir, '.vulnignore')), repoRoot);
+    expect(rel.rules).toEqual([]);
+    expect(rel.errors.some((e) => e.includes('リポジトリ外'))).toBe(true);
+  });
+
+  it('saveBaseline はリポジトリ外への書き出しを拒否する', async () => {
+    const target = join(outsideDir, 'written.json');
+    await expect(saveBaseline([], target, repoRoot)).rejects.toThrow(/リポジトリ外/);
+    await expect(saveBaseline([], '../../evil.json', repoRoot)).rejects.toThrow(/リポジトリ外/);
+    await expect(access(target)).rejects.toThrow();
+  });
+
+  it('saveBaseline は allowOutside 指定時のみリポジトリ外へ書ける', async () => {
+    const target = join(outsideDir, 'written.json');
+    const written = await saveBaseline([], target, repoRoot, { allowOutside: true });
+    expect(written).toBe(target);
+    await expect(access(target)).resolves.toBeUndefined();
+  });
+
+  it('設定ファイル由来の baselinePath ではリポジトリ外を読まない', async () => {
+    const pathSources: PathSources = { baselinePath: 'config-file', ignorePath: 'config-file' };
+    const { findings, errors } = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      makeConfig({ baselinePath: secretPath, pathSources }),
+      NO_OSV,
+    );
+    // ベースラインを読めていないので新規扱いのまま
+    expect(findings[0]!.diffStatus).toBe('new');
+    expect(errors.some((e) => e.includes('リポジトリ外'))).toBe(true);
+  });
+
+  it('設定ファイル由来の ignorePath ではリポジトリ外を読まない', async () => {
+    await writeFile(join(outsideDir, '.vulnignore'), 'CWE-89\n', 'utf8');
+    const pathSources: PathSources = { baselinePath: 'config-file', ignorePath: 'config-file' };
+    const { findings, suppressedCount, errors } = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      makeConfig({ ignorePath: join(outsideDir, '.vulnignore'), pathSources }),
+      NO_OSV,
+    );
+    // 外部の抑制リストは適用されない
+    expect(findings).toHaveLength(1);
+    expect(suppressedCount).toBe(0);
+    expect(errors.some((e) => e.includes('リポジトリ外'))).toBe(true);
+  });
+
+  it('CLI由来（pathSources=cli）ならリポジトリ外のベースラインを読む', async () => {
+    const pathSources: PathSources = { baselinePath: 'cli', ignorePath: 'default' };
+    const first = await manageFindings([makeRaw()], makeContext(), makeConfig(), {
+      ...NO_OSV,
+      now: LAST_YEAR,
+    });
+    const outsideBaseline = join(outsideDir, 'cli-baseline.json');
+    await saveBaseline(first.findings, outsideBaseline, repoRoot, { allowOutside: true });
+
+    const second = await manageFindings(
+      [makeRaw()],
+      makeContext(),
+      makeConfig({ baselinePath: outsideBaseline, pathSources }),
+      NO_OSV,
+    );
+    expect(second.findings[0]!.diffStatus).toBe('persistent');
+  });
+});
+
+describe('エラーメッセージの情報漏洩', () => {
+  const SECRET = 'CONFIDENTIAL-TOKEN-abcdef0123456789';
+
+  it('壊れたベースラインのエラーに絶対パスも生の例外文字列も含めない', async () => {
+    const config = makeConfig();
+    await mkdir(join(repoRoot, '.vulnscan'), { recursive: true });
+    await writeFile(join(repoRoot, config.baselinePath), `{ ${SECRET} は秘密 }`, 'utf8');
+
+    const { errors } = await loadBaseline(config.baselinePath, repoRoot);
+    expect(errors).toHaveLength(1);
+    const message = errors[0]!;
+    // ファイル内容（JSON.parse の SyntaxError に混入する）が漏れない
+    expect(message).not.toContain(SECRET);
+    expect(message).not.toMatch(/Unexpected|JSON\.parse|SyntaxError|position/i);
+    // 絶対パスを出さず、リポジトリ相対で示す
+    expect(message).not.toContain(repoRoot);
+    expect(message).not.toContain(tmpdir());
+    expect(message).toContain(config.baselinePath);
+  });
+
+  it('抑制リストの読み込み失敗でも絶対パスと生の例外文字列を出さない', async () => {
+    // ディレクトリを .vulnignore として置くと EISDIR で失敗する
+    await mkdir(join(repoRoot, '.vulnignore'), { recursive: true });
+    const { errors } = await loadIgnoreList('.vulnignore', repoRoot);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!).not.toContain(repoRoot);
+    expect(errors[0]!).not.toMatch(/EISDIR: illegal|read$/);
+    expect(errors[0]!).toContain('.vulnignore');
+  });
+
+  it('manageFindings 経由でも絶対パスを漏らさない', async () => {
+    const config = makeConfig();
+    await mkdir(join(repoRoot, '.vulnscan'), { recursive: true });
+    await writeFile(join(repoRoot, config.baselinePath), `{ ${SECRET}`, 'utf8');
+    const { errors } = await manageFindings([makeRaw()], makeContext(), config, NO_OSV);
+    expect(errors.length).toBeGreaterThan(0);
+    for (const e of errors) {
+      expect(e).not.toContain(repoRoot);
+      expect(e).not.toContain(SECRET);
+    }
   });
 });
 

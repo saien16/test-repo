@@ -242,14 +242,49 @@ export function escapeHtml(text: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Markdownのテーブルセル用エスケープ */
-export function escapeMdCell(text: string): string {
-  return text.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+/**
+ * Markdownへ埋め込む未信頼テキストのエスケープ。
+ *
+ * Markdownレポートは `<details>` などの生HTMLを含んでおり、
+ * HTMLを有効にしたレンダラ（GitHub・CIのPRコメントなど）で表示される前提。
+ * つまり `<script>` のようなタグはそのまま解釈されうるので、
+ * HTML特殊文字を必ず実体参照へ置き換える。
+ */
+export function escapeMdText(text: string): string {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
-/** Markdown本文中の記号をエスケープ（見出し崩れ防止の最小限） */
+/**
+ * コードスパン（`...`）へ埋め込む値のエスケープ。
+ *
+ * バッククォートを含む値はコードスパンを閉じて任意のMarkdown/HTMLへ
+ * 抜け出せてしまうため、無害な文字へ置き換える。改行も潰す。
+ */
+export function escapeMdCode(text: string): string {
+  return escapeMdText(String(text ?? '').replace(/`/g, "'").replace(/\r?\n/g, ' '));
+}
+
+/** Markdownのテーブルセル用エスケープ（未信頼文字列前提でHTMLもエスケープする） */
+export function escapeMdCell(text: string): string {
+  return escapeMdText(text).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
+}
+
+/** テーブルセル内のコードスパン用エスケープ */
+export function escapeMdCodeCell(text: string): string {
+  return escapeMdCode(text).replace(/\|/g, '\\|').trim();
+}
+
+/** Markdown本文中の記号をエスケープ（見出し・リンク記法の崩れ防止） */
 export function escapeMdInline(text: string): string {
-  return text.replace(/([*_`[\]])/g, '\\$1');
+  return String(text ?? '').replace(/([*_`[\]])/g, '\\$1');
+}
+
+/** リンクとして出してよいURLか（javascript: などのスキームを弾く） */
+export function isSafeUrl(url: string): boolean {
+  return /^https?:\/\/[^\s<>"'`\\]+$/.test(String(url ?? ''));
 }
 
 /** 見出し用のアンカーID（HTML目次で使う） */

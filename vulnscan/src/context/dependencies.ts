@@ -9,6 +9,20 @@
 import type { Dependency } from '../types/context.js';
 import type { ManifestFile } from './walk.js';
 
+/**
+ * 依存名として妥当な文字だけからなるか。
+ *
+ * マニフェストはスキャン対象リポジトリのファイル＝未信頼入力なので、
+ * `<img src=x onerror=...>` のような名前がそのまま SBOM やレポートへ流れ込む。
+ * 各エコシステムの実際の名前（`github.com/x/y`、`group:artifact`、`@scope/pkg`）を
+ * 通しつつ、記号・空白・制御文字を含むものは依存として扱わない。
+ */
+const PACKAGE_NAME_RE = /^@?[A-Za-z0-9][A-Za-z0-9._~:/@+-]{0,212}$/;
+
+export function isPlausiblePackageName(name: string): boolean {
+  return typeof name === 'string' && PACKAGE_NAME_RE.test(name);
+}
+
 /** バージョン指定を正規化する（前後の空白と引用符を落とす） */
 function cleanVersion(version: string | undefined): string {
   if (!version) return '*';
@@ -368,9 +382,21 @@ export function collectDependencies(
     }
   }
 
+  // 依存名の文字種検証（未信頼のマニフェストから壊れた名前を持ち込ませない）
+  const rejected = new Map<string, number>();
+  const accepted = out.filter((dep) => {
+    if (isPlausiblePackageName(dep.name)) return true;
+    rejected.set(dep.manifest, (rejected.get(dep.manifest) ?? 0) + 1);
+    return false;
+  });
+  for (const [manifest, count] of rejected) {
+    // 名前そのものは載せない（不正な文字列をレポートへ持ち込まないため）
+    warnings.push(`依存名として扱えない文字を含む宣言を除外しました: ${manifest} (${count}件)`);
+  }
+
   // 同一マニフェスト内の重複を除去（dev 宣言が両方にある場合は本番側を優先）
   const byKey = new Map<string, Dependency>();
-  for (const dep of out) {
+  for (const dep of accepted) {
     const key = `${dep.ecosystem}|${dep.name}|${dep.manifest}`;
     const existing = byKey.get(key);
     if (!existing || (existing.dev && !dep.dev)) byKey.set(key, dep);

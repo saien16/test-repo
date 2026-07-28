@@ -6,6 +6,18 @@
  *   → 攻撃チェーン詳細 → 個別Finding詳細 → 依存関係SBOM
  *
  * 「読み物として成立させる」ことを優先し、表と散文を織り交ぜる。
+ *
+ * セキュリティ上の前提:
+ *   ここに流れ込む文字列（Findingのタイトル・ファイルパス・依存パッケージ名・
+ *   LLMの生成文など）はスキャン対象リポジトリ由来の未信頼入力である。
+ *   本フォーマッタは `<details>` などの生HTMLを出力しており、HTMLを有効にした
+ *   レンダラで表示される前提なので、埋め込む値は必ずエスケープする。
+ *     - 本文        : escapeMdText（`< > &` を実体参照へ）
+ *     - 表のセル    : escapeMdCell（加えて改行と `|`）
+ *     - コードスパン: escapeMdCode / escapeMdCodeCell（加えてバッククォート）
+ *     - URL         : isSafeUrl で `^https?://` を検証してから出す
+ *   フェンス付きコードブロック(fence)はレンダラがHTMLとして解釈しないため、
+ *   フェンス記号が壊されないことだけを担保する。
  */
 
 import type { Dependency } from '../../types/context.js';
@@ -21,9 +33,14 @@ import {
 } from '../severity.js';
 import {
   escapeMdCell,
+  escapeMdCode,
+  escapeMdCodeCell,
+  escapeMdInline,
+  escapeMdText,
   formatDateTime,
   formatDuration,
   formatNumber,
+  isSafeUrl,
   truncate,
 } from '../text.js';
 
@@ -87,8 +104,11 @@ function renderHeader(result: ScanResult, analyzed: AnalyzedReport): string[] {
   lines.push('# セキュリティスキャンレポート');
   lines.push('');
   lines.push(
-    `> **対象**: \`${result.context.repoRoot}\`` +
-      (git ? ` / **ブランチ**: \`${git.branch}\` (\`${truncate(git.headSha, 12, '')}\`)` : ''),
+    `> **対象**: \`${escapeMdCode(result.context.repoRoot)}\`` +
+      (git
+        ? ` / **ブランチ**: \`${escapeMdCode(git.branch)}\` ` +
+          `(\`${escapeMdCode(truncate(git.headSha, 12, ''))}\`)`
+        : ''),
   );
   lines.push(`> **実施日時**: ${formatDateTime(result.context.scannedAt)} / **所要**: ${formatDuration(s.durationMs)}`);
   lines.push(
@@ -126,20 +146,21 @@ function renderToc(hasChains: boolean, hasFindings: boolean, hasDeps: boolean): 
 }
 
 function renderExecutive(analyzed: AnalyzedReport): string[] {
-  const lines = ['## エグゼクティブサマリ', '', analyzed.executiveSummary, ''];
+  // 文章にはFindingのタイトルなど未信頼の文字列が織り込まれている
+  const lines = ['## エグゼクティブサマリ', '', escapeMdText(analyzed.executiveSummary), ''];
   if (analyzed.keyFindings.length > 0) {
     lines.push('### 今回の重要な所見', '');
-    for (const item of analyzed.keyFindings) lines.push(`- ${item}`);
+    for (const item of analyzed.keyFindings) lines.push(`- ${escapeMdText(item)}`);
     lines.push('');
   }
   if (analyzed.trendNarrative) {
-    lines.push('### 前回スキャンとの比較', '', analyzed.trendNarrative, '');
+    lines.push('### 前回スキャンとの比較', '', escapeMdText(analyzed.trendNarrative), '');
   }
   return lines;
 }
 
 function renderRisk(analyzed: AnalyzedReport): string[] {
-  return ['## リスクの全体像', '', analyzed.riskNarrative, ''];
+  return ['## リスクの全体像', '', escapeMdText(analyzed.riskNarrative), ''];
 }
 
 function renderActions(analyzed: AnalyzedReport): string[] {
@@ -165,19 +186,25 @@ function renderActions(analyzed: AnalyzedReport): string[] {
   lines.push('');
 
   for (const action of analyzed.prioritizedActions) {
-    lines.push(`### ${action.order}. ${action.action}`);
+    lines.push(`### ${action.order}. ${escapeMdText(action.action)}`);
     lines.push('');
-    lines.push(`**見積もり工数**: ${effortJa(action.effort)} (\`${action.effort}\`)`);
+    lines.push(`**見積もり工数**: ${effortJa(action.effort)} (\`${escapeMdCode(action.effort)}\`)`);
     lines.push('');
-    lines.push(action.rationale);
+    lines.push(escapeMdText(action.rationale));
     lines.push('');
     if (action.resolves.findings.length > 0) {
       lines.push(
-        `- 解消されるFinding: ${action.resolves.findings.map((id) => `\`${id}\``).join(', ')}`,
+        `- 解消されるFinding: ${action.resolves.findings
+          .map((id) => `\`${escapeMdCode(id)}\``)
+          .join(', ')}`,
       );
     }
     if (action.resolves.chains.length > 0) {
-      lines.push(`- 遮断される攻撃チェーン: ${action.resolves.chains.map((id) => `\`${id}\``).join(', ')}`);
+      lines.push(
+        `- 遮断される攻撃チェーン: ${action.resolves.chains
+          .map((id) => `\`${escapeMdCode(id)}\``)
+          .join(', ')}`,
+      );
     }
     lines.push('');
   }
@@ -195,23 +222,26 @@ function renderChains(chains: readonly AttackChain[]): string[] {
   );
 
   for (const chain of sorted) {
-    lines.push(`### ${chain.title}`);
+    lines.push(`### ${escapeMdText(chain.title)}`);
     lines.push('');
     lines.push(
-      `\`${chain.id}\` / **優先度** ${chain.priorityScore} / ` +
-        `**成立可能性** ${likelihoodJa(chain.likelihood)} / **起点** \`${chain.entryPoint}\``,
+      `\`${escapeMdCode(chain.id)}\` / **優先度** ${chain.priorityScore} / ` +
+        `**成立可能性** ${likelihoodJa(chain.likelihood)} / ` +
+        `**起点** \`${escapeMdCode(chain.entryPoint)}\``,
     );
     lines.push('');
-    lines.push(`**最終的な影響**: ${chain.impact}`);
+    lines.push(`**最終的な影響**: ${escapeMdText(chain.impact)}`);
     lines.push('');
 
     lines.push('| # | 段階 | 戦術 | 技術 | 攻撃者の行動 | Finding |');
     lines.push('| --- | --- | --- | --- | --- | --- |');
     for (const step of [...chain.steps].sort((a, b) => a.order - b.order)) {
       lines.push(
-        `| ${step.order} | ${PHASE_JA[step.killChainPhase] ?? step.killChainPhase} | ` +
-          `${TACTIC_JA[step.attackTactic] ?? step.attackTactic} | ${step.attackTechnique ?? '-'} | ` +
-          `${escapeMdCell(step.description)} | ${step.findingId ? `\`${step.findingId}\`` : '-'} |`,
+        `| ${step.order} | ${escapeMdCell(PHASE_JA[step.killChainPhase] ?? step.killChainPhase)} | ` +
+          `${escapeMdCell(TACTIC_JA[step.attackTactic] ?? step.attackTactic)} | ` +
+          `${escapeMdCell(step.attackTechnique ?? '-')} | ` +
+          `${escapeMdCell(step.description)} | ` +
+          `${step.findingId ? `\`${escapeMdCodeCell(step.findingId)}\`` : '-'} |`,
       );
     }
     lines.push('');
@@ -219,19 +249,27 @@ function renderChains(chains: readonly AttackChain[]): string[] {
     const preconditions = chain.steps.flatMap((s) => s.preconditions);
     if (preconditions.length > 0) {
       lines.push('**成立の前提条件**', '');
-      for (const pre of [...new Set(preconditions)]) lines.push(`- ${pre}`);
+      for (const pre of [...new Set(preconditions)]) lines.push(`- ${escapeMdText(pre)}`);
       lines.push('');
     }
 
     if (chain.chokePoint) {
       lines.push(
-        `> **✂ チョークポイント**: \`${chain.chokePoint.findingId}\`  `,
-        `> ${chain.chokePoint.rationale}`,
+        `> **✂ チョークポイント**: \`${escapeMdCode(chain.chokePoint.findingId)}\`  `,
+        // 引用ブロックから抜け出させないため改行は潰す
+        `> ${escapeMdText(chain.chokePoint.rationale).replace(/\r?\n/g, ' ')}`,
         '',
       );
     }
     if (chain.reasoning) {
-      lines.push('<details><summary>推論の根拠</summary>', '', chain.reasoning, '', '</details>', '');
+      lines.push(
+        '<details><summary>推論の根拠</summary>',
+        '',
+        escapeMdText(chain.reasoning),
+        '',
+        '</details>',
+        '',
+      );
     }
   }
   return lines;
@@ -240,32 +278,35 @@ function renderChains(chains: readonly AttackChain[]): string[] {
 function renderFindingDetail(finding: Finding): string[] {
   const lines: string[] = [];
   const emoji = SEVERITY_EMOJI[finding.severity] ?? '';
-  lines.push(`### ${emoji} ${finding.title}`);
+  lines.push(`### ${emoji} ${escapeMdText(finding.title)}`);
   lines.push('');
   lines.push(
-    `\`${finding.id}\` / **${finding.cwe}** / ${finding.category} / ` +
+    `\`${escapeMdCode(finding.id)}\` / **${escapeMdText(finding.cwe)}** / ` +
+      `${escapeMdText(finding.category)} / ` +
       `**深刻度** ${SEVERITY_LABEL_JA[finding.severity]} / **CVSS** ${(finding.cvss?.baseScore ?? 0).toFixed(1)} ` +
-      `(${finding.cvss?.baseSeverity ?? 'None'}) / **確信度** ${(finding.confidence * 100).toFixed(0)}%`,
+      `(${escapeMdText(finding.cvss?.baseSeverity ?? 'None')}) / **確信度** ${(finding.confidence * 100).toFixed(0)}%`,
   );
   lines.push('');
   lines.push(
-    `**該当箇所**: \`${finding.location.file}:${finding.location.startLine}-${finding.location.endLine}\`` +
-      ` / 検出レンズ: \`${finding.lens}\` / 状態: \`${finding.status}\` (\`${finding.diffStatus}\`)`,
+    `**該当箇所**: \`${escapeMdCode(finding.location.file)}:${finding.location.startLine}-${finding.location.endLine}\`` +
+      ` / 検出レンズ: \`${escapeMdCode(finding.lens)}\`` +
+      ` / 状態: \`${escapeMdCode(finding.status)}\` (\`${escapeMdCode(finding.diffStatus)}\`)`,
   );
   if (finding.cvss?.vector) {
     lines.push('');
-    lines.push(`**CVSSベクタ**: \`${finding.cvss.vector}\``);
+    lines.push(`**CVSSベクタ**: \`${escapeMdCode(finding.cvss.vector)}\``);
   }
   if (finding.cve) {
     lines.push('');
-    lines.push(`**CVE**: ${finding.cve}`);
+    lines.push(`**CVE**: ${escapeMdText(finding.cve)}`);
   }
   if (finding.affectedPackage) {
     const p = finding.affectedPackage;
     lines.push('');
     lines.push(
-      `**該当パッケージ**: \`${p.name}@${p.version}\` (${p.ecosystem})` +
-        (p.fixedVersion ? ` → 修正版 \`${p.fixedVersion}\`` : ' → 修正版なし'),
+      `**該当パッケージ**: \`${escapeMdCode(p.name)}@${escapeMdCode(p.version)}\` ` +
+        `(${escapeMdText(p.ecosystem)})` +
+        (p.fixedVersion ? ` → 修正版 \`${escapeMdCode(p.fixedVersion)}\`` : ' → 修正版なし'),
     );
   }
   lines.push('');
@@ -276,7 +317,7 @@ function renderFindingDetail(finding: Finding): string[] {
     lines.push('');
   }
 
-  lines.push('**なぜ問題か**', '', finding.reasoning || '（説明なし）', '');
+  lines.push('**なぜ問題か**', '', escapeMdText(finding.reasoning || '（説明なし）'), '');
 
   if (finding.dataFlow.length > 0) {
     lines.push('**データフロー（source → sink）**', '');
@@ -284,14 +325,18 @@ function renderFindingDetail(finding: Finding): string[] {
     lines.push('| --- | --- | --- | --- |');
     finding.dataFlow.forEach((step, index) => {
       lines.push(
-        `| ${index + 1} | ${ROLE_JA[step.role] ?? step.role} | \`${step.file}:${step.line}\` | ` +
+        `| ${index + 1} | ${escapeMdCell(ROLE_JA[step.role] ?? step.role)} | ` +
+          `\`${escapeMdCodeCell(step.file)}:${step.line}\` | ` +
           `${escapeMdCell(step.description)} |`,
       );
     });
     lines.push('');
     lines.push('<details><summary>各ステップのコード</summary>', '');
     finding.dataFlow.forEach((step, index) => {
-      lines.push(`${index + 1}. \`${step.file}:${step.line}\` — ${ROLE_JA[step.role] ?? step.role}`);
+      lines.push(
+        `${index + 1}. \`${escapeMdCode(step.file)}:${step.line}\` — ` +
+          `${escapeMdText(ROLE_JA[step.role] ?? step.role)}`,
+      );
       lines.push('');
       lines.push(fence(step.code));
       lines.push('');
@@ -304,17 +349,26 @@ function renderFindingDetail(finding: Finding): string[] {
     );
   }
 
-  lines.push('**修正方針**', '', finding.remediation || '（修正方針の記載なし）', '');
+  lines.push('**修正方針**', '', escapeMdText(finding.remediation || '（修正方針の記載なし）'), '');
 
   if (finding.mergedFrom.length > 0) {
-    lines.push(`統合された重複: ${finding.mergedFrom.map((f) => `\`${f}\``).join(', ')}`, '');
+    lines.push(
+      `統合された重複: ${finding.mergedFrom.map((f) => `\`${escapeMdCode(f)}\``).join(', ')}`,
+      '',
+    );
   }
   if (finding.references.length > 0) {
     lines.push('**参考リンク**', '');
-    for (const ref of finding.references) lines.push(`- ${ref}`);
+    for (const ref of finding.references) {
+      // http(s) 以外（javascript: など）はリンクにせず、素のテキストとして出す
+      lines.push(isSafeUrl(ref) ? `- <${escapeMdText(ref)}>` : `- ${escapeMdText(ref)}`);
+    }
     lines.push('');
   }
-  lines.push(`<sub>指紋: \`${finding.fingerprint}\` / 初回検出 ${finding.firstSeen} / 最終検出 ${finding.lastSeen}</sub>`);
+  lines.push(
+    `<sub>指紋: \`${escapeMdCode(finding.fingerprint)}\` / ` +
+      `初回検出 ${escapeMdText(finding.firstSeen)} / 最終検出 ${escapeMdText(finding.lastSeen)}</sub>`,
+  );
   lines.push('');
   return lines;
 }
@@ -339,9 +393,12 @@ function renderFindings(result: ScanResult, verbose: boolean): string[] {
   lines.push('| 深刻度 | CVSS | CWE | 概要 | 位置 |');
   lines.push('| --- | --- | --- | --- | --- |');
   for (const f of findings) {
+    // リンクテキストは `[` `]` も無効化しないとリンク記法を抜け出せる
+    const label = escapeMdCell(escapeMdInline(truncate(f.title, 60)));
     lines.push(
       `| ${SEVERITY_EMOJI[f.severity] ?? ''} ${SEVERITY_LABEL_JA[f.severity]} | ${(f.cvss?.baseScore ?? 0).toFixed(1)} | ` +
-        `${f.cwe} | [${escapeMdCell(truncate(f.title, 60))}](#${anchor(f.title)}) | \`${f.location.file}:${f.location.startLine}\` |`,
+        `${escapeMdCell(f.cwe)} | [${label}](#${anchor(f.title)}) | ` +
+        `\`${escapeMdCodeCell(f.location.file)}:${f.location.startLine}\` |`,
     );
   }
   lines.push('');
@@ -352,7 +409,10 @@ function renderFindings(result: ScanResult, verbose: boolean): string[] {
   if (fixed.length > 0) {
     lines.push('### 前回から解消されたFinding', '');
     for (const f of fixed) {
-      lines.push(`- ~~${escapeMdCell(f.title)}~~ (\`${f.cwe}\` / \`${f.location.file}\`)`);
+      lines.push(
+        `- ~~${escapeMdCell(f.title)}~~ ` +
+          `(\`${escapeMdCode(f.cwe)}\` / \`${escapeMdCode(f.location.file)}\`)`,
+      );
     }
     lines.push('');
   }
@@ -394,12 +454,14 @@ function renderSbom(dependencies: readonly Dependency[], findings: readonly Find
       hits.length === 0
         ? '-'
         : hits
-            .map((f) => f.cve ?? f.cwe)
+            .map((f) => escapeMdCell(f.cve ?? f.cwe))
             .slice(0, 4)
             .join(', ');
+    // 依存パッケージ名・バージョンは package.json 由来（＝攻撃者が制御しうる）
     lines.push(
-      `| \`${escapeMdCell(dep.name)}\` | ${escapeMdCell(dep.version)} | ${dep.ecosystem} | ` +
-        `${dep.dev ? 'dev' : 'prod'} | \`${escapeMdCell(dep.manifest)}\` | ${vulnCell} |`,
+      `| \`${escapeMdCodeCell(dep.name)}\` | ${escapeMdCell(dep.version)} | ` +
+        `${escapeMdCell(dep.ecosystem)} | ` +
+        `${dep.dev ? 'dev' : 'prod'} | \`${escapeMdCodeCell(dep.manifest)}\` | ${vulnCell} |`,
     );
   }
   lines.push('');
@@ -412,12 +474,13 @@ function renderIssues(result: ScanResult): string[] {
   if (result.errors.length > 0) {
     lines.push('本レポートは部分的な結果を含んでいる可能性があります。', '');
     lines.push('**エラー**', '');
-    for (const err of result.errors) lines.push(`- ${err}`);
+    // エラー文にはファイルパスなど未信頼の文字列が混ざる
+    for (const err of result.errors) lines.push(`- ${escapeMdText(err)}`);
     lines.push('');
   }
   if (result.context.warnings.length > 0) {
     lines.push('**警告**', '');
-    for (const warn of result.context.warnings) lines.push(`- ${warn}`);
+    for (const warn of result.context.warnings) lines.push(`- ${escapeMdText(warn)}`);
     lines.push('');
   }
   return lines;
