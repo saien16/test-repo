@@ -56,6 +56,14 @@ describe('registerScanOptions', () => {
     expect(toConfigOverrides(parseArgs(['--no-kill-chain']))).toEqual({ killChain: false });
   });
 
+  it('--no-fail-on-incomplete が failOnIncompleteScan へ反映される', () => {
+    // 既定は「未完走なら落とす」。無効化は明示的なフラグでのみ行える
+    expect(toConfigOverrides(parseArgs([]))).toEqual({});
+    expect(toConfigOverrides(parseArgs(['--no-fail-on-incomplete']))).toEqual({
+      failOnIncompleteScan: false,
+    });
+  });
+
   it('--ignore-file が ignorePath へ、--baseline が baselinePath へ入る', () => {
     const overrides = toConfigOverrides(
       parseArgs(['--ignore-file', 'custom/.ignore', '--baseline', 'custom/base.json']),

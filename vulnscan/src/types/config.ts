@@ -75,6 +75,11 @@ export interface VulnScanConfig {
   failOn: Severity | 'never';
   /** 新規Findingのみでゲートするか */
   failOnNewOnly: boolean;
+  /**
+   * 走査が完走しなかった場合に非ゼロ終了するか（終了コード3）。
+   * `failOn` とは独立した軸なので、`failOn: 'never'` でも効く。
+   */
+  failOnIncompleteScan: boolean;
   /** ベースラインJSONの保存先 */
   baselinePath: string;
   /** 抑制リスト */

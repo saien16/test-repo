@@ -12,6 +12,11 @@ import type { Cvss3Result, Finding } from '../types/finding.js';
 import type { VulnerabilityHeatmap } from '../types/heatmap.js';
 import type { AttackChain } from '../types/killchain.js';
 import type { ScanResult } from '../types/report.js';
+import {
+  assessAnalysisHealth,
+  emptyAnalysisStats,
+  type AnalysisStats,
+} from '../types/health.js';
 import { summarize } from './summarize.js';
 
 export function makeCvss(overrides: Partial<Cvss3Result> = {}): Cvss3Result {
@@ -380,7 +385,18 @@ export function makeHeatmap(overrides: Partial<VulnerabilityHeatmap> = {}): Vuln
   };
 }
 
-/** サマリを自動計算した ScanResult を作る */
+/**
+ * 分析タスクが全件成功した統計。
+ *
+ * 既定を「完走」にしてあるのは、既存の大多数のテストが
+ * 「正常に走った結果をどう表示するか」を見ているため。
+ * 未完走の挙動を確かめるテストは `health` を明示的に渡す。
+ */
+export function makeAnalysisStats(overrides: Partial<AnalysisStats> = {}): AnalysisStats {
+  return { ...emptyAnalysisStats(), total: 8, succeeded: 8, ...overrides };
+}
+
+/** サマリと健全性を自動で埋めた ScanResult を作る */
 export function makeResult(overrides: Partial<ScanResult> = {}): ScanResult {
   const base = {
     context: overrides.context ?? makeContext(),
@@ -390,6 +406,7 @@ export function makeResult(overrides: Partial<ScanResult> = {}): ScanResult {
   };
   return {
     ...base,
+    health: overrides.health ?? assessAnalysisHealth(makeAnalysisStats()),
     ...(overrides.architecture ? { architecture: overrides.architecture } : {}),
     ...(overrides.heatmap ? { heatmap: overrides.heatmap } : {}),
     summary:

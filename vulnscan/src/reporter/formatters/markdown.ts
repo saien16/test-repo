@@ -24,6 +24,7 @@ import type { Dependency } from '../../types/context.js';
 import type { Finding } from '../../types/finding.js';
 import type { AttackChain } from '../../types/killchain.js';
 import type { AnalyzedReport, ReportOptions, ScanResult } from '../../types/report.js';
+import type { ScanHealthLevel } from '../../types/health.js';
 import { buildSbomIndex, reportableFindings, sbomPackageKey } from '../collect.js';
 import { PHASE_JA, ROLE_JA, TACTIC_JA, effortJa, likelihoodJa } from '../labels.js';
 import { SEVERITY_LABEL_JA, SEVERITY_ORDER, isActiveFinding } from '../severity.js';
@@ -113,8 +114,42 @@ function renderHeader(result: ScanResult, analyzed: AnalyzedReport): string[] {
   lines.push(`| 攻撃チェーン | ${formatNumber(s.chainCount)} 本 |`);
   lines.push(`| 差分 | 新規 ${s.newCount} / 継続 ${s.persistentCount} / 解消 ${s.fixedCount} |`);
   lines.push(`| 抑制済み | ${formatNumber(s.suppressedCount)} |`);
+  lines.push(`| 走査の完走 | ${HEALTH_LABEL[result.health.level]} |`);
   lines.push('');
   return lines;
+}
+
+const HEALTH_LABEL: Record<ScanHealthLevel, string> = {
+  complete: '✅ 完走',
+  degraded: '⚠️ 部分的',
+  failed: '❌ 未完走',
+};
+
+/**
+ * 走査が完走しなかったことの警告。ダッシュボードの直後、
+ * エグゼクティブサマリより**前**に置く。
+ *
+ * 数字の表だけを見て「検出0件だから安全」と読まれるのを防ぐため、
+ * 表と要約の間に割り込ませる。
+ */
+function renderHealthNotice(result: ScanResult): string[] {
+  const health = result.health;
+  if (health.zeroFindingsIsMeaningful) return [];
+
+  const a = health.analysis;
+  const title =
+    health.level === 'failed' ? 'このスキャンは完走していません' : 'このスキャンは部分的です';
+
+  return [
+    `> [!${health.level === 'failed' ? 'CAUTION' : 'WARNING'}]`,
+    `> **${escapeMdText(title)}**`,
+    `> ${escapeMdText(health.reason)}`,
+    `> `,
+    `> 分析タスク: 成功 ${a.succeeded} / 失敗 ${a.failed} / 拒否 ${a.refused} / 全 ${a.total}`,
+    `> `,
+    '> 検出件数の多寡にかかわらず、この結果を「脆弱性が無い」ことの根拠には使えません。',
+    '',
+  ];
 }
 
 function renderToc(hasChains: boolean, hasFindings: boolean, hasDeps: boolean): string[] {
@@ -459,6 +494,7 @@ export function renderMarkdown(
 
   const lines: string[] = [
     ...renderHeader(result, analyzed),
+    ...renderHealthNotice(result),
     '---',
     '',
     ...renderToc(hasChains, hasFindings, hasDeps),

@@ -15,6 +15,7 @@ import type { VulnScanConfig } from '../types/config.js';
 import type { AttackChain } from '../types/killchain.js';
 import type { ScanContext } from '../types/context.js';
 import type { ScanSummary } from '../types/report.js';
+import { skippedTasks, type ScanHealth } from '../types/health.js';
 import { SEVERITY_LABEL_JA, SEVERITY_ORDER } from './severity.js';
 import { likelihoodJa } from './labels.js';
 import type { FindingSignal, PrioritizedAction } from './priority.js';
@@ -72,6 +73,12 @@ export interface NarrativeInput {
   actions: readonly PrioritizedAction[];
   hasBaseline: boolean;
   errors: readonly string[];
+  /**
+   * 走査が完走したか。**文言の分岐に必須**。
+   * これを見ないと、全滅した走査に対して
+   * 「脆弱性は検出されませんでした」と書いてしまう。
+   */
+  health: ScanHealth;
 }
 
 const MAX_FINDINGS_IN_DIGEST = 15;
@@ -105,6 +112,21 @@ function buildDigest(input: NarrativeInput): string {
         .slice(0, 8)
         .map((e) => `${e.kind}:${e.identifier}`)
         .join(', ')}`,
+    );
+  }
+
+  lines.push('');
+  lines.push('## 走査の完走状況（機械算出・改変禁止）');
+  const { analysis } = input.health;
+  lines.push(
+    `- 分析タスク: 全 ${analysis.total} 件 / 成功 ${analysis.succeeded} / ` +
+      `失敗 ${analysis.failed} / 拒否 ${analysis.refused} / 未実行 ${skippedTasks(analysis)}`,
+  );
+  lines.push(`- 判定: ${input.health.level}（${input.health.reason}）`);
+  if (!input.health.zeroFindingsIsMeaningful) {
+    lines.push(
+      '- **重要**: 走査は完走していない。検出件数が少ないことを「安全」と書いてはならない。' +
+        '「今回の走査では判定できなかった」ことを冒頭で明示し、まず走査を成立させる必要があると書くこと。',
     );
   }
 
@@ -196,7 +218,50 @@ function describeLlmFailure(reason: string, detail?: string | null): string {
 // フォールバック（機械生成の文章）
 // ---------------------------------------------------------------------------
 
-/** Findingが0件のときの文面 */
+/**
+ * 走査が完走しなかったときの文面。
+ *
+ * ここが「検出0件＝安全」と書いてしまうと、CIゲートを直したところで
+ * 人間が読むレポートの側で同じ誤解が再生産される。
+ * 件数の話をする前に、走査が成立していないことを言う。
+ */
+function incompleteExecutiveSummary(summary: ScanSummary, health: ScanHealth): string {
+  const { analysis } = health;
+  // 強調記法は使わない。この文章は CLI・Markdown・HTML・JSON の
+  // すべてに同じ文字列で流れるので、CLI では `**` がそのまま見えてしまう。
+  const parts = ['このスキャンは完走していません。結果を安全の根拠には使えません。', health.reason];
+
+  if (analysis.total > 0) {
+    parts.push(
+      `分析タスク ${analysis.total} 件のうち成功したのは ${analysis.succeeded} 件で、` +
+        `${summary.filesScanned} ファイルの一部または全部が未評価です。`,
+    );
+  }
+
+  if (summary.totalFindings > 0) {
+    parts.push(
+      `走った範囲では ${summary.totalFindings} 件を検出しています。` +
+        'これは下限であり、実際の件数はこれ以上と考えてください。',
+    );
+  } else {
+    parts.push(
+      '検出は0件ですが、これは「脆弱性が無い」ではなく「調べられなかった」という意味です。',
+    );
+  }
+
+  // 直すべき対象が違うので、原因に合った指示を出す。
+  // 「対象が0件」なのに「APIキーを確認」と言うのは誘導の誤りになる。
+  parts.push(
+    analysis.total === 0
+      ? '最初にすべきことは修正ではなく走査対象の見直しです。' +
+          'scan.include / scan.exclude と scan.lenses の設定を確認し、再実行してください。'
+      : '最初にすべきことは修正ではなく走査の復旧です。' +
+          'APIキー・ネットワーク到達性・トークン予算の設定を確認し、再実行してください。',
+  );
+  return parts.join('');
+}
+
+/** Findingが0件で、かつ走査が完走したときの文面 */
 function cleanExecutiveSummary(summary: ScanSummary): string {
   const parts = [
     `${summary.filesScanned} ファイルを走査し、対応を要する脆弱性は検出されませんでした。`,
@@ -217,7 +282,11 @@ function fallbackExecutiveSummary(
   summary: ScanSummary,
   chains: readonly AttackChain[],
   actions: readonly PrioritizedAction[],
+  health: ScanHealth,
 ): string {
+  // 完走の有無を件数より先に見る。順序を逆にすると、
+  // 全滅した走査が「0件＝安全」の文面になる。
+  if (!health.zeroFindingsIsMeaningful) return incompleteExecutiveSummary(summary, health);
   if (summary.totalFindings === 0) return cleanExecutiveSummary(summary);
 
   const critical = summary.bySeverity.critical ?? 0;
@@ -271,7 +340,20 @@ function fallbackRiskNarrative(
   ranked: readonly FindingSignal[],
   chains: readonly AttackChain[],
   context: ScanContext,
+  health: ScanHealth,
 ): string {
+  if (!health.zeroFindingsIsMeaningful) {
+    const skipped = skippedTasks(health.analysis);
+    return (
+      'リスクの全体像は、今回のスキャンからは描けません。' +
+      `${health.reason}` +
+      (skipped > 0
+        ? `未実行のタスクが ${skipped} 件残っているため、そのコード範囲については何も言えません。`
+        : '成功したタスクの範囲でしか判断していないため、示された内容は網羅的ではありません。') +
+      'ここに書かれていないリスクが無いことの根拠にはならない点に注意してください。'
+    );
+  }
+
   if (summary.totalFindings === 0) {
     return (
       `今回の走査範囲（${summary.filesScanned} ファイル、依存 ${context.dependencies.length} 件）では、` +
@@ -374,9 +456,20 @@ export function buildFallbackNarrative(
   keyFindings: string[],
 ): Narrative {
   return {
-    executiveSummary: fallbackExecutiveSummary(input.summary, input.chains, input.actions),
+    executiveSummary: fallbackExecutiveSummary(
+      input.summary,
+      input.chains,
+      input.actions,
+      input.health,
+    ),
     keyFindings,
-    riskNarrative: fallbackRiskNarrative(input.summary, input.ranked, input.chains, input.context),
+    riskNarrative: fallbackRiskNarrative(
+      input.summary,
+      input.ranked,
+      input.chains,
+      input.context,
+      input.health,
+    ),
     trendNarrative: input.hasBaseline ? fallbackTrendNarrative(input.summary) : null,
   };
 }
@@ -404,12 +497,16 @@ export async function generateNarrative(
 ): Promise<NarrativeOutcome> {
   const fallback = buildFallbackNarrative(input, keyFindings);
 
-  // 書くことが無いならLLMを呼ぶだけ無駄
+  // 書くことが無いならLLMを呼ぶだけ無駄。
+  // ただし理由の書き分けは重要で、走査が壊れて0件なのに
+  // 「検出結果が無いため」と書くと原因を取り違えさせる。
   if (input.summary.totalFindings === 0 && input.chains.length === 0) {
     return {
       narrative: fallback,
       generatedByLlm: false,
-      fallbackReason: '検出結果が無いため、文章生成は機械生成の定型文を使用しました。',
+      fallbackReason: input.health.zeroFindingsIsMeaningful
+        ? '検出結果が無いため、文章生成は機械生成の定型文を使用しました。'
+        : '走査が完走しなかったため、文章生成は機械生成の定型文を使用しました。',
     };
   }
 

@@ -16,6 +16,8 @@ export interface CliOptions {
   output?: string;
   failOn?: string;
   failOnNewOnly?: boolean;
+  /** `--no-fail-on-incomplete` が指定されると false になる */
+  failOnIncomplete: boolean;
   model?: string;
   effort?: VulnScanConfig['llm']['effort'];
   concurrency?: string;
@@ -62,6 +64,10 @@ export function registerScanOptions(command: Command): Command {
       ]),
     )
     .option('--fail-on-new-only', '新規検出のみでCIゲートを判定する')
+    .option(
+      '--no-fail-on-incomplete',
+      '走査が完走しなかった場合でも終了コード0にする（既定では3で落とす）',
+    )
     .option('-m, --model <model>', '使用するモデルID')
     .addOption(
       new Option('-e, --effort <level>', '思考の深さ（低いほど高速・安価）').choices([
@@ -106,6 +112,7 @@ export function toConfigOverrides(opts: CliOptions): Partial<VulnScanConfig> {
   if (Object.keys(scan).length) overrides.scan = scan;
   if (opts.failOn) overrides.failOn = opts.failOn;
   if (opts.failOnNewOnly) overrides.failOnNewOnly = true;
+  if (opts.failOnIncomplete === false) overrides.failOnIncompleteScan = false;
   if (opts.killChain === false) overrides.killChain = false;
   if (opts.architecture === false) overrides.architecture = false;
   if (opts.heatmap === false) overrides.heatmap = false;

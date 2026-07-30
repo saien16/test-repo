@@ -28,7 +28,7 @@ import { renderSarif } from './formatters/sarif.js';
  */
 export { analyzeResult } from './analyze.js';
 export { summarize } from './summarize.js';
-export { determineExitCode } from './gate.js';
+export { determineExitCode, evaluateGate, EXIT_CODES, type GateDecision } from './gate.js';
 
 /**
  * 分析済みの中間表現を、指定フォーマットの文字列にレンダリングする。

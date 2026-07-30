@@ -18,6 +18,7 @@ import { mapPool } from '../llm/pool.js';
 import type { ScanContext, SymbolInfo } from '../types/context.js';
 import type { VulnScanConfig } from '../types/config.js';
 import type { RawFinding } from '../types/finding.js';
+import { emptyAnalysisStats, type AnalysisStats } from '../types/health.js';
 import { chunkFile, groupSymbolsByFile, splitLines } from './chunker.js';
 import {
   buildChunkContext,
@@ -59,6 +60,14 @@ export interface AnalyzeDeps {
 export interface AnalyzeResult {
   findings: RawFinding[];
   errors: string[];
+  /**
+   * 検出パスの実行統計。
+   *
+   * 「検出0件」が「見たが無かった」なのか「見られなかった」なのかを
+   * 呼び出し側（CIゲート・レポート文言）が区別するために必ず返す。
+   * findings が空でも errors が空でも、この統計だけは意味を持つ。
+   */
+  stats: AnalysisStats;
 }
 
 interface AnalysisTask {
@@ -201,13 +210,20 @@ async function collectChunks(
   return { chunks, sourceLines };
 }
 
-/** 1st pass: レンズ × チャンクを並列に走らせる */
+/**
+ * 1st pass: レンズ × チャンクを並列に走らせる。
+ *
+ * ここでタスクごとの成否を `stats` に数える。予算切れで呼ばれなかった分は
+ * どのカウンタにも入れない（`total` との差が未走査数になる）。
+ * mapPool は並行だが単一スレッドなので、カウンタの加算は競合しない。
+ */
 async function runAnalysisPass(
   tasks: readonly AnalysisTask[],
   llm: LlmClient,
   config: VulnScanConfig,
   state: BudgetState,
   errors: string[],
+  stats: AnalysisStats,
   onProgress?: (p: AnalyzeProgress) => void,
 ): Promise<Candidate[]> {
   const concurrency = Math.max(1, config.llm.concurrency);
@@ -232,8 +248,15 @@ async function runAnalysisPass(
       // 脆弱性解析は正当な用途だが、稀に安全分類器に拒否される。
       // その場合は該当チャンクだけ落として続行する。
       if (!result.ok) {
+        if (result.reason === 'refusal') stats.refused += 1;
+        else if (result.reason === 'error') stats.failed += 1;
+        // budget-exhausted は「実行しなかった」であって「失敗した」ではないため、
+        // どちらにも数えない（total との差として未走査数に現れる）。
         return reportLlmFailure(result, taskLabel(task), ANALYSIS_FAILURE_MESSAGES, state, errors);
       }
+
+      stats.succeeded += 1;
+      if (result.fromCache) stats.fromCache += 1;
 
       return result.value.findings.map((candidate) => ({ task, candidate }));
     },
@@ -303,6 +326,7 @@ export async function analyze(
   deps: AnalyzeDeps = {},
 ): Promise<AnalyzeResult> {
   const errors: string[] = [];
+  const stats = emptyAnalysisStats();
 
   const { lenses, skipped } = selectLenses(config.scan.lenses);
   for (const id of skipped) {
@@ -312,7 +336,8 @@ export async function analyze(
   }
   if (lenses.length === 0) {
     errors.push('有効な分析レンズが無いため、ソースコード分析を実行しませんでした');
-    return { findings: [], errors };
+    // total=0 のまま返す。呼び出し側は「見た結果0件」と区別できる。
+    return { findings: [], errors, stats };
   }
 
   const read = deps.readFile ?? defaultSourceReader;
@@ -320,7 +345,7 @@ export async function analyze(
 
   const { chunks, sourceLines } = await collectChunks(ctx, config, read, limits, errors);
   if (chunks.length === 0) {
-    return { findings: [], errors };
+    return { findings: [], errors, stats };
   }
 
   const preparedByChunkId = new Map<string, PreparedChunk>();
@@ -367,12 +392,14 @@ export async function analyze(
   }
 
   const state: BudgetState = { exhausted: false };
+  stats.total = tasks.length;
   const candidates = await runAnalysisPass(
     tasks,
     llm,
     config,
     state,
     errors,
+    stats,
     deps.onProgress,
   );
 
@@ -413,5 +440,9 @@ export async function analyze(
     );
   });
 
-  return { findings: finalizeFindings(raw, config.scan.minConfidence), errors };
+  // 検証パスで予算が切れた場合もここに反映される（検出パスは完走している）。
+  // 未走査タスクの有無は total との差で区別されるので、両者を混同しない。
+  stats.budgetExhausted = state.exhausted;
+
+  return { findings: finalizeFindings(raw, config.scan.minConfidence), errors, stats };
 }

@@ -3,6 +3,7 @@ import type { LlmClient, LlmResult } from '../llm/client.js';
 import { DEFAULT_CONFIG } from '../types/config.js';
 import type { VulnScanConfig } from '../types/config.js';
 import type { ScanContext, SymbolInfo } from '../types/context.js';
+import { assessAnalysisHealth, skippedTasks } from '../types/health.js';
 import { analyze } from './index.js';
 import type { CandidateFinding, Verdict } from './schema.js';
 
@@ -363,5 +364,146 @@ describe('analyze', () => {
     });
 
     expect(phases).toEqual(['analyze', 'verify']);
+  });
+});
+
+/*
+ * 実行統計。これが無いと下流（CIゲート・レポート文言）が
+ * 「検出0件」を「見たが無かった」と「見られなかった」に区別できず、
+ * 全滅した走査が緑のCIと「脆弱性なし」のレポートになる。
+ */
+describe('analyze の実行統計', () => {
+  /** チャンクを2つにするための2ファイル構成 */
+  function twoFileContext(): ScanContext {
+    const ctx = makeContext();
+    ctx.files.push({
+      path: 'src/b.ts',
+      language: 'typescript',
+      sizeBytes: CONTENT.length,
+      hash: 'hash-2',
+    });
+    return ctx;
+  }
+
+  const readAny = async (): Promise<string> => CONTENT;
+
+  it('全件成功なら complete と判定される統計を返す', async () => {
+    const { llm } = makeLlm((call) =>
+      call.schemaName === 'VulnScanAnalysis' ? ok({ findings: [] }) : ok(CONFIRMED),
+    );
+    const result = await analyze(twoFileContext(), llm, makeConfig(), { readFile: readAny });
+
+    expect(result.stats).toEqual({
+      total: 2,
+      succeeded: 2,
+      failed: 0,
+      refused: 0,
+      budgetExhausted: false,
+      fromCache: 0,
+    });
+    expect(assessAnalysisHealth(result.stats).zeroFindingsIsMeaningful).toBe(true);
+  });
+
+  it('全滅した場合は failed と判定される統計を返す（検出0件でも0件に意味は無い）', async () => {
+    const { llm } = makeLlm(() => ({
+      ok: false,
+      reason: 'error',
+      error: '認証エラー: APIキーが設定されていません',
+    }));
+    const result = await analyze(twoFileContext(), llm, makeConfig(), { readFile: readAny });
+
+    expect(result.findings).toEqual([]);
+    expect(result.stats.total).toBe(2);
+    expect(result.stats.succeeded).toBe(0);
+    expect(result.stats.failed).toBe(2);
+
+    const health = assessAnalysisHealth(result.stats);
+    expect(health.level).toBe('failed');
+    expect(health.zeroFindingsIsMeaningful).toBe(false);
+  });
+
+  it('refusal は failed ではなく refused に数える', async () => {
+    const { llm } = makeLlm(() => ({ ok: false, reason: 'refusal', category: 'cyber' }));
+    const result = await analyze(makeContext(), llm, makeConfig(), { readFile });
+
+    expect(result.stats.refused).toBe(1);
+    expect(result.stats.failed).toBe(0);
+  });
+
+  it('キャッシュ由来は成功かつ fromCache に数える', async () => {
+    const llm = {
+      structured: async () => ({
+        ok: true as const,
+        value: { findings: [] },
+        fromCache: true,
+        model: 'test-model',
+      }),
+    } as unknown as LlmClient;
+    const result = await analyze(makeContext(), llm, makeConfig(), { readFile });
+
+    expect(result.stats.succeeded).toBe(1);
+    expect(result.stats.fromCache).toBe(1);
+    expect(assessAnalysisHealth(result.stats).level).toBe('complete');
+  });
+
+  it('予算切れで打ち切られた分は失敗ではなく「未実行」として現れる', async () => {
+    const { llm } = makeLlm(() => ({ ok: false, reason: 'budget-exhausted' }));
+    const result = await analyze(twoFileContext(), llm, makeConfig(), { readFile: readAny });
+
+    // 打ち切りは「失敗」ではないので failed/refused には入らない。
+    // total との差（=2）が未走査であることを示す。
+    expect(result.stats.total).toBe(2);
+    expect(result.stats.failed).toBe(0);
+    expect(result.stats.refused).toBe(0);
+    expect(result.stats.budgetExhausted).toBe(true);
+    expect(skippedTasks(result.stats)).toBe(2);
+    expect(assessAnalysisHealth(result.stats).level).toBe('failed');
+  });
+
+  it('検証パスだけ予算切れなら未走査は0件（検出パスは完走している）', async () => {
+    const { llm } = makeLlm((call) =>
+      call.schemaName === 'VulnScanAnalysis'
+        ? ok({ findings: [CANDIDATE] })
+        : { ok: false, reason: 'budget-exhausted' },
+    );
+    const result = await analyze(makeContext(), llm, makeConfig(), { readFile });
+
+    expect(result.stats.succeeded).toBe(1);
+    expect(result.stats.total).toBe(1);
+    expect(skippedTasks(result.stats)).toBe(0);
+    expect(result.stats.budgetExhausted).toBe(true);
+    // 走査範囲は欠けていないので degraded 止まり
+    expect(assessAnalysisHealth(result.stats).level).toBe('degraded');
+  });
+
+  it('レンズが無い場合は total 0（「見た結果0件」と区別できる）', async () => {
+    const { llm } = makeLlm(() => ok({ findings: [] }));
+    const result = await analyze(makeContext(), llm, makeConfig({ lenses: [] }), { readFile });
+
+    expect(result.stats.total).toBe(0);
+    expect(assessAnalysisHealth(result.stats).zeroFindingsIsMeaningful).toBe(false);
+  });
+
+  it('走査対象ファイルが無い場合も total 0', async () => {
+    const { llm } = makeLlm(() => ok({ findings: [] }));
+    const ctx = makeContext();
+    ctx.files = [];
+    const result = await analyze(ctx, llm, makeConfig(), { readFile });
+
+    expect(result.stats.total).toBe(0);
+    expect(assessAnalysisHealth(result.stats).level).toBe('degraded');
+  });
+
+  it('レンズ数×チャンク数がタスク総数になる', async () => {
+    const { llm } = makeLlm(() => ok({ findings: [] }));
+    const result = await analyze(
+      twoFileContext(),
+      llm,
+      makeConfig({ lenses: ['injection', 'crypto-secrets'], selfVerify: false }),
+      { readFile: readAny },
+    );
+
+    expect(result.stats.total).toBe(4);
+    expect(result.stats.succeeded).toBe(4);
   });
 });

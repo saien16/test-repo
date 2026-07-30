@@ -112,12 +112,53 @@ function renderHeader(ctx: Ctx, result: ScanResult): void {
   );
 }
 
+/**
+ * 走査が完走しなかったことを、件数より**先に**、目立つ形で出す。
+ *
+ * ここが無いと、全タスクが失敗した走査でも「✔ 検出されませんでした」だけが
+ * 目に入り、緑のチェックマークが安全の合図として読まれてしまう。
+ */
+function renderHealth(ctx: Ctx, result: ScanResult): void {
+  const health = result.health;
+  if (health.zeroFindingsIsMeaningful) return;
+
+  const a = health.analysis;
+  const label = health.level === 'failed' ? '走査は完走しませんでした' : '走査は部分的です';
+  const color = health.level === 'failed' ? ctx.style.red : ctx.style.yellow;
+
+  ctx.out.push('');
+  ctx.out.push(color(ctx.style.bold(`▍⚠ ${label}`)));
+  // 折り返しは色を付ける前の素のテキストで行い、行単位で着色する
+  // （ANSIエスケープを含んだ文字列を折ると幅計算が狂う）。
+  for (const line of wrapIndented(health.reason, ctx.width, '  ')) ctx.out.push(color(line));
+  if (a.total > 0) {
+    ctx.out.push(
+      `  ${ctx.style.dim(
+        `分析タスク: 成功 ${a.succeeded} / 失敗 ${a.failed} / 拒否 ${a.refused} / 全 ${a.total}`,
+      )}`,
+    );
+  }
+  for (const line of wrapIndented(
+    'この結果に「脆弱性が無い」ことの根拠としての意味はありません。',
+    ctx.width,
+    '  ',
+  )) {
+    ctx.out.push(ctx.style.dim(line));
+  }
+}
+
 function renderSummary(ctx: Ctx, result: ScanResult): void {
   const s = result.summary;
   heading(ctx, '深刻度別の検出状況');
 
   if (s.totalFindings === 0) {
-    ctx.out.push(`  ${ctx.style.green('✔ 対応を要する脆弱性は検出されませんでした')}`);
+    // 0件の意味は走査が完走したかどうかで正反対になる。
+    // 完走していないのに緑の ✔ を出すのは虚偽の報告にあたる。
+    ctx.out.push(
+      result.health.zeroFindingsIsMeaningful
+        ? `  ${ctx.style.green('✔ 対応を要する脆弱性は検出されませんでした')}`
+        : `  ${ctx.style.red('✖ 検出0件。ただし走査が完走していないため判定できません')}`,
+    );
   } else {
     severityBars(ctx, s.bySeverity);
   }
@@ -283,6 +324,8 @@ export function renderCli(
   };
 
   renderHeader(ctx, result);
+  // 健全性はサマリより前。読み手が最初に見る位置に置く。
+  renderHealth(ctx, result);
   renderSummary(ctx, result);
   renderNarrative(ctx, analyzed);
   renderChains(ctx, result, options.verbose ? 10 : 3);

@@ -137,6 +137,17 @@ a { color: var(--accent); }
 }
 .stat .label { font-size: 0.75rem; color: var(--text-dim); display: block; }
 .stat .value { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* 走査が完走しなかったことの注記。統計グリッドと同じ視野に入る位置に置く。
+   罫線の太い左枠で「読み飛ばせない」見た目にしてある。 */
+.health-notice {
+  border: 1px solid var(--border); border-left: 5px solid var(--sev-high);
+  background: var(--surface); border-radius: 10px;
+  padding: 12px 16px; margin: 20px 0;
+}
+.health-notice.health-failed { border-left-color: var(--sev-critical); }
+.health-notice h3 { margin: 0 0 6px; font-size: 1.05rem; color: var(--sev-high); }
+.health-notice.health-failed h3 { color: var(--sev-critical); }
+.health-notice p:last-child { margin-bottom: 0; }
 .bars { margin: 12px 0; }
 .bar-row { display: grid; grid-template-columns: 108px 44px 1fr; align-items: center; gap: 8px; margin: 4px 0; }
 .bar-row .name { font-size: 0.85rem; }
@@ -250,6 +261,31 @@ function renderHeader(result: ScanResult, analyzed: AnalyzedReport): string {
   }
   out.push('</div>');
   return out.join('\n');
+}
+
+/**
+ * 走査が完走しなかったことを、統計グリッドの直後・目次より前に出す。
+ *
+ * HTMLレポートは「検出件数 0」の大きな数字が最初に目に入る構成なので、
+ * その意味を確定させる注記を同じスクロール位置に置く必要がある。
+ */
+function renderHealthNotice(result: ScanResult): string {
+  const health = result.health;
+  if (health.zeroFindingsIsMeaningful) return '';
+
+  const a = health.analysis;
+  const cls = health.level === 'failed' ? 'health-failed' : 'health-degraded';
+  const title =
+    health.level === 'failed' ? 'このスキャンは完走していません' : 'このスキャンは部分的です';
+
+  return [
+    `<div class="health-notice ${cls}">`,
+    `<h3>⚠ ${escapeHtml(title)}</h3>`,
+    `<p>${escapeHtml(health.reason)}</p>`,
+    `<p class="meta">分析タスク: 成功 ${a.succeeded} / 失敗 ${a.failed} / 拒否 ${a.refused} / 全 ${a.total}</p>`,
+    '<p>検出件数の多寡にかかわらず、この結果を「脆弱性が無い」ことの根拠には使えません。</p>',
+    '</div>',
+  ].join('\n');
 }
 
 function renderToc(
@@ -588,6 +624,7 @@ export function renderHtml(
 
   const body = [
     renderHeader(result, analyzed),
+    renderHealthNotice(result),
     renderToc(chains, active, result.context.dependencies.length > 0, architectureMap !== ''),
     renderExecutive(analyzed),
     renderRisk(analyzed),

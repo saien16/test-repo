@@ -16,6 +16,7 @@ function analyzedOf(result: ScanResult): AnalyzedReport {
       actions: mechanical.actions,
       hasBaseline: mechanical.hasBaseline,
       errors: result.errors,
+      health: result.health,
     },
     mechanical.keyFindings,
   );

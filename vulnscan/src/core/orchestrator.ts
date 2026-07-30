@@ -12,6 +12,11 @@
  * 各ステージの失敗は errors に積み、可能な限り部分結果を返す。
  * 途中で落ちても「何も出ない」より「途中まで出る」方が有用なため。
  *
+ * ただし部分結果を返すなら、**どこまで見たのか**も一緒に返さなければならない。
+ * ②の実行統計から `ScanHealth` を算出して結果に載せるのはそのため。
+ * これが無いと「全タスク失敗・検出0件」が「検出0件」と区別できず、
+ * CIゲートもレポート文言も「安全」と誤って報告する。
+ *
  * ④⑤ にデータ依存は無いので並列に走らせる。両者の結果を使うのは⑥だけ。
  * ⑤が失敗すると⑥は成立しない（推測の土台が無いのに想定リスクを語れない）ので、
  * その場合は⑥を飛ばして undefined を返す。
@@ -30,6 +35,7 @@ import type { ScanResult } from '../types/report.js';
 import type { AttackChain } from '../types/killchain.js';
 import type { ArchitectureModel } from '../types/architecture.js';
 import type { VulnerabilityHeatmap } from '../types/heatmap.js';
+import { assessAnalysisHealth } from '../types/health.js';
 
 /**
  * パイプラインのステージ順。**ここが唯一の真実**。
@@ -86,7 +92,15 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
       : {}),
   });
   errors.push(...analyzed.errors);
-  hooks?.onStageEnd?.('analyze', `${analyzed.findings.length} 件の候補`);
+  // 「何件見つけたか」と「何件のタスクを走らせられたか」を両方出す。
+  // 前者だけを見せると、全滅した走査が「0件＝安全」に見えてしまう。
+  const health = assessAnalysisHealth(analyzed.stats);
+  hooks?.onStageEnd?.(
+    'analyze',
+    `${analyzed.findings.length} 件の候補` +
+      `（分析 ${analyzed.stats.succeeded}/${analyzed.stats.total} タスク成功）`,
+  );
+  if (health.level !== 'complete') errors.push(`走査の健全性: ${health.reason}`);
 
   // ③ 脆弱性情報管理（正規化・CVSS・重複統合・差分）
   hooks?.onStageStart?.('vuln');
@@ -157,7 +171,7 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
   }
 
   const summary = summarize(
-    { context, findings: managed.findings, chains, errors },
+    { context, findings: managed.findings, chains },
     {
       durationMs: Date.now() - startedAt,
       suppressedCount: managed.suppressedCount,
@@ -172,6 +186,7 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
     ...(architecture ? { architecture } : {}),
     ...(heatmap ? { heatmap } : {}),
     summary,
+    health,
     errors,
   };
 }

@@ -7,6 +7,7 @@ import type { AttackChain } from './killchain.js';
 import type { ScanContext } from './context.js';
 import type { ArchitectureModel } from './architecture.js';
 import type { VulnerabilityHeatmap } from './heatmap.js';
+import type { ScanHealth } from './health.js';
 
 export interface ScanSummary {
   totalFindings: number;
@@ -52,6 +53,15 @@ export interface ScanResult {
    */
   heatmap?: VulnerabilityHeatmap;
   summary: ScanSummary;
+  /**
+   * 走査が完走したかどうか。**検出結果とは独立**の軸。
+   *
+   * `findings` が空であることの意味はここを見ないと決まらない。
+   * `health.zeroFindingsIsMeaningful` が false のときの0件は
+   * 「安全」ではなく「判定できなかった」を意味する。
+   * CIゲートとレポート文言の両方がこれを参照する。
+   */
+  health: ScanHealth;
   /** スキャン中に発生したエラー（部分的失敗の記録） */
   errors: string[];
 }

@@ -394,10 +394,27 @@ export function buildSarifLog(result: ScanResult, analyzed?: AnalyzedReport): Sa
   const { rules, index } = buildRules(findings);
 
   const invocation: SarifInvocation = {
-    executionSuccessful: result.errors.length === 0,
+    // errors が空であることだけでは不十分。走査が完走したかを健全性の側から
+    // 判定する（`errors` は「大きすぎるファイルを飛ばした」程度でも増えるし、
+    // 逆に全滅した走査を成功として報告するとCI側が結果を信じてしまう）。
+    executionSuccessful: result.health.level === 'complete' && result.errors.length === 0,
     startTimeUtc: normalizeIso(result.context.scannedAt),
   };
   const notifications = [
+    // 完走しなかった事実は先頭に出す。SARIFを読む側（GitHub Code Scanning など）が
+    // 「アラート0件＝安全」と表示してしまう前に理由が見えるように。
+    ...(result.health.zeroFindingsIsMeaningful
+      ? []
+      : [
+          {
+            level: (result.health.level === 'failed' ? 'error' : 'warning') as 'error' | 'warning',
+            message: {
+              text:
+                `走査が完走しませんでした（${result.health.level}）: ${result.health.reason}` +
+                ' 検出0件を「安全」と解釈しないでください。',
+            },
+          },
+        ]),
     ...result.errors.map((message) => ({ level: 'error' as const, message: { text: message } })),
     ...result.context.warnings.map((message) => ({
       level: 'warning' as const,

@@ -14,7 +14,7 @@ import { loadConfig } from '../config/index.js';
 import { runScan, type StageName } from '../core/orchestrator.js';
 import { createAnimation } from './animation.js';
 import { LlmClient } from '../llm/client.js';
-import { analyzeResult, generateReport, determineExitCode } from '../reporter/index.js';
+import { analyzeResult, generateReport, evaluateGate } from '../reporter/index.js';
 import { saveBaseline } from '../vuln/index.js';
 import { isOperatorProvidedPath } from '../types/config.js';
 import { registerScanOptions, toConfigOverrides, type CliOptions } from './options.js';
@@ -109,7 +109,17 @@ async function runScanCommand(target: string, opts: CliOptions): Promise<void> {
         `(キャッシュ読み ${usage.cacheRead})`,
     );
 
-    process.exitCode = determineExitCode(result, config);
+    // ゲートの判定理由は必ず stderr に出す。終了コードだけを返して黙ると、
+    // 「なぜ落ちたのか」「なぜ通ったのか」を利用者が確かめられない。
+    const gate = evaluateGate(result, config);
+    if (gate.blockedByHealth) {
+      // 完走しなかった走査を通すのは、このツールの目的そのものに反する。
+      // quiet でも出す（CIログにこれだけは残す必要がある）。
+      process.stderr.write(`✖ ${gate.reason}\n`);
+    } else {
+      log(`ゲート判定: ${gate.reason}`);
+    }
+    process.exitCode = gate.exitCode;
   } finally {
     // 例外で抜けた場合もカーソルを必ず戻す（stop() は冪等）
     animation.stop();

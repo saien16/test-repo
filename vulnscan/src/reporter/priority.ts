@@ -13,6 +13,7 @@
 import type { Finding } from '../types/finding.js';
 import type { AttackChain } from '../types/killchain.js';
 import type { AnalyzedReport } from '../types/report.js';
+import type { ScanHealth } from '../types/health.js';
 import { likelihoodJa } from './labels.js';
 import { SEVERITY_LABEL_JA, SEVERITY_WEIGHT, isActiveFinding, severityRank } from './severity.js';
 import { firstSentence, truncate } from './text.js';
@@ -360,12 +361,23 @@ export function buildPrioritizedActions(
  * LLMが所見を返さなかった場合のフォールバックであり、
  * 数字と固有名詞だけで構成されるため常に事実として正しい。
  */
+export interface KeyFindingsOptions {
+  limit?: number;
+  /**
+   * 走査の健全性。所見が0件のときの文言に効く。
+   * 未完走の走査で「検出されませんでした」と書くと、
+   * それが「見た結果」だと読まれてしまう。
+   */
+  health?: ScanHealth;
+}
+
 export function buildKeyFindings(
   ranked: readonly FindingSignal[],
   chains: readonly AttackChain[],
   actions: readonly PrioritizedAction[],
-  limit = 6,
+  options: KeyFindingsOptions = {},
 ): string[] {
+  const limit = options.limit ?? 6;
   const lines: string[] = [];
 
   const topChain = [...chains].sort((a, b) => b.priorityScore - a.priorityScore)[0];
@@ -419,7 +431,13 @@ export function buildKeyFindings(
   }
 
   if (lines.length === 0) {
-    lines.push('対応を要するFindingは検出されませんでした。');
+    // 所見が挙がらなかった理由は2つあり、意味は正反対。
+    // 「見たが何も無かった」と「見られなかった」を混ぜない。
+    lines.push(
+      options.health && !options.health.zeroFindingsIsMeaningful
+        ? '走査が完走しなかったため、所見を挙げられていません（検出0件は判定結果ではありません）。'
+        : '対応を要するFindingは検出されませんでした。',
+    );
   }
   return lines.slice(0, limit);
 }

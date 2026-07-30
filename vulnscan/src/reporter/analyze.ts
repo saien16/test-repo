@@ -56,7 +56,9 @@ export function analyzeMechanically(result: ScanResult): MechanicalAnalysis {
   const signals = buildFindingSignals(result.findings, result.chains);
   const ranked = rankSignals(signals);
   const actions = buildPrioritizedActions(result.findings, result.chains, signals);
-  const keyFindings = buildKeyFindings(ranked, result.chains, actions);
+  const keyFindings = buildKeyFindings(ranked, result.chains, actions, {
+    health: result.health,
+  });
   return { signals, ranked, actions, keyFindings, hasBaseline: detectBaseline(result) };
 }
 
@@ -89,6 +91,7 @@ export async function analyzeResult(
     actions: mechanical.actions,
     hasBaseline: mechanical.hasBaseline,
     errors: result.errors ?? [],
+    health: result.health,
   };
 
   const outcome = await generateNarrative(input, mechanical.keyFindings, llm, config);

@@ -127,6 +127,17 @@ export const CONFIG_SPEC = {
     doc: '新規検出のみでゲートする（既存の負債でCIを落とさない）',
     cli: '--fail-on-new-only',
   },
+  failOnIncompleteScan: {
+    kind: 'plain',
+    default: true,
+    doc:
+      '走査が完走しなかった場合に非ゼロ終了する（終了コード 3）。\n' +
+      '分析タスクの多くが失敗した（APIキー未設定・通信障害・予算切れなど）とき、\n' +
+      '検出0件は「安全」ではなく「判定できなかった」ことを意味します。\n' +
+      'これを 0 で通すとCIが偽の緑になるため既定で有効。\n' +
+      "failOn: 'never' でもこの判定は独立に効きます（軸が違うため）。",
+    cli: '--no-fail-on-incomplete',
+  },
   baselinePath: {
     kind: 'path',
     default: '.grimoire/baseline.json',

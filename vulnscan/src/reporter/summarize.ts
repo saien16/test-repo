@@ -26,7 +26,9 @@ export interface SummarizeExtra {
  *    実態を示す指標なので、除外せず全件を対象に数える。
  */
 export function summarize(
-  result: Omit<ScanResult, 'summary'>,
+  // 実際に読むフィールドだけを要求する。`Omit<ScanResult, 'summary'>` にしていると
+  // ScanResult へ無関係なフィールドを足すたびに呼び出し側が壊れる。
+  result: Pick<ScanResult, 'context' | 'findings' | 'chains'>,
   extra: SummarizeExtra,
 ): ScanSummary {
   const bySeverity = emptySeverityCounts();
