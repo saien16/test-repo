@@ -36,10 +36,12 @@ import type {
 import type { Claim, Provenance } from '../../types/evidence.js';
 import { provenanceLabel } from '../../types/evidence.js';
 import type { BlindSpot, HeatmapCell, VulnerabilityHeatmap } from '../../types/heatmap.js';
+import type { AttackChain } from '../../types/killchain.js';
 import { escapeHtml, displayWidth, truncate } from '../text.js';
 // このセクションは html.ts と同一のドキュメント・同一のCSSクラスへ出力される。
 // 表の DOM 構造を1箇所にまとめるため、テーブル描画は html.ts の実装を共有する。
 import { scrollTable } from '../html-util.js';
+import { likelihoodJa } from '../labels.js';
 
 // ---------------------------------------------------------------------------
 // 表示用ラベル
@@ -330,6 +332,11 @@ function computeLayout(architecture: ArchitectureModel, heatmap: VulnerabilityHe
 
 function renderDefs(): string {
   return [
+    // 攻撃経路の矢先。既存のデータフロー用(gm-arrow)とは別IDにする
+    // （同じIDを2回定義すると後勝ちになり、データフローの矢印まで変わる）
+    '<marker id="gm-chain-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" ' +
+      'markerHeight="5.5" orient="auto-start-reverse">' +
+      '<path d="M0,0 L10,5 L0,10 z" class="gm-arrow-head"/></marker>',
     '<defs>',
     // 死角のハッチング。色覚に依存しないパターン記号
     '<pattern id="gm-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">',
@@ -478,7 +485,260 @@ function renderFlow(flow: ComponentDataFlow, layout: Layout): string {
   );
 }
 
-function renderSvg(architecture: ArchitectureModel, layout: Layout): string {
+/* ------------------------------------------------------------------ *
+ * 攻撃チェーンの重ね合わせ
+ *
+ * ④連鎖演算が出した攻撃経路を、この構成図の上に線として引く。
+ * ヒートマップは「どこが危ないか」を面で示すが、チェーンは
+ * 「どこから入って、どこを通って、何に届くか」という**順序**を持つ。
+ * 面では表現できないので、独立した視覚チャンネル（経路線）を足す。
+ *
+ * 経路の解決には新しいデータを持ち込まない。ヒートマップのセルが
+ * findingIds を持っているので、そこから finding → 構成要素 を引き、
+ * chain.steps の順に並べれば順序つきの経路になる。
+ *
+ * 色は意味色（熱・推測・死角）のどれとも被らせない。経路であることは
+ * 矢印と番号で伝わるので、線自体は地の色に対して最大のコントラストを取る
+ * （路線図と同じ考え方。下の塗りが濃くても薄くても読める）。
+ * ------------------------------------------------------------------ */
+
+/** 図に引ける状態まで解決した攻撃経路 */
+interface ChainRoute {
+  chain: AttackChain;
+  /** 通過する構成要素（step 順、連続する重複は畳んである） */
+  componentIds: string[];
+  /** チョークポイントが載っている構成要素 */
+  chokeComponentId: string | null;
+}
+
+/** 同時に描く経路の上限。これ以上引くと図が読めなくなる */
+const MAX_DRAWN_CHAINS = 3;
+
+/** finding → 構成要素。ヒートマップのセルから引く（割り当てを再計算しない） */
+function componentByFinding(heatmap: VulnerabilityHeatmap): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const cell of heatmap.cells) {
+    for (const id of cell.findingIds) {
+      if (!map.has(id)) map.set(id, cell.componentId);
+    }
+  }
+  return map;
+}
+
+/**
+ * チェーンを図上の経路へ変換する。
+ * 図に載らないもの（構成要素へ割り当たらない、1点に潰れる）は null を返し、
+ * 呼び出し側が「描けなかった理由つきで一覧に出す」ようにする。
+ */
+function toRoute(
+  chain: AttackChain,
+  byFinding: Map<string, string>,
+  layout: Layout,
+): ChainRoute | null {
+  const componentIds: string[] = [];
+  for (const step of chain.steps) {
+    if (step.findingId === null) continue;
+    const componentId = byFinding.get(step.findingId);
+    if (!componentId) continue;
+    if (!layout.boxById.has(componentId)) continue;
+    // 連続する同一構成要素は1点に畳む（同じ箱を往復する線にしない）
+    if (componentIds[componentIds.length - 1] === componentId) continue;
+    componentIds.push(componentId);
+  }
+  if (componentIds.length < 2) return null;
+
+  const chokeFinding = chain.chokePoint?.findingId;
+  const chokeComponentId = chokeFinding ? byFinding.get(chokeFinding) ?? null : null;
+  return { chain, componentIds, chokeComponentId };
+}
+
+/** 優先度の高い順に、図へ引ける経路だけを返す */
+function buildChainRoutes(
+  chains: readonly AttackChain[],
+  heatmap: VulnerabilityHeatmap,
+  layout: Layout,
+): { drawn: ChainRoute[]; undrawable: AttackChain[] } {
+  const byFinding = componentByFinding(heatmap);
+  const sorted = [...chains].sort(
+    (a, b) => b.priorityScore - a.priorityScore || a.id.localeCompare(b.id),
+  );
+  const drawn: ChainRoute[] = [];
+  const undrawable: AttackChain[] = [];
+  for (const chain of sorted) {
+    const route = toRoute(chain, byFinding, layout);
+    if (route && drawn.length < MAX_DRAWN_CHAINS) drawn.push(route);
+    else if (!route) undrawable.push(chain);
+  }
+  return { drawn, undrawable };
+}
+
+function nodeCenter(box: NodeBox): { x: number; y: number } {
+  return { x: box.x + NODE_W / 2, y: box.y + NODE_H / 2 };
+}
+
+/**
+ * ボックスの中心から `toward` へ向かう半直線が、矩形の枠を横切る点を返す。
+ *
+ * 経路を中心と中心で結ぶと、線と番号がノードの文字の上を通って名前が読めなくなる。
+ * 枠の上で受け渡すことで、線がノードの内側へ入らない。
+ */
+function edgePoint(box: NodeBox, toward: { x: number; y: number }): { x: number; y: number } {
+  const c = nodeCenter(box);
+  const dx = toward.x - c.x;
+  const dy = toward.y - c.y;
+  if (dx === 0 && dy === 0) return c;
+  const hw = NODE_W / 2 + 4;
+  const hh = NODE_H / 2 + 4;
+  // 縦横それぞれで枠に達するまでの倍率。小さい方が先に当たる辺
+  const tx = dx === 0 ? Infinity : hw / Math.abs(dx);
+  const ty = dy === 0 ? Infinity : hh / Math.abs(dy);
+  const t = Math.min(tx, ty);
+  return { x: c.x + dx * t, y: c.y + dy * t };
+}
+
+/** 線分に対して垂直な方向へずらす（複数経路の重なりを避ける） */
+function offsetSegment(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  amount: number,
+): [{ x: number; y: number }, { x: number; y: number }] {
+  if (amount === 0) return [a, b];
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return [a, b];
+  const nx = (-dy / len) * amount;
+  const ny = (dx / len) * amount;
+  return [
+    { x: a.x + nx, y: a.y + ny },
+    { x: b.x + nx, y: b.y + ny },
+  ];
+}
+
+/**
+ * 経路を1本描く。
+ *
+ * ノードの内側は通さず、枠と枠のあいだを繋ぐ。線は「縁取り(casing)＋本体」の
+ * 2本重ねにして、熱の濃いノードの隣を通っても輪郭が消えないようにする。
+ */
+function renderChainPath(route: ChainRoute, index: number, layout: Layout): string {
+  const boxes = route.componentIds
+    .map((id) => layout.boxById.get(id))
+    .filter((b): b is NodeBox => b !== undefined);
+  if (boxes.length < 2) return '';
+
+  // 経路ごとに少しずらす。同じ2点間を複数の経路が通っても重ならない
+  const shift = (index - (MAX_DRAWN_CHAINS - 1) / 2) * 6;
+
+  const out: string[] = [];
+  out.push(`<g class="gm-chain gm-chain-${index}">`);
+  out.push(
+    `<title>${escapeHtml(
+      `${route.chain.title} — 優先度 ${route.chain.priorityScore} / 起点 ${route.chain.entryPoint}`,
+    )}</title>`,
+  );
+
+  /** 番号バッジを置く位置。各ボックスが経路に触れる枠上の点 */
+  const marks: { x: number; y: number }[] = [];
+
+  for (let i = 0; i < boxes.length - 1; i++) {
+    const from = boxes[i];
+    const to = boxes[i + 1];
+    if (!from || !to) continue;
+    const rawA = edgePoint(from, nodeCenter(to));
+    const rawB = edgePoint(to, nodeCenter(from));
+    const [a, b] = offsetSegment(rawA, rawB, shift);
+    const d = `M${n(a.x)},${n(a.y)} L${n(b.x)},${n(b.y)}`;
+    out.push(`<path d="${d}" class="gm-chain-casing"/>`);
+    out.push(`<path d="${d}" class="gm-chain-core" marker-end="url(#gm-chain-arrow)"/>`);
+    if (i === 0) marks.push(a);
+    marks.push(b);
+  }
+
+  // 通過順の番号。進む向きを線だけに頼らず示す
+  marks.forEach((p, i) => {
+    out.push(`<circle cx="${n(p.x)}" cy="${n(p.y)}" r="9" class="gm-chain-dot"/>`);
+    out.push(svgText(p.x, p.y + 3.5, String(i + 1), 'gm-chain-dot-label', 'middle'));
+  });
+  out.push('</g>');
+  return out.join('\n');
+}
+
+/** チョークポイントが載っている構成要素に印を付ける */
+function renderChainChoke(route: ChainRoute, layout: Layout): string {
+  if (!route.chokeComponentId) return '';
+  const box = layout.boxById.get(route.chokeComponentId);
+  if (!box) return '';
+  const c = nodeCenter(box);
+  return [
+    `<g class="gm-choke">`,
+    `<title>${escapeHtml(`チョークポイント: ${route.chain.chokePoint?.rationale ?? ''}`)}</title>`,
+    `<rect x="${n(box.x - 9)}" y="${n(box.y - 9)}" width="${n(NODE_W + 18)}" ` +
+      `height="${n(NODE_H + 18)}" rx="14" class="gm-choke-ring"/>`,
+    svgTagLabel(c.x, box.y - 16, '✂ チョークポイント', 'gm-choke-label'),
+    '</g>',
+  ].join('\n');
+}
+
+/**
+ * 図に引いた経路の一覧。
+ * 線と番号だけでは「何が起きるのか」が分からないので、
+ * 起点・影響・成立可能性を本文で必ず添える。
+ * 図に引けなかった経路も件数と理由を出す（黙って捨てない）。
+ */
+function renderChainList(
+  drawn: readonly ChainRoute[],
+  undrawable: readonly AttackChain[],
+  total: number,
+): string {
+  if (total === 0) return '';
+
+  const out: string[] = ['<div class="card gm-chain-card">'];
+  out.push('<h4>図に重ねた攻撃経路</h4>');
+
+  if (drawn.length === 0) {
+    out.push(
+      `<p class="gm-note">攻撃経路は ${total} 本ありますが、` +
+        '構成要素へ割り当てられなかったため図には引けていません。' +
+        '「攻撃チェーン詳細」を参照してください。</p>',
+    );
+    out.push('</div>');
+    return out.join('\n');
+  }
+
+  out.push('<ol class="gm-chain-list">');
+  for (const [i, route] of drawn.entries()) {
+    const c = route.chain;
+    out.push(
+      `<li><span class="gm-chain-key gm-chain-key-${i}">${i + 1}</span> ` +
+        `<strong>${escapeHtml(c.title)}</strong>` +
+        `<span class="gm-note"> 優先度 ${c.priorityScore} / 成立可能性 ${escapeHtml(
+          likelihoodJa(c.likelihood),
+        )} / ${route.componentIds.length} 地点を通過</span>` +
+        `<br><span class="gm-note">起点 <code>${escapeHtml(c.entryPoint)}</code> → ` +
+        `${escapeHtml(truncate(c.impact, 90))}</span></li>`,
+    );
+  }
+  out.push('</ol>');
+
+  const hidden = total - drawn.length - undrawable.length;
+  const notes: string[] = [];
+  if (hidden > 0) notes.push(`優先度が下位の ${hidden} 本は図が読めなくなるため省略しています`);
+  if (undrawable.length > 0) {
+    notes.push(
+      `${undrawable.length} 本は通過する構成要素を1つも特定できなかったため引けていません`,
+    );
+  }
+  if (notes.length > 0) out.push(`<p class="gm-note">${escapeHtml(notes.join('。'))}。</p>`);
+  out.push('</div>');
+  return out.join('\n');
+}
+
+function renderSvg(
+  architecture: ArchitectureModel,
+  layout: Layout,
+  routes: readonly ChainRoute[] = [],
+): string {
   const parts: string[] = [];
   parts.push(
     `<svg class="gm-svg" viewBox="0 0 ${n(layout.width)} ${n(layout.height)}" ` +
@@ -502,6 +762,9 @@ function renderSvg(architecture: ArchitectureModel, layout: Layout): string {
   for (const layer of layout.layers) {
     for (const box of layer.nodes) parts.push(renderNode(box, layout));
   }
+  // 5. 攻撃経路（最前面。順序を持つ情報なのでノードの上に引く）
+  for (const route of routes) parts.push(renderChainChoke(route, layout));
+  routes.forEach((route, i) => parts.push(renderChainPath(route, i, layout)));
 
   parts.push('</svg>');
   return parts.join('\n');
@@ -515,7 +778,7 @@ function renderSvg(architecture: ArchitectureModel, layout: Layout): string {
  * 凡例。この図の生命線。
  * 「何が事実で何が推測か」をここで言い切れていなければ、この可視化は失敗である。
  */
-function renderLegend(layout: Layout): string {
+function renderLegend(layout: Layout, hasChains: boolean): string {
   const heatSwatches = [0, 1, 2, 3, 4]
     .map(
       (level, i) =>
@@ -583,6 +846,24 @@ function renderLegend(layout: Layout): string {
       '太い線は信頼境界をまたぐ経路です。攻撃者が層を越えて奥へ進む経路であり、' +
         '同じ弱点でも境界を越える線の上にあるほうが危険です。',
     ),
+    hasChains
+      ? box(
+      '番号つきの線 ＝ 攻撃経路',
+      `<path d="M 8 20 L 92 20" class="gm-chain-casing"/>` +
+        `<path d="M 8 20 L 92 20" class="gm-chain-core" marker-end="url(#gm-chain-arrow)"/>` +
+        `<circle cx="12" cy="20" r="9" class="gm-chain-dot"/>` +
+        svgText(12, 23.5, '1', 'gm-chain-dot-label', 'middle') +
+        `<circle cx="88" cy="20" r="9" class="gm-chain-dot"/>` +
+        svgText(88, 23.5, '2', 'gm-chain-dot-label', 'middle') +
+        svgText(8, 44, '通過順に番号', 'gm-legend-tick'),
+      178,
+      50,
+      '④キルチェーン分析が組み立てた攻撃経路を、通過する構成要素の順に結んだ線です。' +
+        'ヒートマップが「どこが危ないか」を面で示すのに対し、これは' +
+        '<strong>どこから入り、どこを通って、何に届くか</strong>という順序を示します。' +
+        '破線の枠（✂ チョークポイント）は、そこを塞げば後続が成立しない急所です。',
+        )
+      : '',
     '</div>',
     '<p class="gm-note">色だけに情報を載せていません。濃さ・輪郭の太さ・パターン・数値ラベルが同じ情報を重複して伝えます。</p>',
   ].join('\n');
@@ -809,11 +1090,13 @@ function renderGaps(architecture: ArchitectureModel): string {
 export function renderArchitectureMap(
   architecture: ArchitectureModel | undefined,
   heatmap: VulnerabilityHeatmap | undefined,
+  chains: readonly AttackChain[] = [],
 ): string {
   if (!architecture || !heatmap) return '';
   if (architecture.components.length === 0) return '';
 
   const layout = computeLayout(architecture, heatmap);
+  const { drawn, undrawable } = buildChainRoutes(chains, heatmap, layout);
   const styleLabel = STYLE_LABEL[architecture.style.value] ?? architecture.style.value;
 
   const out: string[] = [];
@@ -828,11 +1111,12 @@ export function renderArchitectureMap(
       '別々に符号化しています。読み方は図の下の凡例を必ず確認してください。</p>',
   );
   out.push('<div class="gm-figure" tabindex="0">');
-  out.push(renderSvg(architecture, layout));
+  out.push(renderSvg(architecture, layout, drawn));
   out.push('</div>');
   out.push('<div class="card gm-legend-card">');
-  out.push(renderLegend(layout));
+  out.push(renderLegend(layout, drawn.length > 0));
   out.push('</div>');
+  out.push(renderChainList(drawn, undrawable, chains.length));
   out.push(renderMatrix(architecture, heatmap, layout));
   out.push(renderBlindSpots(heatmap));
   out.push(renderInferenceRatio(heatmap));
@@ -853,6 +1137,7 @@ export const ARCHITECTURE_MAP_STYLE = `
   --gm-infer: #6d28d9;
   --gm-blind: #b45309;
   --gm-line: #7c8797;
+  --gm-chain: #101828;
   --gm-band: rgba(0, 0, 0, 0.035);
 }
 @media (prefers-color-scheme: dark) {
@@ -861,6 +1146,7 @@ export const ARCHITECTURE_MAP_STYLE = `
     --gm-infer: #b79bff;
     --gm-blind: #f0a53a;
     --gm-line: #78838f;
+    --gm-chain: #e6ecf7;
     --gm-band: rgba(255, 255, 255, 0.04);
   }
 }
@@ -891,6 +1177,28 @@ export const ARCHITECTURE_MAP_STYLE = `
 .gm-infer-1 { stroke-width: 1.2; stroke-dasharray: 3 3; opacity: 0.7; }
 .gm-infer-2 { stroke-width: 2.4; stroke-dasharray: 6 3; opacity: 0.85; }
 .gm-infer-3 { stroke-width: 3.6; stroke-dasharray: 9 3; opacity: 1; }
+
+/* 攻撃経路。熱・推測・死角のどの意味色とも被らせない。
+   下の塗りが濃くても薄くても読めるよう、縁取り＋本体の2本重ねにする */
+.gm-chain-casing { fill: none; stroke: var(--surface); stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; }
+.gm-chain-core { fill: none; stroke: var(--gm-chain); stroke-width: 2.6; stroke-linejoin: round; stroke-linecap: round; }
+.gm-arrow-head { fill: var(--gm-chain); }
+.gm-chain-dot { fill: var(--gm-chain); stroke: var(--surface); stroke-width: 2; }
+.gm-chain-dot-label { fill: var(--surface); font-size: 10px; font-weight: 700; }
+.gm-chain-1 .gm-chain-core, .gm-chain-1 .gm-chain-dot { opacity: 0.72; }
+.gm-chain-2 .gm-chain-core, .gm-chain-2 .gm-chain-dot { opacity: 0.5; }
+.gm-choke-ring { fill: none; stroke: var(--gm-blind); stroke-width: 2.2; stroke-dasharray: 5 4; }
+.gm-choke-label { fill: var(--gm-blind); font-size: 10.5px; font-weight: 700; }
+.gm-chain-card h4 { margin: 0 0 8px; }
+.gm-chain-list { margin: 0; padding-left: 20px; }
+.gm-chain-list li { margin-bottom: 8px; }
+.gm-chain-key {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--gm-chain); color: var(--surface); font-size: 11px; font-weight: 700;
+  vertical-align: middle; margin-right: 4px;
+}
+.gm-chain-key-1 { opacity: 0.72; }
+.gm-chain-key-2 { opacity: 0.5; }
 
 /* 死角＝ハッチング＋縁取り。塗り・輪郭とは独立した第3の記号 */
 .gm-node-hatch { fill: url(#gm-hatch); stroke: none; }

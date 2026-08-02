@@ -620,7 +620,7 @@ export function renderHtml(
   const renderedIds: ReadonlySet<string> = new Set(active.map((f) => f.id));
   // アーキテクチャ推定とヒートマップが両方揃っている場合だけ描く。
   // 片方でも欠けていれば空文字が返り、既存のレポート構成は一切変わらない。
-  const architectureMap = renderArchitectureMap(result.architecture, result.heatmap);
+  const architectureMap = renderArchitectureMap(result.architecture, result.heatmap, result.chains);
 
   const body = [
     renderHeader(result, analyzed),
