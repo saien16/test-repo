@@ -346,6 +346,21 @@ describe('analyzeKillChains', () => {
     expect(r.errors).toEqual([]);
   });
 
+  it('候補グループ単位で進捗を報告する', async () => {
+    // 1グループ = LLM 1回。④で唯一観測できる刻み。
+    const { llm } = stubLlm(async () => ok(goodResponse));
+    const seen: { completed: number; total: number; unit: string }[] = [];
+    const r = await analyzeKillChains([ssrf, cmd], ctx, llm, config, {
+      onProgress: (p) => seen.push(p),
+    });
+
+    expect(r.chains.length).toBeGreaterThan(0);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((p) => p.unit === 'グループ')).toBe(true);
+    const last = seen[seen.length - 1];
+    expect(last?.completed).toBe(last?.total);
+  });
+
   it('候補グループが作れなければ LLM を呼ばない', async () => {
     const { llm, calls } = stubLlm(async () => ok(goodResponse));
     const lonely = makeFinding({ id: 'F-lonely', file: 'src/nowhere.ts', baseScore: 5.0 });

@@ -13,6 +13,7 @@
 
 import { resolve } from 'node:path';
 import type { VulnScanConfig } from '../types/config.js';
+import type { StageProgress } from '../types/progress.js';
 import type {
   CallGraph,
   Dependency,
@@ -55,12 +56,25 @@ function looksMinified(content: string): boolean {
   return longest > 2000 && lines.length < content.length / 500;
 }
 
-/** 解析対象ファイルをマスク済みソースへ変換する */
-function toAnalyzableSources(files: readonly ScannedFile[], warnings: string[]): AnalyzableSource[] {
+/**
+ * 解析対象ファイルをマスク済みソースへ変換する。
+ *
+ * ここが①でファイル数に比例する唯一の重い処理なので、進捗もここで数える。
+ * 走査(walkRepository)側で数えないのは、走り終えるまで総数が判らず
+ * 「12/? ファイル」しか出せないため。
+ */
+function toAnalyzableSources(
+  files: readonly ScannedFile[],
+  warnings: string[],
+  onProgress?: (p: StageProgress) => void,
+): AnalyzableSource[] {
   const sources: AnalyzableSource[] = [];
   let minified = 0;
+  let seen = 0;
 
   for (const scanned of files) {
+    seen++;
+    onProgress?.({ completed: seen, total: files.length, unit: 'ファイル' });
     if (!isAnalyzable(scanned.file.language)) continue;
     if (looksMinified(scanned.content)) {
       minified++;
@@ -96,15 +110,22 @@ function safely<T>(label: string, warnings: string[], fallback: T, fn: () => T):
 const EMPTY_SYMBOLS: SymbolTable = { symbols: [], byId: {} };
 const EMPTY_CALL_GRAPH: CallGraph = { edges: [], callees: {}, callers: {} };
 
+export interface CollectContextOptions {
+  /** 前処理の進捗（ファイル単位）。省略可 */
+  onProgress?: (progress: StageProgress) => void;
+}
+
 /**
  * リポジトリを走査してスキャンコンテキストを構築する。
  *
  * @param repoRoot 走査対象のリポジトリルート
  * @param config   走査設定（exclude / include / maxFileBytes を参照する）
+ * @param options  進捗通知など（省略可）
  */
 export async function collectContext(
   repoRoot: string,
   config: VulnScanConfig,
+  options: CollectContextOptions = {},
 ): Promise<ScanContext> {
   const warnings: string[] = [];
   const root = resolve(repoRoot);
@@ -124,7 +145,7 @@ export async function collectContext(
   const languages = safely('言語の集計', warnings, [], () => summarizeLanguages(files));
 
   // 3. 解析用にコメント・文字列をマスクしておく（以降の解析で使い回す）
-  const sources = toAnalyzableSources(walked.files, warnings);
+  const sources = toAnalyzableSources(walked.files, warnings, options.onProgress);
 
   // 4. 依存関係とフレームワーク
   const dependencies: Dependency[] = safely('依存関係の抽出', warnings, [], () =>

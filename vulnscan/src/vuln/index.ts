@@ -10,6 +10,7 @@
 import type { ScanContext } from '../types/context.js';
 import { isOperatorProvidedPath, type VulnScanConfig } from '../types/config.js';
 import type { Finding, RawFinding } from '../types/finding.js';
+import type { StageProgress } from '../types/progress.js';
 import { applyBaseline, loadBaseline } from './baseline.js';
 import { loadIgnoreList, matchIgnoreRule } from './ignore.js';
 import { mergeFindings, normalizeFinding } from './normalize.js';
@@ -30,6 +31,8 @@ export interface ManageFindingsOptions {
   scanDependencies?: boolean;
   /** 生成時刻の固定（テスト用） */
   now?: string;
+  /** 進捗通知（OSV照合のみ。正規化・統合・差分は一瞬で終わる） */
+  onProgress?: (progress: StageProgress) => void;
 }
 
 /**
@@ -65,7 +68,11 @@ export async function manageFindings(
   let dependencyFindings: Finding[] = [];
   if (options.scanDependencies !== false && (ctx?.dependencies?.length ?? 0) > 0) {
     try {
-      const result = await scanDependencies(ctx.dependencies, { now, ...(options.osv ?? {}) });
+      const result = await scanDependencies(ctx.dependencies, {
+        now,
+        ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+        ...(options.osv ?? {}),
+      });
       dependencyFindings = result.findings;
       errors.push(...result.errors);
     } catch (e) {

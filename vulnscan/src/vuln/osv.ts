@@ -10,6 +10,7 @@
  */
 
 import type { Dependency } from '../types/context.js';
+import type { StageProgress } from '../types/progress.js';
 import type { Cvss3Metrics, Finding } from '../types/finding.js';
 import { mapPool } from '../llm/pool.js';
 import { extractCweId } from './catalog.js';
@@ -36,6 +37,11 @@ export interface OsvOptions {
   includeDevDependencies?: boolean;
   /** 生成時刻（ISO8601） */
   now?: string;
+  /**
+   * 進捗通知（脆弱性IDの詳細取得単位）。
+   * ③で時間がかかるのはここのネットワーク往復だけなので、数えるのもここだけ。
+   */
+  onProgress?: (progress: StageProgress) => void;
 }
 
 /* --- OSV レスポンスの最小限の型（必要なフィールドのみ） --- */
@@ -147,23 +153,31 @@ export async function scanDependencies(
 
   // 同時実行数の制限は `llm/pool.ts` の mapPool に任せる
   // （以前はここに1行ずつ対応する手書きのワーカープールがあった）。
-  await mapPool(uniqueIds, DETAIL_CONCURRENCY, async (id) => {
-    try {
-      const res = await fetchImpl(`${OSV_BASE_URL}/v1/vulns/${encodeURIComponent(id)}`, {
-        method: 'GET',
-        headers: { accept: 'application/json' },
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      if (!res.ok) {
-        errors.push(`OSV 詳細取得に失敗しました (${id}: HTTP ${res.status})`);
-        return;
+  const onProgress = options.onProgress;
+  await mapPool(
+    uniqueIds,
+    DETAIL_CONCURRENCY,
+    async (id) => {
+      try {
+        const res = await fetchImpl(`${OSV_BASE_URL}/v1/vulns/${encodeURIComponent(id)}`, {
+          method: 'GET',
+          headers: { accept: 'application/json' },
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!res.ok) {
+          errors.push(`OSV 詳細取得に失敗しました (${id}: HTTP ${res.status})`);
+          return;
+        }
+        const json = (await res.json()) as OsvVulnerability;
+        if (json && typeof json.id === 'string') details.set(id, json);
+      } catch (e) {
+        errors.push(`OSV 詳細取得に失敗しました (${id}): ${describeError(e)}`);
       }
-      const json = (await res.json()) as OsvVulnerability;
-      if (json && typeof json.id === 'string') details.set(id, json);
-    } catch (e) {
-      errors.push(`OSV 詳細取得に失敗しました (${id}): ${describeError(e)}`);
-    }
-  });
+    },
+    onProgress
+      ? (p) => onProgress({ completed: p.completed, total: p.total, unit: '依存脆弱性' })
+      : undefined,
+  );
 
   // --- 3. Finding を組み立てる ---
   for (const [depIndex, ids] of Array.from(idsByDep.entries()).sort((a, b) => a[0] - b[0])) {

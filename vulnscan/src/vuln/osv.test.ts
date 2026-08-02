@@ -204,6 +204,33 @@ describe('scanDependencies', () => {
     expect(errors).toEqual([]);
   });
 
+  it('詳細取得の進捗を単位つきで報告する', async () => {
+    // ③で時間がかかるのはこのネットワーク往復だけ。数えるのもここだけにしてある。
+    const { fetchImpl } = makeFetch({
+      batch: () => ({
+        json: { results: [{ vulns: [{ id: 'GHSA-a' }, { id: 'GHSA-b' }] }, {}] },
+      }),
+      vuln: () => ({ json: { ...VULN_DETAIL, id: 'GHSA-a' } }),
+    });
+    const seen: { completed: number; total: number; unit: string }[] = [];
+    await scanDependencies(DEPS, { fetchImpl, now: NOW, onProgress: (p) => seen.push(p) });
+
+    expect(seen.length).toBe(2);
+    expect(seen.every((p) => p.unit === '依存脆弱性')).toBe(true);
+    expect(seen.every((p) => p.total === 2)).toBe(true);
+    // 完了数は単調増加し、最後は総数に達する
+    expect(seen.map((p) => p.completed)).toEqual([1, 2]);
+  });
+
+  it('onProgress を渡さなくても動く', async () => {
+    const { fetchImpl } = makeFetch({
+      batch: () => ({ json: { results: [{ vulns: [{ id: 'GHSA-a' }] }, {}] } }),
+      vuln: () => ({ json: { ...VULN_DETAIL, id: 'GHSA-a' } }),
+    });
+    const { findings } = await scanDependencies(DEPS, { fetchImpl, now: NOW });
+    expect(findings.length).toBeGreaterThan(0);
+  });
+
   it('querybatch には正しい形式で問い合わせる', async () => {
     let sent: unknown;
     const { fetchImpl } = makeFetch({

@@ -16,6 +16,7 @@ import type { ScanContext } from '../types/context.js';
 import type { Finding } from '../types/finding.js';
 import type { VulnScanConfig } from '../types/config.js';
 import type { AttackChain, ChainStep } from '../types/killchain.js';
+import type { StageProgress } from '../types/progress.js';
 import type { LlmClient } from '../llm/client.js';
 import { mapPool } from '../llm/pool.js';
 import { normalizeCwe, reconcileSteps, type RawChainStep } from './attack-mapping.js';
@@ -42,6 +43,11 @@ const MAX_CHAINS_PER_GROUP = 3;
 export interface AnalyzeKillChainsOptions {
   /** 候補絞り込みの調整 */
   grouping?: GroupingOptions;
+  /**
+   * 進捗通知（候補グループ単位）。
+   * 1グループ = LLM 1回なので、ここが④で唯一観測できる刻み。
+   */
+  onProgress?: (progress: StageProgress) => void;
 }
 
 /** 連鎖の id を内容から決定的に導出する（再実行で id が揺れないように） */
@@ -270,7 +276,11 @@ export async function analyzeKillChains(
     }
 
     return { group, response: result.value };
-  });
+  },
+  options.onProgress
+    ? (p) => options.onProgress?.({ completed: p.completed, total: p.total, unit: 'グループ' })
+    : undefined,
+  );
 
   const chains: AttackChain[] = [];
   const seenChainKeys = new Set<string>();

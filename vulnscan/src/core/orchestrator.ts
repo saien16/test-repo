@@ -20,6 +20,14 @@
  * ④⑤ にデータ依存は無いので並列に走らせる。両者の結果を使うのは⑥だけ。
  * ⑤が失敗すると⑥は成立しない（推測の土台が無いのに想定リスクを語れない）ので、
  * その場合は⑥を飛ばして undefined を返す。
+ *
+ * 進捗(onProgress)を出すのは ①②③④ の4ステージ:
+ *   ① 前処理したファイル数      ② 走査タスク数 → 自己検証の候補数
+ *   ③ OSV の依存脆弱性取得数    ④ 候補グループ数（1グループ=LLM1回）
+ * ⑤⑦ は時間の大半が LLM 1回の応答待ちで、内側に観測できる刻みが無い。
+ * ⑥ は純粋な同期関数で一瞬終わる。バーが即100%のまま固まるのは
+ * 「あと何割か」を偽ることになるので、これらは意図的に進捗を出さない
+ * （詳細は `types/progress.ts` の {@link STAGES_WITHOUT_PROGRESS}）。
  */
 
 import { collectContext } from '../context/index.js';
@@ -36,6 +44,7 @@ import type { AttackChain } from '../types/killchain.js';
 import type { ArchitectureModel } from '../types/architecture.js';
 import type { VulnerabilityHeatmap } from '../types/heatmap.js';
 import { assessAnalysisHealth } from '../types/health.js';
+import type { StageProgress } from '../types/progress.js';
 
 /**
  * パイプラインのステージ順。**ここが唯一の真実**。
@@ -58,27 +67,7 @@ export const STAGE_SEQUENCE = [
 
 export type StageName = (typeof STAGE_SEQUENCE)[number];
 
-/**
- * 実行中のステージが報告する進捗。
- *
- * **単位を数値と一緒に運ぶ**のが要点。以前は表示側（cli/animation.ts）に
- * ステージ名→単位の対応表を置いていたが、進捗を出すステージは②だけなので
- * 表の6件は到達不能なうえ、唯一使われる②の単位も「チャンク」と誤っていた
- * （実際に数えているのは レンズ×チャンク のタスク数）。
- * 何を数えているかは数える側しか知らないので、そちらに持たせる。
- */
-export interface StageProgress {
-  completed: number;
-  total: number;
-  /** 数えている対象の単位。「34/85 タスク」の「タスク」 */
-  unit: string;
-  /**
-   * 同一ステージ内で母数が変わる局面の名前（②の 走査 / 自己検証 など）。
-   * これが無いと、バーが100%まで行って別の母数で引き直されたときに
-   * 「巻き戻った」ようにしか見えない。
-   */
-  phase?: string;
-}
+export type { StageProgress } from '../types/progress.js';
 
 export interface ScanHooks {
   onStageStart?: (stage: StageName, detail?: string) => void;
@@ -98,15 +87,26 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
   const startedAt = Date.now();
   const errors: string[] = [];
 
+  /**
+   * ステージ名を束ねた進捗コールバックを作る。
+   * hooks に onProgress が無いときは undefined を返し、
+   * 各ステージ側の「進捗を集める処理」ごと省略させる。
+   */
+  const progressFor = (stage: StageName): ((p: StageProgress) => void) | undefined =>
+    hooks?.onProgress ? (p) => hooks.onProgress?.(stage, p) : undefined;
+
   // ① コンテキスト収集
   hooks?.onStageStart?.('context');
-  const context = await collectContext(repoRoot, config);
+  const contextProgress = progressFor('context');
+  const context = await collectContext(repoRoot, config, {
+    ...(contextProgress ? { onProgress: contextProgress } : {}),
+  });
   errors.push(...context.warnings);
   hooks?.onStageEnd?.('context', `${context.files.length} ファイル`);
 
   // ② ソースコード分析（LLM）
-  //    LLM を並列実行する唯一のステージなので、進捗を hooks へ流して
-  //    「12/87 チャンク」のような処理件数を表示できるようにする。
+  //    走査(レンズ×チャンク)と自己検証(候補)の2局面があり、母数が変わる。
+  //    局面名も一緒に渡さないと、バーが巻き戻ったように見える。
   hooks?.onStageStart?.('analyze');
   const analyzed = await analyze(context, llm, config, {
     ...(hooks?.onProgress
@@ -135,7 +135,10 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
 
   // ③ 脆弱性情報管理（正規化・CVSS・重複統合・差分）
   hooks?.onStageStart?.('vuln');
-  const managed = await manageFindings(analyzed.findings, context, config);
+  const vulnProgress = progressFor('vuln');
+  const managed = await manageFindings(analyzed.findings, context, config, {
+    ...(vulnProgress ? { onProgress: vulnProgress } : {}),
+  });
   errors.push(...managed.errors);
   hooks?.onStageEnd?.('vuln', `${managed.findings.length} 件に正規化`);
 
@@ -151,7 +154,10 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
   const killChainStage = async (): Promise<void> => {
     if (!config.killChain || managed.findings.length === 0) return;
     hooks?.onStageStart?.('killchain');
-    const kc = await analyzeKillChains(managed.findings, context, llm, config);
+    const kcProgress = progressFor('killchain');
+    const kc = await analyzeKillChains(managed.findings, context, llm, config, {
+      ...(kcProgress ? { onProgress: kcProgress } : {}),
+    });
     chains = kc.chains;
     errors.push(...kc.errors);
     hooks?.onStageEnd?.('killchain', `${chains.length} 本の攻撃経路`);
