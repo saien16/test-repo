@@ -61,8 +61,7 @@ async function runScanCommand(target: string, opts: CliOptions): Promise<void> {
       hooks: {
         onStageStart: (stage) => animation.stageStart(stage, STAGE_LABELS[stage]),
         onStageEnd: (stage, detail) => animation.stageEnd(stage, detail),
-        onProgress: (stage, completed, total) =>
-          animation.stageProgress(stage, completed, total),
+        onProgress: (stage, progress) => animation.stageProgress(stage, progress),
       },
     });
 

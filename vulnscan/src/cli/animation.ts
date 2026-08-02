@@ -23,7 +23,7 @@
  *   8. 端末幅を超えない（`reporter/text.ts` の表示幅計算を使う）。
  */
 
-import { STAGE_SEQUENCE, type StageName } from '../core/orchestrator.js';
+import { STAGE_SEQUENCE, type StageName, type StageProgress } from '../core/orchestrator.js';
 import { createStyler, type Styler } from '../reporter/ansi.js';
 import { displayWidth, truncate } from '../reporter/text.js';
 
@@ -37,7 +37,7 @@ export interface ScanAnimation {
   /** ステージの詠唱開始。`label` は人間向けの平易な名前 */
   stageStart(stage: StageName, label: string): void;
   /** 実行中のステージの処理件数を更新する */
-  stageProgress(stage: StageName, completed: number, total: number): void;
+  stageProgress(stage: StageName, progress: StageProgress): void;
   /** ステージの完了。`detail` は「87 件の候補」のような結果の要約 */
   stageEnd(stage: StageName, detail?: string): void;
   /** 後始末。**冪等**。カーソル復帰と行消去を必ず行う */
@@ -95,16 +95,16 @@ export const STAGE_SPELL: Readonly<Record<StageName, string>> = {
   report: '編纂',
 };
 
-/** 進捗カウンタの単位。ステージごとに数えているものが違う */
-const STAGE_UNIT: Readonly<Record<StageName, string>> = {
-  context: 'ファイル',
-  analyze: 'チャンク',
-  vuln: '件',
-  killchain: '経路',
-  architecture: '構成要素',
-  heatmap: 'セル',
-  report: '節',
-};
+/*
+ * 単位（「タスク」「候補」など）の対応表はここには置かない。
+ * 進捗を報告するステージが {@link StageProgress} に載せて渡してくる。
+ *
+ * 以前はここに `STAGE_UNIT: Record<StageName, string>` があったが、
+ * onProgress が配線されているのは②だけなので7件中6件は到達不能で、
+ * 唯一使われる②の単位も「チャンク」と誤っていた
+ * （実際に数えているのは レンズ×チャンク のタスク数）。
+ * 表示側が推測で単位を決める構造そのものをやめてある。
+ */
 
 /**
  * 回転する魔法陣。
@@ -173,7 +173,8 @@ class PlainAnimation implements ScanAnimation {
   /** 節目の割合（この値を跨いだときだけ1行出す） */
   private static readonly MILESTONES = [0.25, 0.5, 0.75] as const;
 
-  private readonly reported = new Map<StageName, number>();
+  /** 節目の報告済み割合。キーは局面がある場合 `stage:phase` */
+  private readonly reported = new Map<string, number>();
 
   constructor(private readonly stream: AnimationStream) {}
 
@@ -186,17 +187,22 @@ class PlainAnimation implements ScanAnimation {
     this.line(`▶ ${label} ...`);
   }
 
-  stageProgress(stage: StageName, completed: number, total: number): void {
+  stageProgress(stage: StageName, progress: StageProgress): void {
+    const { completed, total, unit, phase } = progress;
     if (total <= 0) return;
     const ratio = completed / total;
-    const done = this.reported.get(stage) ?? 0;
+    // 局面ごとに節目を数え直す。同じステージでも母数が変わるため、
+    // 通しで見ると「50%まで戻った」ように見えてしまう。
+    const key = phase ? `${stage}:${phase}` : stage;
+    const done = this.reported.get(key) ?? 0;
     let next = done;
     for (const m of PlainAnimation.MILESTONES) {
       if (ratio >= m && m > done) next = m;
     }
     if (next === done) return;
-    this.reported.set(stage, next);
-    this.line(`  ${completed}/${total} ${STAGE_UNIT[stage]} (${Math.round(ratio * 100)}%)`);
+    this.reported.set(key, next);
+    const where = phase ? `${phase} ` : '';
+    this.line(`  ${where}${completed}/${total} ${unit} (${Math.round(ratio * 100)}%)`);
   }
 
   stageEnd(stage: StageName, detail?: string): void {
@@ -220,6 +226,10 @@ interface StageState {
   label: string;
   completed: number;
   total: number;
+  /** 進捗が来るまでは単位が判らないので空。バーもその間は出さない */
+  unit: string;
+  /** 局面名（②の 走査 / 自己検証）。無い場合もある */
+  phase: string | null;
   startedAt: number;
 }
 
@@ -300,14 +310,16 @@ class LiveAnimation implements ScanAnimation {
   stageStart(stage: StageName, label: string): void {
     if (this.stopped) return;
     this.current = stage;
-    this.state = { label, completed: 0, total: 0, startedAt: this.now() };
+    this.state = { label, completed: 0, total: 0, unit: '', phase: null, startedAt: this.now() };
     this.render();
   }
 
-  stageProgress(stage: StageName, completed: number, total: number): void {
+  stageProgress(stage: StageName, progress: StageProgress): void {
     if (this.stopped || this.current !== stage || !this.state) return;
-    this.state.completed = completed;
-    this.state.total = total;
+    this.state.completed = progress.completed;
+    this.state.total = progress.total;
+    this.state.unit = progress.unit;
+    this.state.phase = progress.phase ?? null;
     // 描画自体はタイマーに任せる（呼び出し頻度に引きずられないため）
   }
 
@@ -378,8 +390,11 @@ class LiveAnimation implements ScanAnimation {
 
     const parts = [ring, index, spell];
     if (state.total > 0) {
+      // 局面名を添える。②はここが「走査」→「自己検証」と変わり、
+      // 同時に母数も変わる。名前が無いとバーが巻き戻ったようにしか見えない。
+      if (state.phase) parts.push(s.dim(state.phase));
       parts.push(s.dim(renderBar(state.completed, state.total)));
-      parts.push(`${state.completed}/${state.total} ${STAGE_UNIT[stage]}`);
+      parts.push(`${state.completed}/${state.total} ${state.unit}`);
     } else {
       parts.push(s.dim(state.label));
     }

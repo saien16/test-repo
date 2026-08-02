@@ -64,11 +64,11 @@ function visibleLines(text: string): string[] {
 function drive(anim: ReturnType<typeof createAnimation>): void {
   anim.start();
   anim.stageStart('context', 'コンテキスト収集');
-  anim.stageProgress('context', 5, 10);
+  anim.stageProgress('context', { completed: 5, total: 10, unit: 'ファイル' });
   anim.stageEnd('context', '128 ファイル');
   anim.stageStart('analyze', 'ソースコード分析');
-  anim.stageProgress('analyze', 12, 87);
-  anim.stageProgress('analyze', 87, 87);
+  anim.stageProgress('analyze', { completed: 12, total: 87, unit: 'タスク', phase: '走査' });
+  anim.stageProgress('analyze', { completed: 87, total: 87, unit: 'タスク', phase: '走査' });
   anim.stageEnd('analyze', '9 件の候補');
   anim.stop();
 }
@@ -112,16 +112,17 @@ describe('非TTY環境', () => {
     const anim = createAnimation({ tty: false, color: false, quiet: false, stream });
     anim.start();
     anim.stageStart('analyze', 'ソースコード分析');
-    for (let i = 1; i <= 100; i++) anim.stageProgress('analyze', i, 100);
+    for (let i = 1; i <= 100; i++)
+      anim.stageProgress('analyze', { completed: i, total: 100, unit: 'タスク' });
     anim.stageEnd('analyze');
     anim.stop();
     const progressLines = stream
       .text()
       .split('\n')
-      .filter((l) => l.includes('チャンク'));
+      .filter((l) => l.includes('タスク'));
     // 25% / 50% / 75% の3行だけ
     expect(progressLines.length).toBe(3);
-    expect(progressLines[0]).toContain('25/100 チャンク');
+    expect(progressLines[0]).toContain('25/100 タスク');
   });
 
   it('stop() を何度呼んでも追加の出力をしない', () => {
@@ -212,7 +213,7 @@ describe('TTY アニメーション', () => {
     anim.stop();
     const after = stream.text();
     anim.stageStart('analyze', 'ソースコード分析');
-    anim.stageProgress('analyze', 1, 2);
+    anim.stageProgress('analyze', { completed: 1, total: 2, unit: 'タスク' });
     anim.stageEnd('analyze', 'x');
     expect(stream.text()).toBe(after);
   });
@@ -242,7 +243,7 @@ describe('TTY アニメーション', () => {
     anim.stop();
   });
 
-  it('LLM並列の処理件数を「12/87 チャンク」形式で出す', () => {
+  it('LLM並列の処理件数を「12/87 タスク」形式で出す', () => {
     const stream = fakeStream();
     const anim = createAnimation({
       tty: true,
@@ -254,12 +255,12 @@ describe('TTY アニメーション', () => {
     });
     anim.start();
     anim.stageStart('analyze', 'ソースコード分析');
-    anim.stageProgress('analyze', 12, 87);
+    anim.stageProgress('analyze', { completed: 12, total: 87, unit: 'タスク' });
     // 進捗はタイマー描画に載るので、描画を1回強制する代わりに
     // 別ステージの確定表示を挟まずタイマーを待つ
     return new Promise<void>((resolve) => {
       setTimeout(() => {
-        expect(stream.text()).toContain('12/87 チャンク');
+        expect(stream.text()).toContain('12/87 タスク');
         anim.stop();
         resolve();
       }, 30);
@@ -297,7 +298,7 @@ describe('TTY アニメーション', () => {
       anim.start();
       for (const stage of STAGE_ORDER) {
         anim.stageStart(stage, 'とても長い日本語のステージ名'.repeat(4));
-        anim.stageProgress(stage, 1234, 5678);
+        anim.stageProgress(stage, { completed: 1234, total: 5678, unit: '件', phase: '走査' });
         anim.stageEnd(stage, '非常に長い詳細テキスト'.repeat(6));
       }
       anim.stop();
@@ -439,12 +440,81 @@ describe('formatClock', () => {
 });
 
 describe('ステージ語彙', () => {
-  it('全ステージに詠唱名と単位がある', () => {
+  it('全ステージに詠唱名がある', () => {
     // 件数は直書きしない。ステージが増減してもこのテストは壊れず、
     // 「語彙の付け忘れ」だけを検出し続ける。
     expect(STAGE_ORDER.length).toBeGreaterThan(0);
     for (const stage of STAGE_ORDER) {
       expect(STAGE_SPELL[stage], stage).toBeTruthy();
     }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 単位と局面
+ *
+ * 以前は表示側がステージ名から単位を引いていた。進捗を出すステージは
+ * ②だけなので表の6件は到達不能で、しかも②の単位「チャンク」は誤り
+ * （実際に数えているのは レンズ×チャンク のタスク数）だった。
+ * 単位は数える側が進捗と一緒に運ぶ、という前提をここで固定する。
+ * ------------------------------------------------------------------ */
+
+describe('進捗の単位と局面', () => {
+  it('単位は渡されたものをそのまま出す（表示側は推測しない）', () => {
+    const stream = fakeStream(200);
+    // 実行中の行はタイマー描画に載るので、描画間隔を詰めて1回走らせる
+    const anim = createAnimation({
+      tty: true, color: false, quiet: false, stream, handleSignals: false, intervalMs: 1,
+    });
+    anim.start();
+    anim.stageStart('analyze', 'ソースコード分析');
+    anim.stageProgress('analyze', { completed: 3, total: 9, unit: '候補' });
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        expect(stream.text()).toContain('3/9 候補');
+        expect(stream.text()).not.toContain('チャンク');
+        anim.stop();
+        resolve();
+      }, 30);
+    });
+  });
+
+  it('局面名が渡されれば実行中の行に添える', () => {
+    const stream = fakeStream(200);
+    const anim = createAnimation({
+      tty: true, color: false, quiet: false, stream, handleSignals: false, intervalMs: 1,
+    });
+    anim.start();
+    anim.stageStart('analyze', 'ソースコード分析');
+    anim.stageProgress('analyze', { completed: 2, total: 14, unit: '候補', phase: '自己検証' });
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        expect(stream.text()).toContain('自己検証');
+        expect(stream.text()).toContain('2/14 候補');
+        anim.stop();
+        resolve();
+      }, 30);
+    });
+  });
+
+  it('非TTYでは局面ごとに節目を数え直す（バーの引き直しを取りこぼさない）', () => {
+    // ②は 走査(85) を100%まで進めたあと 自己検証(14) を0から数え直す。
+    // 節目をステージ単位で覚えていると、2つ目の局面は「もう75%報告済み」
+    // と見なされて1行も出なくなる。
+    const stream = fakeStream();
+    const anim = createAnimation({ tty: false, color: false, quiet: false, stream });
+    anim.start();
+    anim.stageStart('analyze', 'ソースコード分析');
+    for (let i = 1; i <= 85; i++) {
+      anim.stageProgress('analyze', { completed: i, total: 85, unit: 'タスク', phase: '走査' });
+    }
+    for (let i = 1; i <= 14; i++) {
+      anim.stageProgress('analyze', { completed: i, total: 14, unit: '候補', phase: '自己検証' });
+    }
+    anim.stageEnd('analyze', '11 件の候補');
+    anim.stop();
+    const lines = stream.text().split('\n');
+    expect(lines.filter((l) => l.includes('走査') && l.includes('タスク')).length).toBe(3);
+    expect(lines.filter((l) => l.includes('自己検証') && l.includes('候補')).length).toBe(3);
   });
 });

@@ -23,7 +23,7 @@
  */
 
 import { collectContext } from '../context/index.js';
-import { analyze } from '../analyzer/index.js';
+import { analyze, ANALYZE_PHASES } from '../analyzer/index.js';
 import { manageFindings } from '../vuln/index.js';
 import { analyzeKillChains } from '../killchain/index.js';
 import { inferArchitecture } from '../architecture/index.js';
@@ -58,10 +58,32 @@ export const STAGE_SEQUENCE = [
 
 export type StageName = (typeof STAGE_SEQUENCE)[number];
 
+/**
+ * 実行中のステージが報告する進捗。
+ *
+ * **単位を数値と一緒に運ぶ**のが要点。以前は表示側（cli/animation.ts）に
+ * ステージ名→単位の対応表を置いていたが、進捗を出すステージは②だけなので
+ * 表の6件は到達不能なうえ、唯一使われる②の単位も「チャンク」と誤っていた
+ * （実際に数えているのは レンズ×チャンク のタスク数）。
+ * 何を数えているかは数える側しか知らないので、そちらに持たせる。
+ */
+export interface StageProgress {
+  completed: number;
+  total: number;
+  /** 数えている対象の単位。「34/85 タスク」の「タスク」 */
+  unit: string;
+  /**
+   * 同一ステージ内で母数が変わる局面の名前（②の 走査 / 自己検証 など）。
+   * これが無いと、バーが100%まで行って別の母数で引き直されたときに
+   * 「巻き戻った」ようにしか見えない。
+   */
+  phase?: string;
+}
+
 export interface ScanHooks {
   onStageStart?: (stage: StageName, detail?: string) => void;
   onStageEnd?: (stage: StageName, detail?: string) => void;
-  onProgress?: (stage: StageName, completed: number, total: number) => void;
+  onProgress?: (stage: StageName, progress: StageProgress) => void;
 }
 
 export interface RunScanOptions {
@@ -88,7 +110,16 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
   hooks?.onStageStart?.('analyze');
   const analyzed = await analyze(context, llm, config, {
     ...(hooks?.onProgress
-      ? { onProgress: (p) => hooks.onProgress?.('analyze', p.completed, p.total) }
+      ? {
+          // 局面(走査/自己検証)ごとに単位も母数も違う。両方そのまま渡す。
+          onProgress: (p) =>
+            hooks.onProgress?.('analyze', {
+              completed: p.completed,
+              total: p.total,
+              unit: ANALYZE_PHASES[p.phase].unit,
+              phase: ANALYZE_PHASES[p.phase].label,
+            }),
+        }
       : {}),
   });
   errors.push(...analyzed.errors);

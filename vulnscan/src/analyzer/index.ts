@@ -43,8 +43,23 @@ import { applyVerdict, buildVerificationPrompt, VERIFY_SYSTEM_PROMPT } from './v
 // 公開するのもそれと、その引数・戻り値の型に限る。
 // analyzer 内部のヘルパは各モジュールから直接 import すること。
 
+/**
+ * ②が持つ2つの局面と、それぞれが数えているもの。**ここが単位の定義元**。
+ *
+ * 2つの局面は母数がまったく違う（走査はレンズ×チャンクのタスク数、
+ * 自己検証は1st passが挙げた候補の数）。同じ名前・同じ単位で報告すると、
+ * バーが100%まで進んだあと突然引き直されて見えるので、局面名も一緒に返す。
+ */
+export const ANALYZE_PHASES = {
+  analyze: { label: '走査', unit: 'タスク' },
+  verify: { label: '自己検証', unit: '候補' },
+} as const;
+
+/** ②の進捗の局面。`ANALYZE_PHASES` のキーから導出する */
+export type AnalyzePhase = keyof typeof ANALYZE_PHASES;
+
 export interface AnalyzeProgress {
-  phase: 'analyze' | 'verify';
+  phase: AnalyzePhase;
   completed: number;
   total: number;
 }
