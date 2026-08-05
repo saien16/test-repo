@@ -142,7 +142,7 @@ a { color: var(--accent); }
 .inferred-note { font-size: 0.88rem; color: var(--text-dim); margin: 8px 0 0; }
 .file-list { font-size: 0.88rem; }
 .dir-child { padding-left: 1.6em; color: var(--text-dim); display: inline-block; }
-.dir-table td:nth-child(2), .dir-table td:nth-child(3), .dir-table th:nth-child(2), .dir-table th:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; }
+.dir-table td:not(:first-child), .dir-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 
 .stat-grid {
   display: grid; gap: 10px; margin: 20px 0;
@@ -338,8 +338,9 @@ function renderTarget(result: ScanResult): string {
     );
   }
   row(
-    'ファイル数',
-    `${formatNumber(t.fileCount)} ファイル<span class="dim"> / ${escapeHtml(formatBytes(t.totalBytes))}</span>`,
+    '規模',
+    `${formatNumber(t.fileCount)} ファイル / ${formatNumber(t.linesScanned)} 行` +
+      `<span class="dim"> / ${escapeHtml(formatBytes(t.totalBytes))}</span>`,
   );
   if (t.languages.length > 0) {
     row(
@@ -389,17 +390,19 @@ function renderTarget(result: ScanResult): string {
       rows.push([
         `<b>${escapeHtml(name)}</b>`,
         formatNumber(dir.fileCount),
+        formatNumber(dir.lines),
         escapeHtml(formatBytes(dir.bytes)),
       ]);
       for (const child of dir.children) {
         rows.push([
           `<span class="dir-child">${escapeHtml(`${child.path}/`)}</span>`,
           formatNumber(child.fileCount),
+          formatNumber(child.lines),
           escapeHtml(formatBytes(child.bytes)),
         ]);
       }
     }
-    out.push(scrollTable(['ディレクトリ', 'ファイル数', 'サイズ'], rows, 'dir-table'));
+    out.push(scrollTable(['ディレクトリ', 'ファイル数', '行数', 'サイズ'], rows, 'dir-table'));
     const omitted: string[] = [];
     if (t.truncatedDirectories > 0) omitted.push(`上位 ${formatNumber(t.truncatedDirectories)} 個`);
     if (t.truncatedChildren > 0) omitted.push(`2階層目 ${formatNumber(t.truncatedChildren)} 個`);
@@ -760,7 +763,8 @@ export function renderHtml(
     renderFindings(active, fixed),
     renderSbom(result.context.dependencies, result.findings, renderedIds),
     renderIssues(result),
-    `<footer>GRIMOIRE 0.1.0 が生成 — トークン使用量: 入力 ${formatNumber(analyzed.summary.tokenUsage.input)} / ` +
+    `<footer>GRIMOIRE 0.1.0 が生成 — 処理 ${formatNumber(analyzed.summary.filesScanned)} ファイル / ` +
+      `${formatNumber(analyzed.summary.linesScanned)} 行 — トークン使用量: 入力 ${formatNumber(analyzed.summary.tokenUsage.input)} / ` +
       `出力 ${formatNumber(analyzed.summary.tokenUsage.output)} / ` +
       `キャッシュ読 ${formatNumber(analyzed.summary.tokenUsage.cacheRead)} / ` +
       `書 ${formatNumber(analyzed.summary.tokenUsage.cacheWrite)}</footer>`,

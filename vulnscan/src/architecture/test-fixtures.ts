@@ -35,7 +35,7 @@ export function brokenFileSystem(): RepoFileSystem {
 }
 
 export function makeSourceFile(path: string, language = 'typescript'): SourceFile {
-  return { path, language, sizeBytes: 100, hash: 'x' };
+  return { path, language, sizeBytes: 100, lines: 4, hash: 'x' };
 }
 
 export function makeDependency(
@@ -66,6 +66,7 @@ export function makeContext(overrides: Partial<ScanContext> = {}): ScanContext {
   return {
     repoRoot: '/repo',
     scannedAt: '2026-01-01T00:00:00.000Z',
+    readme: null,
     languages: [{ name: 'typescript', fileCount: 10, ratio: 1 }],
     frameworks: [{ name: 'Express', evidence: 'express' }],
     dependencies: [],

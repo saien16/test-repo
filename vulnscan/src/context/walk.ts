@@ -77,6 +77,16 @@ function isManifest(baseName: string): boolean {
 /** 走査上限。異常に巨大なリポジトリで暴走しないためのガード */
 const MAX_FILES = 20_000;
 const MAX_DEPTH = 32;
+/**
+ * 行数を数える。
+ * 末尾の改行で1行増えないように、最終行が空なら数えない。
+ */
+export function countLines(content: string): number {
+  if (content === '') return 0;
+  const n = content.split('\n').length;
+  return content.endsWith('\n') ? n - 1 : n;
+}
+
 /** マニフェストは include の対象外でも読むが、サイズは制限する */
 const MAX_MANIFEST_BYTES = 2_000_000;
 
@@ -220,6 +230,7 @@ export async function walkRepository(
           path: rel,
           language: detectLanguage(rel),
           sizeBytes: size,
+          lines: countLines(content),
           hash: hashContent(buffer),
         },
         content,

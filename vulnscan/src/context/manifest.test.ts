@@ -5,7 +5,7 @@ import { detectFrameworks } from './frameworks.js';
 import { detectLanguage, summarizeLanguages } from './language.js';
 import { maskSource } from './mask.js';
 import { buildSymbolTable, type AnalyzableSource } from './symbols.js';
-import { looksBinary } from './walk.js';
+import { countLines, looksBinary } from './walk.js';
 
 function src(path: string, language: string, lines: string[]): AnalyzableSource {
   return { path, language, masked: maskSource(lines.join('\n'), language) };
@@ -34,13 +34,28 @@ describe('detectLanguage', () => {
 describe('summarizeLanguages', () => {
   it('件数と比率を集計し unknown を除外する', () => {
     const languages = summarizeLanguages([
-      { path: 'a.ts', language: 'typescript', sizeBytes: 1, hash: 'x' },
-      { path: 'b.ts', language: 'typescript', sizeBytes: 1, hash: 'x' },
-      { path: 'c.py', language: 'python', sizeBytes: 1, hash: 'x' },
-      { path: 'LICENSE', language: 'unknown', sizeBytes: 1, hash: 'x' },
+      { path: 'a.ts', language: 'typescript', sizeBytes: 1, lines: 1, hash: 'x' },
+      { path: 'b.ts', language: 'typescript', sizeBytes: 1, lines: 1, hash: 'x' },
+      { path: 'c.py', language: 'python', sizeBytes: 1, lines: 1, hash: 'x' },
+      { path: 'LICENSE', language: 'unknown', sizeBytes: 1, lines: 1, hash: 'x' },
     ]);
     expect(languages[0]).toEqual({ name: 'typescript', fileCount: 2, ratio: 2 / 3 });
     expect(languages.map((l) => l.name)).not.toContain('unknown');
+  });
+});
+
+describe('countLines', () => {
+  it('末尾の改行で1行増やさない', () => {
+    expect(countLines('a\nb\nc\n')).toBe(3);
+    expect(countLines('a\nb\nc')).toBe(3);
+  });
+
+  it('空ファイルは0行', () => {
+    expect(countLines('')).toBe(0);
+  });
+
+  it('改行1つだけのファイルは1行', () => {
+    expect(countLines('\n')).toBe(1);
   });
 });
 

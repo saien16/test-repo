@@ -140,7 +140,9 @@ function renderTarget(result: ScanResult): string[] {
       `| Git | \`${escapeMdCode(t.git.branch)}\` @ \`${escapeMdCode(truncate(t.git.headSha, 12, ''))}\` |`,
     );
   }
-  lines.push(`| ファイル数 | ${formatNumber(t.fileCount)} ファイル / ${formatBytes(t.totalBytes)} |`);
+  lines.push(
+    `| 規模 | ${formatNumber(t.fileCount)} ファイル / ${formatNumber(t.linesScanned)} 行 / ${formatBytes(t.totalBytes)} |`,
+  );
   if (t.languages.length > 0) {
     lines.push(
       `| 言語構成 | ${t.languages.map((l: { name: string; ratio: number }) => `${l.name} ${Math.round(l.ratio * 100)}%`).join(' / ')} |`,
@@ -178,14 +180,16 @@ function renderTarget(result: ScanResult): string[] {
   } else if (t.directories !== null) {
     lines.push('### 構成（上位2階層）');
     lines.push('');
-    lines.push('| ディレクトリ | ファイル数 | サイズ |');
-    lines.push('| --- | ---: | ---: |');
+    lines.push('| ディレクトリ | ファイル数 | 行数 | サイズ |');
+    lines.push('| --- | ---: | ---: | ---: |');
     for (const dir of t.directories) {
       const name = dir.path === '.' ? '(ルート直下)' : `${dir.path}/`;
-      lines.push(`| **${escapeMdCode(name)}** | ${formatNumber(dir.fileCount)} | ${formatBytes(dir.bytes)} |`);
+      lines.push(
+        `| **${escapeMdCode(name)}** | ${formatNumber(dir.fileCount)} | ${formatNumber(dir.lines)} | ${formatBytes(dir.bytes)} |`,
+      );
       for (const child of dir.children) {
         lines.push(
-          `| &nbsp;&nbsp;&nbsp;&nbsp;${escapeMdCode(`${child.path}/`)} | ${formatNumber(child.fileCount)} | ${formatBytes(child.bytes)} |`,
+          `| &nbsp;&nbsp;&nbsp;&nbsp;${escapeMdCode(`${child.path}/`)} | ${formatNumber(child.fileCount)} | ${formatNumber(child.lines)} | ${formatBytes(child.bytes)} |`,
         );
       }
     }
@@ -596,7 +600,8 @@ export function renderMarkdown(
     ...renderIssues(result),
     '---',
     '',
-    `<sub>GRIMOIRE 0.1.0 が生成 — トークン使用量: 入力 ${formatNumber(analyzed.summary.tokenUsage.input)} / ` +
+    `<sub>GRIMOIRE 0.1.0 が生成 — 処理 ${formatNumber(analyzed.summary.filesScanned)} ファイル / `,
+    `${formatNumber(analyzed.summary.linesScanned)} 行 — トークン使用量: 入力 ${formatNumber(analyzed.summary.tokenUsage.input)} / ` +
       `出力 ${formatNumber(analyzed.summary.tokenUsage.output)} / ` +
       `キャッシュ読 ${formatNumber(analyzed.summary.tokenUsage.cacheRead)}</sub>`,
     '',

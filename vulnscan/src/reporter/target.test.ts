@@ -18,8 +18,8 @@ import {
   formatTimestamp,
 } from './target.js';
 
-function file(path: string, sizeBytes = 100): SourceFile {
-  return { path, language: 'typescript', sizeBytes, hash: 'x' };
+function file(path: string, sizeBytes = 100, lines = 10): SourceFile {
+  return { path, language: 'typescript', sizeBytes, lines, hash: 'x' };
 }
 
 function context(files: SourceFile[], extra: Partial<ScanContext> = {}): ScanContext {
@@ -27,7 +27,7 @@ function context(files: SourceFile[], extra: Partial<ScanContext> = {}): ScanCon
     repoRoot: '/home/user/app',
     scannedAt: '2026-08-05T09:30:00.000Z',
     readme: null,
-    languages: [{ name: 'typescript', ratio: 1, files: files.length, bytes: 0 }],
+    languages: [{ name: 'typescript', ratio: 1, fileCount: files.length }],
     frameworks: [],
     dependencies: [],
     files,
@@ -94,9 +94,22 @@ describe('buildTargetSummary', () => {
     expect(t.truncatedChildren).toBe(2);
   });
 
-  it('合計サイズを積み上げる', () => {
-    const t = buildTargetSummary(context([file('a.ts', 1000), file('b.ts', 24)]), 0);
+  it('合計サイズと行数を積み上げる', () => {
+    const t = buildTargetSummary(context([file('a.ts', 1000, 40), file('b.ts', 24, 2)]), 0);
     expect(t.totalBytes).toBe(1024);
+    expect(t.linesScanned).toBe(42);
+  });
+
+  it('ディレクトリごとにも行数を積み上げる', () => {
+    const files = [
+      ...Array.from({ length: 6 }, (_, i) => file(`src/a/f${i}.ts`, 10, 100)),
+      ...Array.from({ length: 6 }, (_, i) => file(`docs/d${i}.md`, 10, 5)),
+    ];
+    const t = buildTargetSummary(context(files), 0);
+    expect(t.linesScanned).toBe(630);
+    expect(t.directories?.find((d) => d.path === 'src')?.lines).toBe(600);
+    expect(t.directories?.find((d) => d.path === 'src')?.children[0]?.lines).toBe(600);
+    expect(t.directories?.find((d) => d.path === 'docs')?.lines).toBe(30);
   });
 
   it('アーキテクチャ推定が無ければ様式は null（推測を捏造しない）', () => {

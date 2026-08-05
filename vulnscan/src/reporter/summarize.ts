@@ -80,6 +80,7 @@ export function summarize(
     chainCount: result.chains.length,
     maxCvssScore: Math.round(maxCvssScore * 10) / 10,
     filesScanned: result.context.files.length,
+    linesScanned: result.context.files.reduce((sum, f) => sum + (f.lines ?? 0), 0),
     durationMs: Math.max(0, Math.round(extra.durationMs)),
     tokenUsage: {
       input: extra.tokenUsage.input,

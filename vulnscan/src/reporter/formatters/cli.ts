@@ -149,7 +149,7 @@ function renderTarget(ctx: Ctx, result: ScanResult): void {
   }
   label(
     '規模',
-    `${formatNumber(t.fileCount)} ファイル / ${formatBytes(t.totalBytes)}` +
+    `${formatNumber(t.fileCount)} ファイル / ${formatNumber(t.linesScanned)} 行 / ${formatBytes(t.totalBytes)}` +
       (t.languages.length > 0
         ? ` / ${t.languages.map((l) => `${l.name} ${Math.round(l.ratio * 100)}%`).join(' ')}`
         : ''),
@@ -383,9 +383,19 @@ function renderErrors(ctx: Ctx, result: ScanResult): void {
 }
 
 function renderFooter(ctx: Ctx, result: ScanResult): void {
-  const t = result.summary.tokenUsage;
+  const s = result.summary;
+  const t = s.tokenUsage;
   ctx.out.push('');
   rule(ctx);
+  ctx.out.push(
+    ctx.style.dim(
+      truncate(
+        `処理: ${formatNumber(s.filesScanned)} ファイル / ${formatNumber(s.linesScanned)} 行 / ` +
+          formatTargetDuration(s.durationMs),
+        ctx.width,
+      ),
+    ),
+  );
   ctx.out.push(
     ctx.style.dim(
       truncate(

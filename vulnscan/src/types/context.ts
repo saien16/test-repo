@@ -36,6 +36,8 @@ export interface SourceFile {
   path: string;
   language: string;
   sizeBytes: number;
+  /** 行数。走査規模の報告に使う */
+  lines: number;
   /** 内容の sha256（キャッシュキーに使う） */
   hash: string;
 }

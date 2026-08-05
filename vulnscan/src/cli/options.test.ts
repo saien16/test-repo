@@ -42,8 +42,10 @@ describe('registerScanOptions', () => {
   it('spec が宣言している CLI フラグがすべて実在する', () => {
     const help = registerScanOptions(new Command('scan')).helpInformation();
     for (const [key, spec] of Object.entries(CONFIG_SPEC)) {
-      if (!spec.cli) continue;
-      expect(help, `${key} の ${spec.cli} が CLI に無い`).toContain(spec.cli);
+      // nested（llm / scan）には cli フラグが無いので、持つものだけ検査する
+      const cli = 'cli' in spec ? spec.cli : undefined;
+      if (cli === undefined) continue;
+      expect(help, `${key} の ${cli} が CLI に無い`).toContain(cli);
     }
     // パス系は例外なくフラグを持つ（持たないと出所が 'cli' になりえない）
     for (const key of PATH_KEYS) expect(help).toContain(CONFIG_SPEC[key].cli);

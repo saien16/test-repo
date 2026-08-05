@@ -20,9 +20,10 @@ export interface TargetDirectory {
   /** リポジトリルートからの相対パス。ルート直下のファイルは '.' */
   path: string;
   fileCount: number;
+  lines: number;
   bytes: number;
   /** 2階層目の内訳。多い順 */
-  children: Array<{ path: string; fileCount: number; bytes: number }>;
+  children: Array<{ path: string; fileCount: number; lines: number; bytes: number }>;
 }
 
 export interface TargetSummary {
@@ -30,6 +31,8 @@ export interface TargetSummary {
   scannedAt: string;
   durationMs: number;
   fileCount: number;
+  /** 走査したコード行数の合計 */
+  linesScanned: number;
   totalBytes: number;
   git: ScanContext['git'];
   languages: Array<{ name: string; ratio: number }>;
@@ -88,6 +91,7 @@ export function buildTargetSummary(
 ): TargetSummary {
   const files = context.files ?? [];
   const totalBytes = files.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0);
+  const linesScanned = files.reduce((sum, f) => sum + (f.lines ?? 0), 0);
 
   let filesList: string[] | null = null;
   let directories: TargetDirectory[] | null = null;
@@ -99,20 +103,23 @@ export function buildTargetSummary(
     filesList = files.map((f) => f.path).sort((a, b) => a.localeCompare(b));
   } else {
     const tops = new Map<string, TargetDirectory>();
-    const seconds = new Map<string, { path: string; fileCount: number; bytes: number }>();
+    const seconds = new Map<string, { path: string; fileCount: number; lines: number; bytes: number }>();
 
     for (const f of files) {
       const { top, second } = segmentsOf(f.path);
       const bytes = f.sizeBytes ?? 0;
-      const entry = tops.get(top) ?? { path: top, fileCount: 0, bytes: 0, children: [] };
+      const lines = f.lines ?? 0;
+      const entry = tops.get(top) ?? { path: top, fileCount: 0, lines: 0, bytes: 0, children: [] };
       entry.fileCount++;
       entry.bytes += bytes;
+      entry.lines += lines;
       tops.set(top, entry);
 
       if (second !== null) {
-        const child = seconds.get(second) ?? { path: second, fileCount: 0, bytes: 0 };
+        const child = seconds.get(second) ?? { path: second, fileCount: 0, lines: 0, bytes: 0 };
         child.fileCount++;
         child.bytes += bytes;
+        child.lines += lines;
         seconds.set(second, child);
       }
     }
@@ -155,6 +162,7 @@ export function buildTargetSummary(
     scannedAt: context.scannedAt,
     durationMs,
     fileCount: files.length,
+    linesScanned,
     totalBytes,
     git: context.git,
     languages: (context.languages ?? []).slice(0, 4).map((l) => ({ name: l.name, ratio: l.ratio })),

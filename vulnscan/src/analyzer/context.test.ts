@@ -40,6 +40,7 @@ function makeContext(): ScanContext {
   return {
     repoRoot: '/repo',
     scannedAt: '2026-07-28T00:00:00Z',
+    readme: null,
     languages: [{ name: 'typescript', fileCount: 2, ratio: 1 }],
     frameworks: [{ name: 'express', evidence: 'package.json: express', version: '4.19.2' }],
     dependencies: [],
@@ -128,7 +129,7 @@ function handlerChunk(): Chunk {
   ].join('\n');
 
   const chunks = chunkFile({
-    file: { path: ROUTE_FILE, language: 'typescript', sizeBytes: 200, hash: 'h' },
+    file: { path: ROUTE_FILE, language: 'typescript', sizeBytes: 200, lines: 8, hash: 'h' },
     content,
     symbols: [
       symbol('registerRoutes', ROUTE_FILE, 1, 3),

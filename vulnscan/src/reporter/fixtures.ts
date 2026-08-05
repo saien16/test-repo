@@ -110,6 +110,7 @@ export function makeContext(overrides: Partial<ScanContext> = {}): ScanContext {
   return {
     repoRoot: '/home/user/app',
     scannedAt: '2026-07-28T09:00:00.000Z',
+    readme: null,
     languages: [{ name: 'typescript', fileCount: 120, ratio: 0.9 }],
     frameworks: [{ name: 'express', evidence: 'package.json', version: '4.19.2' }],
     dependencies: [
@@ -117,8 +118,8 @@ export function makeContext(overrides: Partial<ScanContext> = {}): ScanContext {
       { name: 'lodash', version: '4.17.20', ecosystem: 'npm', dev: false, manifest: 'package.json' },
     ],
     files: [
-      { path: 'src/api/users.ts', language: 'typescript', sizeBytes: 2048, hash: 'aaa' },
-      { path: 'src/auth/token.ts', language: 'typescript', sizeBytes: 1024, hash: 'bbb' },
+      { path: 'src/api/users.ts', language: 'typescript', sizeBytes: 2048, lines: 64, hash: 'aaa' },
+      { path: 'src/auth/token.ts', language: 'typescript', sizeBytes: 1024, lines: 32, hash: 'bbb' },
     ],
     symbols: { symbols: [], byId: {} },
     callGraph: { edges: [], callees: {}, callers: {} },

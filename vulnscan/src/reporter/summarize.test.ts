@@ -20,7 +20,6 @@ describe('summarize', () => {
           makeFinding({ id: 'f-4', severity: 'low', category: 'A05:2021-Security Misconfiguration' }),
         ],
         chains: [],
-        errors: [],
       },
       extra,
     );
@@ -33,7 +32,7 @@ describe('summarize', () => {
 
   it('全ての深刻度キーを 0 で初期化する', () => {
     const summary = summarize(
-      { context: makeContext(), findings: [], chains: [], errors: [] },
+      { context: makeContext(), findings: [], chains: [] },
       extra,
     );
     expect(Object.keys(summary.bySeverity).sort()).toEqual(
@@ -54,7 +53,6 @@ describe('summarize', () => {
           makeFinding({ id: 'f-4', diffStatus: 'fixed' }),
         ],
         chains: [],
-        errors: [],
       },
       extra,
     );
@@ -74,7 +72,6 @@ describe('summarize', () => {
           makeFinding({ id: 'f-3', severity: 'high', status: 'false-positive' }),
         ],
         chains: [],
-        errors: [],
       },
       extra,
     );
@@ -97,7 +94,6 @@ describe('summarize', () => {
           makeFinding({ id: 'f-3', diffStatus: 'fixed', cvss: makeCvss({ baseScore: 10 }) }),
         ],
         chains: [],
-        errors: [],
       },
       extra,
     );
@@ -110,7 +106,6 @@ describe('summarize', () => {
         context: makeContext(),
         findings: [],
         chains: [makeChain({ id: 'ch-1' }), makeChain({ id: 'ch-2' })],
-        errors: [],
       },
       extra,
     );
@@ -128,7 +123,6 @@ describe('summarize', () => {
         context: makeContext(),
         findings: [makeFinding({ id: 'f-1', category: '' })],
         chains: [],
-        errors: [],
       },
       extra,
     );

@@ -17,6 +17,7 @@ function file(overrides: Partial<SourceFile> = {}): SourceFile {
     path: FILE,
     language: 'typescript',
     sizeBytes: 512,
+    lines: 16,
     hash: 'hash-1',
     ...overrides,
   };

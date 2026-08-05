@@ -20,6 +20,7 @@ function makeContext(overrides: Partial<ScanContext> = {}): ScanContext {
   return {
     repoRoot: '/repo',
     scannedAt: NOW,
+    readme: null,
     languages: [],
     frameworks: [],
     dependencies: [],

@@ -115,7 +115,7 @@ export function makeDataFlow(
 }
 
 export function makeFile(path: string, language = 'typescript'): SourceFile {
-  return { path, language, sizeBytes: 1024, hash: `hash-${path}` };
+  return { path, language, sizeBytes: 1024, lines: 32, hash: `hash-${path}` };
 }
 
 export interface ContextOverrides {
@@ -129,6 +129,7 @@ export function makeCtx(o: ContextOverrides = {}): ScanContext {
   return {
     repoRoot: '/repo',
     scannedAt: '2026-01-01T00:00:00Z',
+    readme: null,
     languages: o.languages ?? [{ name: 'typescript', fileCount: 10, ratio: 1 }],
     frameworks: o.frameworks ?? [{ name: 'express', evidence: 'package.json' }],
     dependencies: [],

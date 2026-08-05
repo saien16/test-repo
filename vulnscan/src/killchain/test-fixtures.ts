@@ -140,6 +140,7 @@ export function makeContext(o: {
   return {
     repoRoot: o.repoRoot ?? '/repo',
     scannedAt: '2026-01-01T00:00:00Z',
+    readme: null,
     languages: [{ name: 'typescript', fileCount: 10, ratio: 1 }],
     frameworks: [{ name: 'express', evidence: 'package.json' }],
     dependencies: [],

@@ -71,6 +71,10 @@ const config: VulnScanConfig = {
   baselinePath: '.vulnscan/baseline.json',
   ignorePath: '.vulnignore',
   killChain: true,
+  failOnIncompleteScan: true,
+  architecture: false,
+  heatmap: false,
+  minInferenceConfidence: 0.5,
 };
 
 const goodResponse: KillChainResponse = {

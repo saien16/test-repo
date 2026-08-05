@@ -29,10 +29,11 @@ function makeContext(): ScanContext {
   return {
     repoRoot: '/repo',
     scannedAt: '2026-07-28T00:00:00Z',
+    readme: null,
     languages: [{ name: 'typescript', fileCount: 1, ratio: 1 }],
     frameworks: [{ name: 'express', evidence: 'package.json' }],
     dependencies: [],
-    files: [{ path: FILE, language: 'typescript', sizeBytes: CONTENT.length, hash: 'hash-1' }],
+    files: [{ path: FILE, language: 'typescript', sizeBytes: CONTENT.length, lines: CONTENT.split('\n').length, hash: 'hash-1' }],
     symbols: { symbols: [SYMBOL], byId: { [`${FILE}:getUser`]: SYMBOL } },
     callGraph: { edges: [], callees: {}, callers: {} },
     entryPoints: [],
@@ -252,6 +253,7 @@ describe('analyze', () => {
       path: 'src/b.ts',
       language: 'typescript',
       sizeBytes: CONTENT.length,
+      lines: CONTENT.split('\n').length,
       hash: 'hash-2',
     });
 
@@ -271,6 +273,7 @@ describe('analyze', () => {
       path: 'src/b.ts',
       language: 'typescript',
       sizeBytes: CONTENT.length,
+      lines: CONTENT.split('\n').length,
       hash: 'hash-2',
     });
 
@@ -380,6 +383,7 @@ describe('analyze の実行統計', () => {
       path: 'src/b.ts',
       language: 'typescript',
       sizeBytes: CONTENT.length,
+      lines: CONTENT.split('\n').length,
       hash: 'hash-2',
     });
     return ctx;

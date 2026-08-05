@@ -19,6 +19,7 @@ import { saveBaseline } from '../vuln/index.js';
 import { isOperatorProvidedPath } from '../types/config.js';
 import { registerScanOptions, toConfigOverrides, type CliOptions } from './options.js';
 import type { ReportOptions } from '../types/report.js';
+import { formatDuration } from '../reporter/target.js';
 
 const STAGE_LABELS: Record<StageName, string> = {
   context: 'コンテキスト収集',
@@ -102,11 +103,26 @@ async function runScanCommand(target: string, opts: CliOptions): Promise<void> {
       log(`✔ ベースラインを更新しました: ${config.baselinePath}`);
     }
 
-    const usage = llm.getUsage();
-    log(
-      `トークン使用量: 入力 ${usage.input} / 出力 ${usage.output} ` +
-        `(キャッシュ読み ${usage.cacheRead})`,
-    );
+    /*
+     * 走査規模と消費量を完走時に出す。レポートを開かなくても
+     * 「どれだけ見て、いくら使ったか」がターミナルに残るようにする。
+     *
+     * CLI形式を stdout へ出した場合はレポート末尾に同じものが載るので、
+     * ここでは出さない（同じ数字が2回並ぶと、別々の値かと読ませてしまう）。
+     */
+    const printedInReport = opts.format === 'cli' && opts.output === undefined;
+    if (!printedInReport) {
+      const usage = llm.getUsage();
+      const n = (v: number): string => v.toLocaleString('en-US');
+      log(
+        `処理: ${n(result.summary.filesScanned)} ファイル / ` +
+          `${n(result.summary.linesScanned)} 行 / ${formatDuration(result.summary.durationMs)}`,
+      );
+      log(
+        `トークン使用量: 入力 ${n(usage.input)} / 出力 ${n(usage.output)} ` +
+          `(キャッシュ読み ${n(usage.cacheRead)} / 書き ${n(usage.cacheWrite)})`,
+      );
+    }
 
     // ゲートの判定理由は必ず stderr に出す。終了コードだけを返して黙ると、
     // 「なぜ落ちたのか」「なぜ通ったのか」を利用者が確かめられない。

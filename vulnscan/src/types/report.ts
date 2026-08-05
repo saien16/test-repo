@@ -23,6 +23,8 @@ export interface ScanSummary {
   /** 最も高いCVSSスコア */
   maxCvssScore: number;
   filesScanned: number;
+  /** 走査したコード行数の合計 */
+  linesScanned: number;
   durationMs: number;
   /** LLM利用トークン数 */
   tokenUsage: {
