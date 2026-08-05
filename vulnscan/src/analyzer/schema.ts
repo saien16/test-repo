@@ -89,9 +89,18 @@ export const verdictSchema = z.object({
   missingEvidence: z
     .array(z.string())
     .describe('判断に必要だが提示されていない情報。無ければ空配列'),
-  correctedSeverity: severitySchema.describe(
-    '再評価した深刻度。変更が無ければ元と同じ値を入れる',
-  ),
+  /*
+   * null が「変更なし」。
+   *
+   * ここを非nullの必須列挙にして「変更が無ければ元と同じ値を入れる」と指示すると、
+   * モデルは元の値を覚えて書き写す必要がある。他の項目（exploitPath / rebuttal /
+   * missingEvidence）が「無ければ空」で済むのに対してこれだけ要求が重く、
+   * 実際には null が返って列挙の検証に落ちる。
+   * 「無い」を型で表せるようにして、書き写しを要求しない。
+   */
+  correctedSeverity: severitySchema
+    .nullable()
+    .describe('深刻度を下げるべき場合だけ、その値を入れる。変更が無ければ null'),
 });
 
 export type Verdict = z.infer<typeof verdictSchema>;

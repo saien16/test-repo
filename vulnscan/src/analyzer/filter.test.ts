@@ -163,6 +163,12 @@ describe('applyVerdict', () => {
         .severity,
     ).toBe('low');
   });
+
+  it('correctedSeverity が null なら元の深刻度を保つ', () => {
+    expect(
+      applyVerdict(candidate({ severity: 'high' }), verdict({ correctedSeverity: null })).severity,
+    ).toBe('high');
+  });
 });
 
 describe('toRawFinding', () => {

@@ -126,10 +126,12 @@ export function applyVerdict(
 
   const vc = clampConfidence(verdict.confidence);
 
-  // 検証側は深刻度を下げる方向にだけ効かせる（検証で吊り上げない）
+  // 検証側は深刻度を下げる方向にだけ効かせる（検証で吊り上げない）。
+  // null は「変更なし」なので元の値を保つ。
+  const corrected = verdict.correctedSeverity;
   const severity =
-    severityRank(verdict.correctedSeverity) < severityRank(candidate.severity)
-      ? verdict.correctedSeverity
+    corrected !== null && severityRank(corrected) < severityRank(candidate.severity)
+      ? corrected
       : candidate.severity;
 
   if (verdict.verdict === 'refuted') {

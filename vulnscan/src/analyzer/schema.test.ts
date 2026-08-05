@@ -73,4 +73,20 @@ describe('構造化出力スキーマ', () => {
 
     expect(verdictSchema.safeParse({ verdict: 'confirmed' }).success).toBe(false);
   });
+
+  it('correctedSeverity は null を受け付ける（変更なしを表せる）', () => {
+    // モデルは「変更なし」に null を返す。ここを非nullの必須列挙にすると
+    // 検証結果まるごとがパースに失敗し、自己検証パスが機能しなくなる。
+    const base = {
+      verdict: 'confirmed' as const,
+      confidence: 0.8,
+      exploitPath: 'a → b',
+      rebuttal: '',
+      missingEvidence: [],
+    };
+    expect(verdictSchema.safeParse({ ...base, correctedSeverity: null }).success).toBe(true);
+    expect(verdictSchema.safeParse({ ...base, correctedSeverity: 'low' }).success).toBe(true);
+    // 列挙にも null にも当てはまらない値は従来どおり弾く
+    expect(verdictSchema.safeParse({ ...base, correctedSeverity: 'severe' }).success).toBe(false);
+  });
 });
