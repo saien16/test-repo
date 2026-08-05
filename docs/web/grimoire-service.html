@@ -316,6 +316,7 @@
       </div>
     </div>
     <p class="duo-note"><b>実測 低 × 想定 高 = 死角。</b>「本当に安全」なのか「まだ見ていないだけ」なのかを切り分けて示します。</p>
+    <p class="duo-note">この構成図には、検出した<b>攻撃経路を線として重ねます</b>。通過順に番号が振られ、複数の経路が共通して通る<b>チョークポイント</b>には印が付きます。どこから入って、どこを通って、何に届くのかが1枚で追えます。</p>
   </div>
 </section>
 
@@ -451,6 +452,9 @@
       <div class="feat"><div class="ft"><span class="g">◆</span> 5つの分析レンズ</div><p>インジェクション / 認可 / 暗号・秘密情報 / デシリアライズ・SSRF / Web出力。</p></div>
       <div class="feat"><div class="ft"><span class="g">◆</span> 5形式で出力</div><p>CLI / JSON / SARIF / Markdown / HTML から用途で選べます。</p></div>
       <div class="feat"><div class="ft"><span class="g">◆</span> チャンク単位キャッシュ</div><p>変更のないコードは再分析しません。2回目以降は大幅に速く、安くなります。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> 走査範囲の明示</div><p>対象・日時・ファイル数・行数・ディレクトリ構成をレポート冒頭に出します。範囲を取り違えたまま読むことがなくなります。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> 消費量の可視化</div><p>完了時に処理ファイル数・行数・入出力トークンを表示。小さく計って本番を見積もれます。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> 精度を数字で測れる</div><p>OWASP Benchmark v1.2（真値付き2,740件）での採点手順と集計スクリプトを同梱しています。</p></div>
     </div>
   </div>
 </section>

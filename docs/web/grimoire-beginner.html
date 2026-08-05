@@ -93,6 +93,8 @@
   .keystone .big s { text-decoration-color: var(--crit); text-decoration-thickness: 2px; color: var(--faint); }
   .keystone .big em { font-style: normal; color: var(--iris); }
   .keystone p { margin: 0 auto; max-width: 30em; font-size: 14.5px; color: var(--dim); }
+  .keystone .scope-hint { margin-top: 14px; padding-top: 14px; border-top: 1px solid color-mix(in srgb, var(--iris) 22%, transparent); }
+  .keystone .scope-hint b { color: var(--iris); }
 
   /* ── 次は ── */
   .next { display: grid; gap: 14px; grid-template-columns: 1fr; }
@@ -194,6 +196,7 @@
       <span class="badge">いちばん大事なこと</span>
       <p class="big"><s>検出0件だから安全</s><br><em>検出0件は「まだ調べきれていない」かもしれない</em></p>
       <p>だから GRIMOIRE は、スキャンが最後まで走ったかを別に伝えます。「0件」で安心する前に、そこを確かめてください。「見つからなかった」は「無い」の証明ではありません。</p>
+      <p class="scope-hint">レポートの冒頭には <b>いつ・どこを・何ファイル／何行</b> 見たかが出ます。設定を間違えて数ファイルしか見ていなければ、そこに出ます。まずここを見て、思っていた範囲と合っているか確かめてください。</p>
     </div>
   </section>
 

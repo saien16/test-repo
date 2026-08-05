@@ -183,6 +183,24 @@
   .health-banner p { margin: 0 0 6px; font-size: 13px; }
   .health-banner .tasks { font-family: var(--mono); font-size: 12px; color: var(--dim); }
 
+
+  /* ── 走査対象カード ── */
+  .scope { margin-bottom: 16px; }
+  .scope-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 18px; margin: 0 0 14px; font-size: 13px; }
+  .scope-facts dt { color: var(--dim); white-space: nowrap; }
+  .scope-facts dd { margin: 0; word-break: break-word; }
+  .scope-split { display: grid; grid-template-columns: 1fr; gap: 18px; }
+  @media (min-width: 780px) { .scope-split { grid-template-columns: 1fr 1fr; } }
+  .scope h3 { font-size: 13px; margin: 0 0 8px; color: var(--dim); font-weight: 600; }
+  .quote-fact { margin: 0; padding: 10px 14px; border-left: 3px solid var(--teal); background: var(--surface-2); border-radius: 0 6px 6px 0; }
+  .quote-fact p { margin: 0 0 6px; font-size: 13.5px; }
+  .quote-fact footer { font-size: 11.5px; color: var(--dim); }
+  .scope-infer { margin: 8px 0 0; font-size: 12.5px; color: var(--dim); }
+  .scope-tree { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .scope-tree td { padding: 3px 0; border-bottom: 1px solid var(--border); }
+  .scope-tree td:nth-child(2), .scope-tree td:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; color: var(--dim); width: 4.5em; }
+  .scope-tree .ind { padding-left: 1.4em; color: var(--dim); display: inline-block; }
+  .scope-note { margin: 8px 0 0; font-size: 11.5px; color: var(--faint); }
   /* ── 概要: stat tiles ── */
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
   .tile {
@@ -462,6 +480,40 @@
     <!-- 概要 -->
     <section class="panel" id="p-overview" role="tabpanel">
       <div class="tiles" id="tiles"></div>
+
+      <!-- 何を走査したのか。検出内容より先に置く（実物のレポートと同じ並び） -->
+      <div class="card scope">
+        <h2>走査対象</h2>
+        <dl class="scope-facts">
+          <dt>対象ディレクトリ</dt><dd><code>/home/user/app</code></dd>
+          <dt>実施日時</dt><dd>2026-08-05 14:22:07 <span class="dim">（所要 17秒）</span></dd>
+          <dt>Git</dt><dd><code>main</code> @ <code>abcdef123456</code></dd>
+          <dt>規模</dt><dd>128 ファイル / 18,452 行 <span class="dim">/ 1.2 MB</span></dd>
+          <dt>言語構成</dt><dd>typescript 88% / json 6% / sql 4%</dd>
+        </dl>
+        <div class="scope-split">
+          <div>
+            <h3>これは何か</h3>
+            <blockquote class="quote-fact">
+              <p>my-app — 社内向けの在庫管理API。Express + PostgreSQL。</p>
+              <footer><code>README.md</code> からの引用 — <b>事実</b></footer>
+            </blockquote>
+            <p class="scope-infer">アーキテクチャ様式の<b>推測</b>: SPA + API（確信度 0.70）</p>
+          </div>
+          <div>
+            <h3>構成（上位2階層）</h3>
+            <table class="scope-tree"><tbody>
+              <tr><td><b>src/</b></td><td>112</td><td>16,204</td></tr>
+              <tr><td><span class="ind">src/api/</span></td><td>38</td><td>6,810</td></tr>
+              <tr><td><span class="ind">src/auth/</span></td><td>12</td><td>2,140</td></tr>
+              <tr><td><span class="ind">src/db/</span></td><td>9</td><td>1,905</td></tr>
+              <tr><td><b>test/</b></td><td>14</td><td>2,102</td></tr>
+              <tr><td><b>(ルート直下)</b></td><td>2</td><td>146</td></tr>
+            </tbody></table>
+            <p class="scope-note">表示を省略したディレクトリ: 2階層目 4 個</p>
+          </div>
+        </div>
+      </div>
       <div class="grid-2">
         <div class="card exec">
           <h2>エグゼクティブサマリ</h2>
