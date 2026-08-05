@@ -1,0 +1,586 @@
+<title>GRIMOIRE — 禁書「九五九」｜ LLMベースのソースコード脆弱性スキャナー</title>
+<meta name="description" content="検出されなかった、は「安全」ではない。攻撃経路として繋ぎ、事実と推測を分け、壊れたスキャンを緑で通さない。GRIMOIREのサービス紹介。">
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #F3F5F9; --ink-2: #E9EDF4; --surface: #FFFFFF; --surface-2: #EDF0F6; --border: #D9DEEA; --border-strong: #C2CADB;
+    --text: #14161F; --dim: #545D70; --faint: #8790A3;
+    --iris: #5B4FD6; --iris-2: #7A6FEA; --iris-soft: #ECEAFB; --teal: #0E9E78; --teal-soft: #DEF3EC; --brass: #B4863A;
+    --crit: #D8353E; --high: #E4611A; --med: #C58A17;
+    --shadow: 0 2px 4px rgba(20,24,40,.04), 0 16px 44px rgba(20,24,40,.08);
+    --serif-latin: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --serif-jp: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+    --sans: "Hiragino Kaku Gothic ProN", "Yu Gothic", "YuGothic", "Noto Sans JP", Meiryo, system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#0B0D13;--ink-2:#0F121A;--surface:#151924;--surface-2:#1C212E;--border:#282E3D;--border-strong:#3A4257;
+      --text:#E8EAF1;--dim:#A2A9BB;--faint:#6E7688;--iris:#8A82FF;--iris-2:#A79EFF;--iris-soft:#1c1d38;--teal:#2FD3A5;--teal-soft:#0f342b;--brass:#C79A4B;
+      --crit:#F0565E;--high:#F5811F;--med:#E3A72B;--shadow:0 2px 4px rgba(0,0,0,.35),0 20px 50px rgba(0,0,0,.5); }
+  }
+  :root[data-theme="light"] { --ink:#F3F5F9;--ink-2:#E9EDF4;--surface:#FFFFFF;--surface-2:#EDF0F6;--border:#D9DEEA;--border-strong:#C2CADB;--text:#14161F;--dim:#545D70;--faint:#8790A3;--iris:#5B4FD6;--iris-2:#7A6FEA;--iris-soft:#ECEAFB;--teal:#0E9E78;--teal-soft:#DEF3EC;--brass:#B4863A;--crit:#D8353E;--high:#E4611A;--med:#C58A17;--shadow:0 2px 4px rgba(20,24,40,.04),0 16px 44px rgba(20,24,40,.08); }
+  :root[data-theme="dark"] { --ink:#0B0D13;--ink-2:#0F121A;--surface:#151924;--surface-2:#1C212E;--border:#282E3D;--border-strong:#3A4257;--text:#E8EAF1;--dim:#A2A9BB;--faint:#6E7688;--iris:#8A82FF;--iris-2:#A79EFF;--iris-soft:#1c1d38;--teal:#2FD3A5;--teal-soft:#0f342b;--brass:#C79A4B;--crit:#F0565E;--high:#F5811F;--med:#E3A72B;--shadow:0 2px 4px rgba(0,0,0,.35),0 20px 50px rgba(0,0,0,.5); }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--ink); color: var(--text); font-family: var(--sans); font-size: 16px; line-height: 1.85; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  .mono { font-family: var(--mono); }
+  a { color: var(--iris); text-decoration: none; }
+  :focus-visible { outline: 2px solid var(--iris); outline-offset: 3px; border-radius: 6px; }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 0 26px; }
+  .narrow { max-width: 760px; }
+
+  .theme-btn { position: fixed; top: 16px; right: 16px; z-index: 40; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: color-mix(in srgb,var(--surface) 80%, transparent); backdrop-filter: blur(8px); color: var(--dim); font-size: 16px; cursor: pointer; }
+  .theme-btn:hover { color: var(--text); }
+
+  /* ── ヒーロー ── */
+  .hero { position: relative; text-align: center; padding: 88px 26px 40px; overflow: hidden; }
+  .hero-seal { position: relative; z-index: 2; width: 96px; height: 96px; margin: 0 auto 26px; display: block; }
+  .hero .wm { position: relative; z-index: 2; font-family: var(--serif-latin); font-size: clamp(24px, 5vw, 34px); letter-spacing: .28em; font-weight: 600; padding-left: .28em; }
+  .hero .wm b { color: var(--iris); }
+  .hero .kanji { position: relative; z-index: 2; font-family: var(--serif-jp); font-size: 13px; letter-spacing: .5em; color: var(--faint); margin-top: 6px; padding-left: .5em; }
+  .thesis { position: relative; z-index: 2; font-family: var(--serif-jp); font-weight: 600; font-size: clamp(28px, 6.4vw, 52px); line-height: 1.4; margin: 40px auto 0; max-width: 15em; text-wrap: balance; letter-spacing: .01em; }
+  .thesis .strike { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--crit); text-decoration-thickness: 3px; }
+  .thesis .neq { color: var(--iris); }
+  .hero .sub { position: relative; z-index: 2; color: var(--dim); font-size: clamp(15px, 2.5vw, 18px); max-width: 32em; margin: 24px auto 0; text-wrap: balance; }
+  .hero-cta { position: relative; z-index: 2; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 32px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; padding: 11px 20px; border-radius: 11px; border: 1px solid transparent; }
+  .btn.primary { background: var(--iris); color: #fff; box-shadow: 0 4px 14px rgba(91,79,214,.35); }
+  .btn.primary:hover { filter: brightness(1.07); }
+  .btn.ghost { background: var(--surface); color: var(--text); border-color: var(--border); }
+  .btn.ghost:hover { border-color: var(--iris); }
+
+  /* ── stat band ── */
+  .stats { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--ink-2); }
+  .stats .row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; }
+  @media (min-width: 720px) { .stats .row { grid-template-columns: repeat(4, 1fr); } }
+  .stat { padding: 24px 20px; text-align: center; background: var(--ink); }
+  .stat .n { font-family: var(--serif-latin); font-size: clamp(26px, 4vw, 34px); font-weight: 700; color: var(--iris); font-variant-numeric: tabular-nums; line-height: 1; }
+  .stat .l { font-size: 12px; color: var(--dim); margin-top: 8px; letter-spacing: .02em; }
+
+  section { padding: 72px 0; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--iris); display: inline-flex; align-items: center; gap: 9px; }
+  .eyebrow::before { content: ""; width: 18px; height: 1px; background: var(--iris); }
+  h2 { font-family: var(--serif-jp); font-weight: 600; font-size: clamp(24px, 4.4vw, 33px); line-height: 1.4; margin: 14px 0 0; text-wrap: balance; letter-spacing: .01em; }
+  .sec-lead { color: var(--dim); font-size: 16px; margin: 16px 0 0; max-width: 40em; }
+
+  /* ── 問題（false green）── */
+  .problem-grid { display: grid; grid-template-columns: 1fr; gap: 30px; align-items: center; margin-top: 34px; }
+  @media (min-width: 840px) { .problem-grid { grid-template-columns: 1fr 1fr; gap: 46px; } }
+  .problem-copy p { color: var(--dim); margin: 0 0 14px; }
+  .problem-copy p b { color: var(--text); }
+  .term { background: #0c0e15; border: 1px solid #262c3b; border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); font-family: var(--mono); font-size: 13px; line-height: 1.75; }
+  .term .bar { display: flex; gap: 7px; padding: 12px 14px; border-bottom: 1px solid #202536; background: #10131c; }
+  .term .bar i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .term .bar i:nth-child(1) { background: #e05561; } .term .bar i:nth-child(2) { background: #d8a13a; } .term .bar i:nth-child(3) { background: #46b06a; }
+  .term .body { padding: 16px 16px 18px; color: #c7cede; white-space: pre-wrap; }
+  .term .p { color: #6b748c; } .term .c { color: #7fe0b8; } .term .r { color: #f0868d; } .term .g { color: #8fd6a8; } .term .dim { color: #6b748c; }
+  .term .big3 { color: #f0868d; font-weight: 700; }
+
+  /* ── パイプライン ── */
+  .pipe { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 36px; }
+  @media (min-width: 680px) { .pipe { grid-template-columns: repeat(4, 1fr); } }
+  @media (min-width: 940px) { .pipe { grid-template-columns: repeat(7, 1fr); } }
+  .pstep { background: var(--surface); border: 1px solid var(--border); border-radius: 13px; padding: 15px 13px; position: relative; box-shadow: var(--shadow); }
+  .pstep .no { font-family: var(--mono); font-size: 11px; color: var(--iris); font-weight: 700; }
+  .pstep .spell { font-family: var(--serif-jp); font-size: 15px; font-weight: 600; margin: 6px 0 3px; }
+  .pstep .do { font-size: 11.5px; color: var(--faint); line-height: 1.55; }
+  .pstep.parallel { border-color: color-mix(in srgb, var(--iris) 40%, var(--border)); }
+  .pipe-note { text-align: center; font-size: 12.5px; color: var(--faint); margin-top: 16px; }
+  .pipe-note b { color: var(--iris); }
+
+  /* ── 3本柱 ── */
+  .pillar { display: grid; grid-template-columns: 1fr; gap: 22px; align-items: center; padding: 40px 0; border-top: 1px solid var(--border); }
+  @media (min-width: 820px) { .pillar { grid-template-columns: 84px 1fr; gap: 34px; } .pillar.flip { grid-template-columns: 1fr 84px; } .pillar.flip .pmark { order: 2; } }
+  .pmark { width: 84px; height: 84px; }
+  .pillar h3 { font-family: var(--serif-jp); font-size: clamp(20px, 3.4vw, 25px); font-weight: 600; margin: 0 0 8px; }
+  .pillar p { color: var(--dim); margin: 0; }
+  .pillar p b { color: var(--text); }
+  .pillar .tag { display: inline-block; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--iris); margin-bottom: 8px; }
+
+  /* ── 事実と推測 ── */
+  .duo { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 30px; }
+  @media (min-width: 680px) { .duo { grid-template-columns: 1fr 1fr; } }
+  .duo-card { border-radius: 16px; padding: 26px 24px; position: relative; overflow: hidden; }
+  .duo-card.fact { background: var(--teal-soft); border: 1.5px solid var(--teal); }
+  .duo-card.infer { background: transparent; border: 2px dashed var(--iris); }
+  .duo-card .icon { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; }
+  .duo-card.fact .icon { color: var(--teal); }
+  .duo-card.infer .icon { color: var(--iris); }
+  .duo-card h4 { font-family: var(--serif-jp); font-size: 19px; font-weight: 600; margin: 10px 0 8px; }
+  .duo-card p { margin: 0; font-size: 13.5px; color: var(--dim); }
+  .duo-card .ex { margin-top: 14px; font-family: var(--mono); font-size: 12px; background: color-mix(in srgb, var(--surface) 70%, transparent); border-radius: 8px; padding: 9px 11px; color: var(--text); }
+  .duo-note { text-align: center; margin-top: 22px; font-size: 14px; color: var(--dim); }
+  .duo-note b { color: var(--text); }
+
+  /* ── カバレッジ・スタック ── */
+  .stack { display: flex; flex-direction: column; gap: 8px; margin-top: 30px; }
+  .layer {
+    display: grid; grid-template-columns: 22px 1fr; gap: 16px; align-items: stretch;
+    border-radius: 12px; overflow: hidden; background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  @media (min-width: 760px) { .layer { grid-template-columns: 22px 232px 1fr; } }
+  .layer .mark {
+    display: grid; place-items: center; font-size: 11px; font-weight: 700;
+    font-family: var(--mono);
+  }
+  .layer .who { padding: 14px 0 14px 2px; }
+  .layer .who .n { font-family: var(--serif-jp); font-size: 16px; font-weight: 600; }
+  .layer .who .sub { font-size: 11px; color: var(--faint); font-family: var(--mono); letter-spacing: .02em; }
+  .layer .what { padding: 14px 18px 14px 0; font-size: 13.5px; color: var(--dim); line-height: 1.75; }
+  .layer .what b { color: var(--text); }
+  .layer .tag {
+    display: inline-block; font-size: 10.5px; font-family: var(--mono); font-weight: 700;
+    padding: 1px 8px; border-radius: 20px; margin-bottom: 5px; letter-spacing: .04em;
+  }
+
+  /* 実測 = 事実。ヒートマップの塗りと同じ意味 */
+  .layer.obs { border-left: 4px solid var(--teal); }
+  .layer.obs .mark { color: var(--teal); }
+  .layer.obs .tag { color: var(--teal); background: var(--teal-soft); }
+  /* 部分 */
+  .layer.part { border-left: 4px dashed var(--teal); }
+  .layer.part .mark { color: var(--teal); }
+  .layer.part .tag { color: var(--teal); background: var(--teal-soft); }
+  /* 推測の材料 = 破線。ヒートマップの想定層と同じ意味 */
+  .layer.inf { border-left: 4px dashed var(--iris); }
+  .layer.inf .mark { color: var(--iris); }
+  .layer.inf .tag { color: var(--iris); background: var(--iris-soft); }
+  /* 対象外 = 死角。ハッチング */
+  .layer.out {
+    border-left: 4px solid var(--border-strong);
+    background: repeating-linear-gradient(45deg, var(--surface), var(--surface) 5px, var(--ink-2) 5px, var(--ink-2) 10px);
+  }
+  .layer.out .mark, .layer.out .tag { color: var(--faint); }
+  .layer.out .tag { background: var(--surface-2); }
+  .layer.out .who .n { color: var(--dim); }
+
+  .stack-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 18px; font-size: 12px; color: var(--dim); }
+  .stack-legend span b { font-family: var(--mono); font-size: 11px; }
+  .axis-note {
+    margin-top: 26px; padding: 18px 20px; border-radius: 14px;
+    background: var(--surface); border: 1px solid var(--border);
+  }
+  .axis-note h4 { margin: 0 0 8px; font-size: 14px; font-family: var(--serif-jp); font-weight: 600; }
+  .axis-note p { margin: 0 0 8px; font-size: 13px; color: var(--dim); }
+  .axis-note p:last-child { margin-bottom: 0; }
+  .axis-note b { color: var(--text); }
+
+  /* ── 機能グリッド ── */
+  .features { display: grid; grid-template-columns: 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; margin-top: 34px; }
+  @media (min-width: 620px) { .features { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 900px) { .features { grid-template-columns: 1fr 1fr 1fr; } }
+  .feat { background: var(--surface); padding: 22px 20px; }
+  .feat .ft { font-weight: 600; font-size: 15px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .feat .ft .g { color: var(--iris); font-family: var(--mono); font-size: 13px; }
+  .feat p { margin: 0; font-size: 13px; color: var(--dim); line-height: 1.7; }
+
+  /* ── CTA ── */
+  .cta { background: var(--ink-2); border-top: 1px solid var(--border); }
+  .cta-head { text-align: center; margin-bottom: 30px; }
+  .cta-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 760px) { .cta-grid { grid-template-columns: repeat(3, 1fr); } }
+  .cta-card { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; transition: transform .15s, border-color .15s; box-shadow: var(--shadow); }
+  .cta-card:hover { transform: translateY(-3px); border-color: var(--iris); }
+  .cta-card .k { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--iris); }
+  .cta-card h3 { font-family: var(--serif-jp); margin: 10px 0 6px; font-size: 19px; font-weight: 600; color: var(--text); }
+  .cta-card p { margin: 0; font-size: 13px; color: var(--dim); }
+  .cta-card .go { margin-top: 12px; color: var(--iris); font-weight: 600; font-size: 13px; }
+
+  footer { text-align: center; padding: 44px 26px 64px; color: var(--faint); font-size: 12.5px; }
+  footer .wm { font-family: var(--serif-latin); letter-spacing: .2em; color: var(--dim); }
+  footer .wm b { color: var(--iris); }
+
+  .reveal { opacity: 0; transform: translateY(16px); transition: opacity .6s, transform .6s; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .reveal { opacity: 1; transform: none; transition: none; } * { animation: none !important; } }
+</style>
+
+<button class="theme-btn" id="theme" aria-label="テーマ切替">◐</button>
+
+<!-- ── ヒーロー ── -->
+<header class="hero">
+  <canvas class="hero-seal" id="seal" width="192" height="192" aria-hidden="true"></canvas>
+  <div class="wm">GRIM<b>O</b>IRE</div>
+  <div class="kanji">禁 書 「 九 五 九 」</div>
+  <h1 class="thesis"><span class="strike">検出されなかった</span> <span class="neq">≠</span> 安全</h1>
+  <p class="sub">LLMベースのソースコード脆弱性スキャナー。攻撃経路として繋ぎ、事実と推測を分け、<b style="color:var(--text)">壊れたスキャンを緑で通さない</b>。</p>
+  <div class="hero-cta">
+    <a class="btn primary" id="cta-demo" href="#">◆ Web UIデモを見る</a>
+    <a class="btn ghost" href="#how">仕組みを見る ↓</a>
+  </div>
+</header>
+
+<!-- ── stat band ── -->
+<div class="stats">
+  <div class="wrap"><div class="row">
+    <div class="stat"><div class="n">959</div><div class="l">収録 MITRE CWE（オフライン同梱）</div></div>
+    <div class="stat"><div class="n">7</div><div class="l">段のパイプライン</div></div>
+    <div class="stat"><div class="n">5</div><div class="l">観点レンズで多視点走査</div></div>
+    <div class="stat"><div class="n">1944</div><div class="l">通りで検証した CVSS 計算</div></div>
+  </div></div>
+</div>
+
+<!-- ── 問題 ── -->
+<section id="why">
+  <div class="wrap">
+    <span class="eyebrow">なぜ必要か</span>
+    <h2>いちばん危ないのは、<br>「問題なし」という嘘のレポート</h2>
+    <div class="problem-grid">
+      <div class="problem-copy">
+        <p>AIによる脆弱性検出には弱点があります。<b>認証エラーやネットワーク断でスキャンが全滅しても、結果は「検出0件」になる</b>。件数だけを見るCIは、これを緑で通します。</p>
+        <p>つまり <b>設定ミスが「安全のお墨付き」に化ける</b>。これは脆弱性そのものより危険です。GRIMOIRE は検出結果とは独立に「走査が完走したか」を判定し、完走していなければ検出0件でも<b>終了コード3で止めます</b>。</p>
+        <p style="color:var(--faint);font-size:14px">— <span class="mono">--fail-on never</span> でもこの判定は効きます。「検出でCIを落とさない」設定であって、「壊れた走査を成功扱いにする」設定ではないからです。</p>
+      </div>
+      <div class="term" aria-label="終了コード3を返す端末の例">
+        <div class="bar"><i></i><i></i><i></i></div>
+        <div class="body"><span class="dim">$</span> <span class="c">grimoire</span> . <span class="p">--fail-on high</span>
+<span class="r">✖ 走査が完走しませんでした（failed）</span>
+<span class="dim">  分析タスクの 10/10 件が失敗しました</span>
+<span class="dim">  （APIキー未設定）。検出0件を「安全」と</span>
+<span class="dim">  解釈しないでください。</span>
+
+<span class="dim">$</span> <span class="c">echo</span> $?
+<span class="big3">3</span>  <span class="dim"># 検出0件でも緑にしない</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── パイプライン ── -->
+<section id="how" style="background:var(--ink-2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+  <div class="wrap">
+    <span class="eyebrow">仕組み</span>
+    <h2>7つの工程が、共有モデルを育てていく</h2>
+    <p class="sec-lead">前の工程の結果を次が使います。途中が失敗しても、可能な限り部分結果を返します。</p>
+    <div class="pipe" id="pipe"></div>
+    <p class="pipe-note">④連鎖演算 と ⑤構造把握 は<b>同時に実行</b>。⑥は⑤の結果が無ければ生成しません（推測の土台が無いのに想定リスクは語れないため）。</p>
+  </div>
+</section>
+
+<!-- ── 3本柱 ── -->
+<section>
+  <div class="wrap">
+    <span class="eyebrow">3つの違い</span>
+    <h2>ただ検出するだけの<br>スキャナーではありません</h2>
+    <div style="margin-top:26px">
+      <div class="pillar">
+        <canvas class="pmark" width="168" height="168" data-mark="chain" aria-hidden="true"></canvas>
+        <div>
+          <span class="tag">Kill Chain</span>
+          <h3>個別の欠陥を「攻撃経路」として繋ぐ</h3>
+          <p>「SSRFがある」「認証が甘い」と羅列するのではなく、<b>どこから侵入し、何を踏み台に、最終的に何を奪われるか</b>を一本の筋書きにします。複数の経路が共通して通る<b>急所（チョークポイント）</b>を先に示すので、1箇所の修正で複数の攻撃を同時に断てます。</p>
+        </div>
+      </div>
+      <div class="pillar flip">
+        <div>
+          <span class="tag">Provenance</span>
+          <h3>事実と推測を、混ぜない</h3>
+          <p>「Dockerfileにこう書いてある」は<b class="mono" style="color:var(--teal)">事実</b>。「このサービスは公開されている」は<b class="mono" style="color:var(--iris)">推測</b>。GRIMOIRE は全ての主張に出所を付けて回し、推測には確信度と根拠を添えます。<b>「なんとなくそう見える」を事実として報告しません。</b></p>
+        </div>
+        <canvas class="pmark" width="168" height="168" data-mark="duo" aria-hidden="true"></canvas>
+      </div>
+      <div class="pillar">
+        <canvas class="pmark" width="168" height="168" data-mark="gate" aria-hidden="true"></canvas>
+        <div>
+          <span class="tag">Health Gate</span>
+          <h3>検出0件を「安全」と偽らない</h3>
+          <p>走査が完走したかを検出結果とは別の軸で判定します。<b>認証・通信・予算切れで全滅したら、検出0件でも終了コード3</b>。レポート本文も「検出されませんでした」ではなく「判定できません」に切り替わります。自分で掲げたことを、ツール自身が破らないための仕組みです。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 事実と推測の可視化 ── -->
+<section style="background:var(--ink-2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+  <div class="wrap narrow">
+    <div style="text-align:center">
+      <span class="eyebrow" style="justify-content:center">配色にも意味がある</span>
+      <h2>ヒートマップは、2つの層を重ねる</h2>
+      <p class="sec-lead" style="margin-left:auto;margin-right:auto;text-align:center">アーキテクチャ構成図の上に、実測（事実）と想定（推測）を独立して重ね、両者の食い違い＝<b style="color:var(--text)">死角</b>を洗い出します。</p>
+    </div>
+    <div class="duo">
+      <div class="duo-card fact">
+        <div class="icon">● Observed — 事実</div>
+        <h4>実測リスク（塗り）</h4>
+        <p>実際に検出された脆弱性です。CVSSと件数から算出し、根拠になったコードを引用できます。</p>
+        <div class="ex">observed: 95 &nbsp;·&nbsp; findingIds: [VS-3f9a…]</div>
+      </div>
+      <div class="duo-card infer">
+        <div class="icon">◌ Inferred — 推測</div>
+        <h4>想定リスク（破線）</h4>
+        <p>CWEカタログとスタック構成から導いた「起こりうる」リスクです。確信度が付きます。</p>
+        <div class="ex">inferred: 72 &nbsp;·&nbsp; confidence: 0.6</div>
+      </div>
+    </div>
+    <p class="duo-note"><b>実測 低 × 想定 高 = 死角。</b>「本当に安全」なのか「まだ見ていないだけ」なのかを切り分けて示します。</p>
+  </div>
+</section>
+
+<!-- ── カバレッジ（デプロイメントスタックのどの層を見るか） ── -->
+<section>
+  <div class="wrap">
+    <span class="eyebrow">カバレッジ</span>
+    <h2>デプロイメントスタックの<br>どこを見て、どこを見ないか</h2>
+    <p class="sec-lead">上ほどコードに近く、下ほどインフラに近い層です。
+      <b style="color:var(--text)">見ない層を明示するのもカバレッジの一部</b>です —
+      「検出0件」の意味は、どこを見ていないかを知って初めて決まります。</p>
+
+    <div class="stack">
+      <div class="layer obs">
+        <div class="mark">●</div>
+        <div class="who">
+          <div class="n">アプリケーションコード</div>
+          <div class="sub">自分で書いたロジック</div>
+        </div>
+        <div class="what">
+          <span class="tag">実測</span><br>
+          5つのレンズでLLMが直接読みます（インジェクション / 認可 / 暗号・秘密情報 /
+          デシリアライズ・SSRF / Web出力）。<b>source から sink までのデータフローを根拠として要求</b>し、
+          自己検証パスで反証を試みます。ここが本体です。
+        </div>
+      </div>
+
+      <div class="layer obs">
+        <div class="mark">●</div>
+        <div class="who">
+          <div class="n">依存パッケージ</div>
+          <div class="sub">npm / PyPI / Go / Maven / …</div>
+        </div>
+        <div class="what">
+          <span class="tag">実測</span><br>
+          マニフェストから7エコシステムの依存を抽出し、<b>OSV.dev で既知CVEを照合</b>します。
+          コード解析とは別経路なので、LLMが使えなくてもここは出ます。
+        </div>
+      </div>
+
+      <div class="layer part">
+        <div class="mark">◐</div>
+        <div class="who">
+          <div class="n">フレームワーク / ミドルウェア</div>
+          <div class="sub">Express・ORM・テンプレート等</div>
+        </div>
+        <div class="what">
+          <span class="tag">部分的</span><br>
+          使用フレームワークを検出し、<b>その既定の防御を判定に織り込みます</b>
+          （ORMのバインド、テンプレートの自動エスケープなど。効いていれば誤検知として落とす）。
+          ただし<b>ミドルウェア自体の設定や稼働中の状態は見ません</b>。
+        </div>
+      </div>
+
+      <div class="layer inf">
+        <div class="mark">◌</div>
+        <div class="who">
+          <div class="n">コンテナ / デプロイ設定</div>
+          <div class="sub">Dockerfile・k8s・Terraform・CI</div>
+        </div>
+        <div class="what">
+          <span class="tag">推測の材料</span><br>
+          18種のマニフェストを読みますが、<b>ここから直接Findingは出しません</b>。
+          露出度・信頼境界・技術スタックを推定する材料として使い、
+          ヒートマップの<b>想定層（破線）</b>になります。IaCの設定監査そのものは範囲外です。
+        </div>
+      </div>
+
+      <div class="layer out">
+        <div class="mark">▲</div>
+        <div class="who">
+          <div class="n">OS / ホスト</div>
+          <div class="sub">ベースイメージ・カーネル・権限</div>
+        </div>
+        <div class="what">
+          <span class="tag">対象外</span><br>
+          ベースイメージのOSパッケージCVE、カーネル、ファイル権限は見ません。
+          読むのは言語のパッケージマニフェストだけなので、<b>apt/apk 由来の脆弱性は検出されません</b>。
+          Trivy / Grype などのイメージスキャナと併用してください。
+        </div>
+      </div>
+
+      <div class="layer out">
+        <div class="mark">▲</div>
+        <div class="who">
+          <div class="n">ネットワーク / 物理</div>
+          <div class="sub">L4以下・FW・SG・データリンク</div>
+        </div>
+        <div class="what">
+          <span class="tag">対象外</span><br>
+          実行時の通信、ファイアウォール、セキュリティグループ、L2以下は一切見ません。
+          <b>宣言から「公開されていそうか」を推測するだけ</b>です。
+          ここは動的スキャンやクラウド設定監査の領分です。
+        </div>
+      </div>
+    </div>
+
+    <div class="stack-legend">
+      <span><b style="color:var(--teal)">●</b> 実測 — 根拠を引用できる</span>
+      <span><b style="color:var(--teal)">◐</b> 部分的 — 判定には使うが監査はしない</span>
+      <span><b style="color:var(--iris)">◌</b> 推測の材料 — 想定層になる</span>
+      <span><b style="color:var(--faint)">▲</b> 対象外 — 死角として明示する</span>
+    </div>
+
+    <div class="axis-note">
+      <h4>なぜ OSI 7層で描かないのか</h4>
+      <p>OSI参照モデルは<b>プロトコルのカプセル化</b>で切る軸です。この軸で描くと、
+        GRIMOIRE が見つけるものはほぼ全部が第7層に落ちます。
+        <b>7層のうち1層だけが点灯し、残る6層が暗い図</b>にしかならず、カバレッジの説明になりません。</p>
+      <p>さらに悪いことに、この軸では
+        <b>「自分で書いたコードの欠陥」「依存パッケージの既知CVE」「デプロイ設定からの推測」の違いが消えます</b>。
+        いずれもL7だからです。実際にはこの3つは別々の仕組みで検出していて、
+        信頼できる度合いも違います。使う側に効くのは、その差です。</p>
+      <p>上の軸は「<b>直すには何を変えるか / 誰の持ち場か</b>」で切っています。
+        アプリの層はコードを直す、依存の層はバージョンを上げる、OS層は別のツールを足す —
+        カバレッジの図が、次の行動にそのまま対応します。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── 機能 ── -->
+<section>
+  <div class="wrap">
+    <span class="eyebrow">主な機能</span>
+    <h2>実務に必要なものを、ひととおり</h2>
+    <div class="features">
+      <div class="feat"><div class="ft"><span class="g">◆</span> CVSS v3.0 / v3.1</div><p>基本評価基準を仕様どおり実装。1944通り＋公式サンプルで検証済み。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> CWEカタログ 959件</div><p>MITRE公式データを圧縮して同梱。実行時にネットワークへ出ません。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> 自己検証パス</div><p>候補ごとに別プロンプトで反証します。誤検知への主対策です。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> SARIF / CIゲート</div><p>GitHub Code Scanning連携。差分（新規のみ）でのゲートも可能。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> ベースライン差分</div><p>前回との new / persistent / fixed を追跡します。負債を増やさない運用にできます。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> OSV依存脆弱性照合</div><p>依存パッケージの既知CVEをOSV.devで照合。失敗しても走査は継続。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> 5つの分析レンズ</div><p>インジェクション / 認可 / 暗号・秘密情報 / デシリアライズ・SSRF / Web出力。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> 5形式で出力</div><p>CLI / JSON / SARIF / Markdown / HTML から用途で選べます。</p></div>
+      <div class="feat"><div class="ft"><span class="g">◆</span> チャンク単位キャッシュ</div><p>変更のないコードは再分析しません。2回目以降は大幅に速く、安くなります。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section class="cta">
+  <div class="wrap">
+    <div class="cta-head">
+      <span class="eyebrow" style="justify-content:center">はじめる</span>
+      <h2>まず、触れてみてください</h2>
+    </div>
+    <div class="cta-grid">
+      <a class="cta-card" id="cta2-demo" href="#">
+        <div class="k">▸ さわる</div>
+        <h3>Web UIデモ</h3>
+        <p>サンプルデータで動くレポート画面。検出一覧・攻撃チェーン・ヒートマップを操作できます。</p>
+        <div class="go">デモを開く →</div>
+      </a>
+      <a class="cta-card" id="cta2-beg" href="#">
+        <div class="k">▸ 学ぶ</div>
+        <h3>はじめてのガイド</h3>
+        <p>セキュリティツール未経験の方へ。3ステップで使い方と結果の読み方を。</p>
+        <div class="go">ガイドを読む →</div>
+      </a>
+      <div class="cta-card" style="cursor:default">
+        <div class="k">▸ 動かす</div>
+        <h3>コマンド一つ</h3>
+        <p class="mono" style="font-size:12.5px;color:var(--text)">$ grimoire ./my-app<br>&nbsp;&nbsp;--fail-on high</p>
+        <div class="go" style="color:var(--faint)">Node.js 20+ / APIキー</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wm">GRIM<b>O</b>IRE</div>
+  <p style="margin:10px 0 0">禁書「九五九」 — MITRE CWE 959件を収めた、LLMベースのソースコード脆弱性スキャナー</p>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var root = document.documentElement;
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById("theme").addEventListener("click", function () {
+    var cur = root.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    root.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+    drawMarks();
+  });
+  function cssvar(n) { return getComputedStyle(root).getPropertyValue(n).trim(); }
+
+  /* 封印紋章（ヒーロー、回転） */
+  var hs = document.getElementById("seal"), hctx = hs.getContext("2d"), t = 0;
+  function sealDraw(cv, ctx, ph) {
+    var S = cv.width, c = S / 2, R = S * 0.44;
+    ctx.clearRect(0, 0, S, S);
+    var iris = cssvar("--iris"), brass = cssvar("--brass");
+    ctx.lineWidth = S / 62;
+    ctx.strokeStyle = brass; ctx.globalAlpha = .9;
+    ctx.beginPath(); ctx.arc(c, c, R, 0, 6.2832); ctx.stroke();
+    ctx.beginPath(); ctx.arc(c, c, R * .82, 0, 6.2832); ctx.stroke();
+    ctx.save(); ctx.translate(c, c); ctx.rotate(ph * .15); ctx.strokeStyle = iris; ctx.globalAlpha = .85;
+    for (var i = 0; i < 40; i++) { var a = i / 40 * 6.2832, r2 = R * (i % 5 === 0 ? .70 : .76); ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * .82, Math.sin(a) * R * .82); ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2); ctx.stroke(); }
+    ctx.restore();
+    ctx.save(); ctx.translate(c, c); ctx.rotate(-ph * .22); ctx.strokeStyle = iris; ctx.globalAlpha = .5; ctx.lineWidth = S / 92;
+    for (var j = 0; j < 7; j++) { var b = j / 7 * 6.2832 - 1.5708; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(b) * R * .55, Math.sin(b) * R * .55); ctx.stroke(); }
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.fillStyle = iris; ctx.beginPath(); ctx.arc(c, c, R * .15, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = brass; ctx.globalAlpha = .8; ctx.lineWidth = S / 82; ctx.beginPath(); ctx.arc(c, c, R * .28, 0, 6.2832); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  sealDraw(hs, hctx, 0);
+  if (!reduce) (function loop() { t += .02; sealDraw(hs, hctx, t); requestAnimationFrame(loop); })();
+
+  /* 3本柱のマーク（静的・幾何学） */
+  function drawMarks() {
+    document.querySelectorAll(".pmark").forEach(function (cv) {
+      var ctx = cv.getContext("2d"), S = cv.width, c = S / 2;
+      ctx.clearRect(0, 0, S, S);
+      var iris = cssvar("--iris"), teal = cssvar("--teal"), brass = cssvar("--brass"), dim = cssvar("--faint");
+      var kind = cv.getAttribute("data-mark");
+      ctx.lineWidth = 2.4;
+      if (kind === "chain") {
+        // 連鎖: ノードを線で繋ぎ、中央にチョークポイント
+        var pts = [[c-46,c-30],[c-4,c-46],[c+40,c-18],[c+30,c+34],[c-20,c+42]];
+        ctx.strokeStyle = dim; ctx.globalAlpha = .5;
+        ctx.beginPath(); pts.forEach(function(p,i){ i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]); }); ctx.stroke();
+        ctx.globalAlpha = 1;
+        pts.forEach(function(p,i){ ctx.fillStyle = i===2?iris:cssvar("--surface"); ctx.strokeStyle = i===2?iris:dim;
+          ctx.beginPath(); ctx.arc(p[0],p[1], i===2?9:6, 0, 6.2832); ctx.fill(); ctx.stroke(); });
+        // choke ring
+        ctx.strokeStyle = iris; ctx.globalAlpha=.4; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(pts[2][0],pts[2][1],15,0,6.2832); ctx.stroke(); ctx.globalAlpha=1;
+      } else if (kind === "duo") {
+        // 事実（実線teal円）と推測（破線iris円）の重なり
+        ctx.strokeStyle = teal; ctx.setLineDash([]); ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(c-16, c, 40, 0, 6.2832); ctx.stroke();
+        ctx.strokeStyle = iris; ctx.setLineDash([6,6]); ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(c+16, c, 40, 0, 6.2832); ctx.stroke();
+        ctx.setLineDash([]);
+      } else if (kind === "gate") {
+        // ゲート: 盾に×（0件でも通さない）
+        ctx.strokeStyle = brass; ctx.lineWidth = 2.6; ctx.globalAlpha=.9;
+        ctx.beginPath(); ctx.moveTo(c,c-46); ctx.lineTo(c+38,c-30); ctx.lineTo(c+38,c+8);
+        ctx.quadraticCurveTo(c+38,c+38,c,c+50); ctx.quadraticCurveTo(c-38,c+38,c-38,c+8);
+        ctx.lineTo(c-38,c-30); ctx.closePath(); ctx.stroke(); ctx.globalAlpha=1;
+        ctx.strokeStyle = iris; ctx.lineWidth=4; ctx.lineCap="round";
+        ctx.beginPath(); ctx.moveTo(c-15,c-12); ctx.lineTo(c+15,c+16); ctx.moveTo(c+15,c-12); ctx.lineTo(c-15,c+16); ctx.stroke();
+        ctx.lineCap="butt";
+      }
+    });
+  }
+  drawMarks();
+
+  /* パイプライン生成 */
+  var STAGES = [["①","索敵","コンテキスト収集"],["②","解析詠唱","レンズ別LLM分析"],["③","照合","CVSS・重複統合"],["④","連鎖演算","攻撃経路の推論"],["⑤","構造把握","アーキ推定"],["⑥","熱図描画","実測×想定"],["⑦","編纂","レポート生成"]];
+  document.getElementById("pipe").innerHTML = STAGES.map(function (s, i) {
+    return '<div class="pstep ' + (i===3||i===4?"parallel":"") + '"><div class="no">' + s[0] + '</div><div class="spell">' + s[1] + '</div><div class="do">' + s[2] + '</div></div>';
+  }).join("");
+
+  /* スクロール表示 */
+  document.querySelectorAll("section .wrap > *, .pillar").forEach(function(el){ el.classList.add("reveal"); });
+  if (!reduce && "IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }); }, { threshold: .1 });
+    document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+  } else { document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); }); }
+
+  /* 相互リンク */
+  var DEMO = "https://claude.ai/code/artifact/b7ee2d71-cff7-4344-beb2-9bba3cd7a9be";
+  var BEG = "https://claude.ai/code/artifact/ee4019cf-bbc6-4447-a3f6-b22e58a9ba34";
+  ["cta-demo","cta2-demo"].forEach(function(id){ document.getElementById(id).href = DEMO; });
+  document.getElementById("cta2-beg").href = BEG;
+})();
+</script>

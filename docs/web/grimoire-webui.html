@@ -1,0 +1,1517 @@
+<title>GRIMOIRE — スキャンコンソール（デモ）</title>
+<meta name="description" content="LLMベースのソースコード脆弱性スキャナー GRIMOIRE のWeb UIデモ。">
+<style>
+  :root {
+    color-scheme: light dark;
+    /* ── 冷たい紙（クリームではない）。明テーマ既定 ── */
+    --ink: #F4F6FA;
+    --surface: #FFFFFF;
+    --surface-2: #EDF0F6;
+    --surface-3: #E4E8F1;
+    --border: #D7DCE8;
+    --border-strong: #C4CBDC;
+    --text: #171A24;
+    --dim: #5B6377;
+    --faint: #8A92A6;
+    /* ブランド＝推測レイヤーのアイリス紫 */
+    --iris: #5B4FD6;
+    --iris-soft: #ECEAFB;
+    /* 事実＝検証済みのティール */
+    --teal: #0E9E78;
+    --teal-soft: #DCF3EC;
+    /* 封蝋の真鍮（紋章専用の装飾色） */
+    --brass: #B4863A;
+    /* severity 固定スペクトル */
+    --crit: #D8353E;
+    --high: #E4611A;
+    --med: #C58A17;
+    --low: #2F84C7;
+    --info: #79808f;
+    --crit-bg: #fdecec;
+    --high-bg: #fceee4;
+    --med-bg: #f8f1df;
+    --low-bg: #e8f1fa;
+    --info-bg: #eceef2;
+    --shadow: 0 1px 2px rgba(20,24,40,.05), 0 8px 24px rgba(20,24,40,.06);
+    --shadow-lg: 0 12px 40px rgba(20,24,40,.14);
+    --serif-latin: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --serif-jp: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+    --sans: "Hiragino Kaku Gothic ProN", "Yu Gothic", "YuGothic", "Noto Sans JP", Meiryo, system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #0D0F15;
+      --surface: #161A24;
+      --surface-2: #1C212E;
+      --surface-3: #232937;
+      --border: #2A3040;
+      --border-strong: #39415440;
+      --border-strong: #3A4257;
+      --text: #E7E9F0;
+      --dim: #99A0B2;
+      --faint: #6C7488;
+      --iris: #8A82FF;
+      --iris-soft: #1e1f3a;
+      --teal: #2FD3A5;
+      --teal-soft: #10352c;
+      --brass: #C79A4B;
+      --crit: #F0565E; --high: #F5811F; --med: #E3A72B; --low: #55A6E5; --info: #8890A0;
+      --crit-bg: #2a1618; --high-bg: #2a1d12; --med-bg: #2a2413; --low-bg: #12222f; --info-bg: #1c212c;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --shadow-lg: 0 16px 48px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="light"] {
+    --ink:#F4F6FA;--surface:#FFFFFF;--surface-2:#EDF0F6;--surface-3:#E4E8F1;--border:#D7DCE8;--border-strong:#C4CBDC;
+    --text:#171A24;--dim:#5B6377;--faint:#8A92A6;--iris:#5B4FD6;--iris-soft:#ECEAFB;--teal:#0E9E78;--teal-soft:#DCF3EC;--brass:#B4863A;
+    --crit:#D8353E;--high:#E4611A;--med:#C58A17;--low:#2F84C7;--info:#79808f;
+    --crit-bg:#fdecec;--high-bg:#fceee4;--med-bg:#f8f1df;--low-bg:#e8f1fa;--info-bg:#eceef2;
+    --shadow:0 1px 2px rgba(20,24,40,.05),0 8px 24px rgba(20,24,40,.06);--shadow-lg:0 12px 40px rgba(20,24,40,.14);
+  }
+  :root[data-theme="dark"] {
+    --ink:#0D0F15;--surface:#161A24;--surface-2:#1C212E;--surface-3:#232937;--border:#2A3040;--border-strong:#3A4257;
+    --text:#E7E9F0;--dim:#99A0B2;--faint:#6C7488;--iris:#8A82FF;--iris-soft:#1e1f3a;--teal:#2FD3A5;--teal-soft:#10352c;--brass:#C79A4B;
+    --crit:#F0565E;--high:#F5811F;--med:#E3A72B;--low:#55A6E5;--info:#8890A0;
+    --crit-bg:#2a1618;--high-bg:#2a1d12;--med-bg:#2a2413;--low-bg:#12222f;--info-bg:#1c212c;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);--shadow-lg:0 16px 48px rgba(0,0,0,.5);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ink); color: var(--text); font-family: var(--sans);
+    font-size: 14px; line-height: 1.7; -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  .mono { font-family: var(--mono); }
+  .tnum { font-variant-numeric: tabular-nums; }
+  button { font-family: inherit; cursor: pointer; }
+  a { color: var(--iris); text-decoration: none; }
+  :focus-visible { outline: 2px solid var(--iris); outline-offset: 2px; border-radius: 4px; }
+
+  /* ── アプリのクローム ── */
+  .app { min-height: 100vh; display: flex; flex-direction: column; }
+  .topbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 20px; height: 58px; background: var(--surface);
+    border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 40;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand canvas { width: 30px; height: 30px; display: block; }
+  .brand .wm {
+    font-family: var(--serif-latin); font-size: 18px; letter-spacing: .19em;
+    font-weight: 600; padding-left: 2px;
+  }
+  .brand .wm b { color: var(--iris); font-weight: 600; }
+  .repo-pill {
+    display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono);
+    font-size: 12.5px; color: var(--dim); background: var(--surface-2);
+    border: 1px solid var(--border); padding: 5px 11px; border-radius: 7px;
+  }
+  .repo-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); }
+  .spacer { flex: 1; }
+  .icon-btn {
+    width: 34px; height: 34px; display: grid; place-items: center;
+    background: transparent; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--dim); font-size: 15px;
+  }
+  .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+  .run-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--iris); color: #fff; border: none; font-weight: 600;
+    padding: 9px 16px; border-radius: 9px; font-size: 13.5px;
+    box-shadow: 0 2px 8px rgba(91,79,214,.35);
+  }
+  .run-btn:hover { filter: brightness(1.06); }
+  .run-btn:disabled { opacity: .5; cursor: default; filter: none; }
+  .run-btn .glyph { font-size: 12px; }
+
+  /* ── サブヘッダ（走査メタ＋健全性）── */
+  .subhead {
+    padding: 16px 24px 0; display: flex; flex-wrap: wrap; align-items: flex-end;
+    gap: 6px 20px; max-width: 1200px; width: 100%; margin: 0 auto;
+  }
+  .subhead h1 {
+    font-family: var(--serif-jp); font-weight: 600; font-size: 21px; margin: 0;
+    letter-spacing: .01em;
+  }
+  .meta-line { color: var(--dim); font-size: 12.5px; font-family: var(--mono); }
+  .meta-line b { color: var(--text); font-weight: 600; }
+
+  /* 健全性ピル */
+  .health {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600;
+    padding: 5px 12px; border-radius: 20px; margin-left: auto;
+  }
+  .health .tick { width: 8px; height: 8px; border-radius: 50%; }
+  .health.ok { color: var(--teal); background: var(--teal-soft); }
+  .health.ok .tick { background: var(--teal); }
+  .health.fail { color: var(--crit); background: var(--crit-bg); }
+  .health.fail .tick { background: var(--crit); }
+
+  /* ── タブ ── */
+  .tabs {
+    display: flex; gap: 2px; padding: 14px 24px 0; max-width: 1200px; margin: 0 auto; width: 100%;
+    border-bottom: 1px solid var(--border); overflow-x: auto;
+  }
+  .tab {
+    background: none; border: none; color: var(--dim); font-size: 13.5px; font-weight: 600;
+    padding: 10px 14px; border-bottom: 2px solid transparent; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  .tab .count {
+    font-family: var(--mono); font-size: 11px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 5px; padding: 0 6px; color: var(--dim);
+  }
+  .tab:hover { color: var(--text); }
+  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--iris); }
+  .tab[aria-selected="true"] .count { background: var(--iris-soft); color: var(--iris); border-color: transparent; }
+
+  main { max-width: 1200px; margin: 0 auto; width: 100%; padding: 22px 24px 80px; flex: 1; }
+  .panel[hidden] { display: none; }
+
+  /* ── 健全性バナー（未完走時）── */
+  .health-banner {
+    display: none; gap: 14px; align-items: flex-start;
+    background: var(--crit-bg); border: 1px solid color-mix(in srgb, var(--crit) 40%, transparent);
+    border-left: 4px solid var(--crit); border-radius: 12px; padding: 16px 18px; margin-bottom: 22px;
+  }
+  body[data-state="fail"] .health-banner { display: flex; }
+  .health-banner .mark { color: var(--crit); font-size: 20px; line-height: 1.3; }
+  .health-banner h3 { margin: 0 0 4px; font-size: 15px; color: var(--crit); }
+  .health-banner p { margin: 0 0 6px; font-size: 13px; }
+  .health-banner .tasks { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+
+  /* ── 概要: stat tiles ── */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 15px; position: relative; overflow: hidden; box-shadow: var(--shadow);
+  }
+  .tile .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+  .tile .k { font-size: 11.5px; color: var(--dim); letter-spacing: .04em; }
+  .tile .v { font-size: 27px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; margin-top: 2px; font-family: var(--serif-latin); }
+  .tile .sub { font-size: 11px; color: var(--faint); }
+  body[data-state="fail"] .tiles .v.masked { color: var(--faint); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 16px; }
+  @media (min-width: 860px) { .grid-2 { grid-template-columns: 1.35fr 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 20px; box-shadow: var(--shadow);
+  }
+  .card > h2 {
+    font-size: 12px; letter-spacing: .11em; text-transform: uppercase; color: var(--faint);
+    margin: 0 0 12px; font-weight: 700; display: flex; align-items: center; gap: 9px;
+  }
+  .card > h2::before { content: ""; width: 14px; height: 1px; background: var(--iris); }
+  .exec p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.85; }
+  .exec p:last-child { margin-bottom: 0; }
+  body[data-state="fail"] .exec .normal { display: none; }
+  .exec .failnote { display: none; }
+  body[data-state="fail"] .exec .failnote { display: block; }
+  body[data-state="fail"] .exec .failnote { color: var(--crit); font-weight: 600; }
+
+  /* 深刻度バー */
+  .sevbars { display: flex; flex-direction: column; gap: 9px; }
+  .sevrow { display: grid; grid-template-columns: 76px 26px 1fr; align-items: center; gap: 10px; }
+  .sevrow .lab { font-size: 12.5px; color: var(--dim); }
+  .sevrow .n { font-family: var(--mono); font-size: 13px; text-align: right; font-weight: 600; }
+  .sevrow .track { height: 8px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+  .sevrow .track > span { display: block; height: 100%; border-radius: 5px; transition: width .6s cubic-bezier(.2,.7,.3,1); }
+  body[data-state="fail"] .sevbars { opacity: .35; filter: grayscale(.6); }
+
+  /* 優先対応 */
+  .actions { display: flex; flex-direction: column; gap: 10px; }
+  .action {
+    display: grid; grid-template-columns: 26px 1fr; gap: 12px; align-items: start;
+    padding: 12px 0; border-top: 1px solid var(--border);
+  }
+  .action:first-child { border-top: none; padding-top: 2px; }
+  .action .ord {
+    width: 24px; height: 24px; border-radius: 7px; background: var(--iris-soft); color: var(--iris);
+    display: grid; place-items: center; font-weight: 700; font-size: 13px; font-family: var(--serif-latin);
+  }
+  .action .body .t { font-size: 13.5px; font-weight: 600; }
+  .action .body .meta { font-size: 11.5px; color: var(--faint); margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 1px 7px;
+    border-radius: 20px; border: 1px solid var(--border); color: var(--dim); background: var(--surface-2);
+  }
+  .chip.effort-low { color: var(--teal); border-color: color-mix(in srgb,var(--teal) 35%,transparent); background: var(--teal-soft); }
+  .chip.effort-medium { color: var(--med); border-color: color-mix(in srgb,var(--med) 35%,transparent); background: var(--med-bg); }
+  .chip.effort-high { color: var(--high); border-color: color-mix(in srgb,var(--high) 35%,transparent); background: var(--high-bg); }
+
+  /* ── 検出一覧テーブル ── */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+  table.findings { width: 100%; border-collapse: collapse; min-width: 720px; }
+  table.findings th {
+    text-align: left; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint);
+    font-weight: 700; padding: 12px 14px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  table.findings td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; font-size: 13px; }
+  table.findings tr:last-child td { border-bottom: none; }
+  .frow { cursor: pointer; }
+  .frow:hover { background: var(--surface-2); }
+  .frow .title { font-weight: 600; }
+  .frow .loc { font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
+  .cvss { font-family: var(--serif-latin); font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .badge {
+    display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 2px 9px;
+    border-radius: 6px; white-space: nowrap; letter-spacing: .02em;
+  }
+  .badge.critical { color: var(--crit); background: var(--crit-bg); }
+  .badge.high { color: var(--high); background: var(--high-bg); }
+  .badge.medium { color: var(--med); background: var(--med-bg); }
+  .badge.low { color: var(--low); background: var(--low-bg); }
+  .diff { font-family: var(--mono); font-size: 11px; padding: 1px 7px; border-radius: 5px; }
+  .diff.new { color: var(--iris); background: var(--iris-soft); }
+  .diff.persistent { color: var(--dim); background: var(--surface-2); border: 1px solid var(--border); }
+  .expand-row td { padding: 0; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+  .expand-inner { padding: 4px 18px 20px; display: none; }
+  .expand-row.open .expand-inner { display: block; }
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; margin: 14px 0; }
+  .flow .step {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; min-width: 190px; flex: 1;
+  }
+  .flow .role { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; }
+  .flow .step.source .role { color: var(--high); }
+  .flow .step.sink .role { color: var(--crit); }
+  .flow .code { font-family: var(--mono); font-size: 12px; margin: 4px 0 3px; word-break: break-all; }
+  .flow .desc { font-size: 11.5px; color: var(--dim); }
+  .flow .arrow { align-self: center; color: var(--faint); padding: 0 10px; font-size: 18px; }
+  .detail-grid { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 6px; }
+  @media (min-width: 760px) { .detail-grid { grid-template-columns: 1fr 1fr; } }
+  .detail-grid .lab { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); font-weight: 700; margin-bottom: 4px; }
+  .detail-grid p { margin: 0; font-size: 13px; line-height: 1.75; }
+  .conf-meter { height: 6px; border-radius: 4px; background: var(--surface-3); overflow: hidden; margin-top: 6px; max-width: 200px; }
+  .conf-meter > span { display: block; height: 100%; background: var(--teal); border-radius: 4px; }
+
+  /* ── 攻撃チェーン ── */
+  .chain {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow);
+  }
+  .chain-head { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+  .chain-head .score {
+    font-family: var(--serif-latin); font-size: 34px; font-weight: 700; color: var(--crit); line-height: 1;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+  }
+  .chain-head .score small { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); font-family: var(--sans); font-weight: 700; }
+  .chain-head .ct h3 { margin: 0 0 6px; font-family: var(--serif-jp); font-size: 18px; font-weight: 600; }
+  .chain-head .ct .cmeta { font-size: 12px; color: var(--dim); display: flex; gap: 14px; flex-wrap: wrap; }
+  .chain-head .ct .cmeta b { color: var(--text); }
+  .chain-steps { padding: 8px 22px 22px; }
+  .cstep { display: grid; grid-template-columns: 34px 1fr; gap: 14px; padding: 14px 0; position: relative; }
+  .cstep:not(:last-child)::before { content: ""; position: absolute; left: 16px; top: 40px; bottom: -14px; width: 2px; background: var(--border-strong); }
+  .cstep .num { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--iris); color: var(--iris); display: grid; place-items: center; font-weight: 700; background: var(--surface); z-index: 1; }
+  .cstep.choke .num { background: var(--iris); color: #fff; box-shadow: 0 0 0 4px var(--iris-soft); }
+  .cstep .tactic { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); font-weight: 700; }
+  .cstep .sdesc { font-size: 13.5px; margin: 2px 0; }
+  .cstep .choke-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--iris); font-weight: 700; margin-top: 3px; }
+  .impact-bar { background: var(--crit-bg); border-top: 1px solid color-mix(in srgb,var(--crit) 25%,transparent); padding: 14px 22px; font-size: 13px; }
+  .impact-bar b { color: var(--crit); }
+
+  /* ── ヒートマップ ── */
+  .heat-legend { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 16px; font-size: 12px; color: var(--dim); }
+  .heat-legend .li { display: inline-flex; align-items: center; gap: 8px; }
+  .swatch { width: 20px; height: 14px; border-radius: 4px; border: 1px solid var(--border); }
+  .swatch.obs { background: var(--crit); border-color: var(--crit); }
+  .swatch.inf { background: transparent; border: 2px dashed var(--iris); }
+  .swatch.blind { background: repeating-linear-gradient(45deg, var(--surface-2), var(--surface-2) 3px, var(--iris-soft) 3px, var(--iris-soft) 6px); }
+  .heat-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+  table.heat { border-collapse: separate; border-spacing: 0; min-width: 620px; width: 100%; }
+  table.heat th.col { font-size: 11px; color: var(--dim); font-weight: 600; padding: 12px 8px; text-align: center; vertical-align: bottom; border-bottom: 1px solid var(--border); }
+  table.heat th.row { font-size: 12.5px; text-align: left; padding: 10px 14px; white-space: nowrap; border-bottom: 1px solid var(--border); font-weight: 600; }
+  table.heat th.row small { display: block; font-weight: 400; font-size: 10.5px; color: var(--faint); letter-spacing: .04em; }
+  table.heat td { border-bottom: 1px solid var(--border); padding: 6px; }
+  .cell { width: 60px; height: 46px; border-radius: 8px; margin: 0 auto; position: relative; display: grid; place-items: center; }
+  .cell .badge-blind { position: absolute; top: 3px; right: 4px; color: var(--iris); font-size: 10px; }
+  .cell .cval { font-family: var(--mono); font-size: 11px; font-weight: 700; }
+  .exposure-tag { font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; font-weight: 700; }
+  .exp-public { color: var(--crit); background: var(--crit-bg); }
+  .exp-internal { color: var(--med); background: var(--med-bg); }
+  .exp-local { color: var(--dim); background: var(--surface-2); }
+  .heat-note { font-size: 12px; color: var(--dim); margin-top: 14px; display: flex; gap: 8px; align-items: flex-start; }
+  .heat-note b { color: var(--iris); }
+
+  /* ── 実行オーバーレイ（パイプライン劇場）── */
+  .overlay {
+    position: fixed; inset: 0; background: color-mix(in srgb, var(--ink) 84%, transparent);
+    backdrop-filter: blur(7px); display: none; place-items: center; z-index: 100; padding: 16px;
+  }
+  .overlay.on { display: grid; }
+  .runner {
+    width: min(940px, 96vw); max-height: 94vh; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+    padding: 20px 22px 16px; box-shadow: var(--shadow-lg);
+  }
+  .runner .rh { display: flex; align-items: center; gap: 13px; margin-bottom: 16px; }
+  .runner .rh canvas { width: 38px; height: 38px; flex-shrink: 0; }
+  .runner .rh .t { font-family: var(--serif-jp); font-size: 15.5px; font-weight: 600; }
+  .runner .rh .s { font-size: 11.5px; color: var(--faint); font-family: var(--mono); }
+  .runner .rh .clock { margin-left: auto; font-family: var(--mono); font-size: 13px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .runner .rh .xbtn { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--faint); font-size: 14px; }
+  .runner .rh .xbtn:hover { color: var(--text); background: var(--surface-2); }
+
+  /* 工程レール — ④⑤ は分岐して並走し、⑥ で合流する（実際のトポロジ） */
+  .rail { display: flex; align-items: center; gap: 0; overflow-x: auto; padding: 4px 2px 10px; }
+  .rnode { display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; background: none; border: none; padding: 2px 4px; flex-shrink: 0; }
+  .rnode .ring {
+    width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border-strong);
+    display: grid; place-items: center; font-size: 11px; color: var(--faint);
+    font-family: var(--mono); transition: all .3s; background: var(--surface);
+  }
+  .rnode .cap { font-size: 10px; color: var(--faint); white-space: nowrap; transition: color .3s; font-family: var(--serif-jp); }
+  .rnode[data-st="active"] .ring { border-color: var(--iris); background: var(--iris); color: #fff; box-shadow: 0 0 0 4px var(--iris-soft); }
+  .rnode[data-st="active"] .cap { color: var(--text); font-weight: 600; }
+  .rnode[data-st="done"] .ring { border-color: var(--teal); color: var(--teal); }
+  .rnode[data-st="done"] .cap { color: var(--dim); }
+  .rlink { flex: 1; min-width: 12px; height: 2px; background: var(--border-strong); margin-bottom: 16px; }
+  .rlink.hot { background: var(--iris); }
+  .rfork { display: flex; align-items: center; flex-shrink: 0; margin-bottom: 16px; }
+  .rfork .lanes {
+    display: flex; flex-direction: column; gap: 2px; position: relative;
+    border: 2px solid var(--border-strong); border-radius: 12px; padding: 4px 6px;
+  }
+  .rfork .lanes.hot { border-color: var(--iris); }
+  .rfork .lanes .par {
+    position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+    font-size: 8.5px; font-family: var(--mono); letter-spacing: .06em; color: var(--faint);
+    background: var(--surface); padding: 0 5px; white-space: nowrap;
+  }
+  .rfork .lanes.hot .par { color: var(--iris); }
+
+  /* 劇場 */
+  .theater { position: relative; border-radius: 14px; overflow: hidden; background: var(--surface-2); border: 1px solid var(--border); }
+  .theater canvas { display: block; width: 100%; height: 268px; }
+
+  /* CLI と同じ書式のログ */
+  .runlog {
+    margin-top: 12px; font-family: var(--mono); font-size: 11.5px; line-height: 1.85;
+    color: var(--dim); min-height: 92px; white-space: pre; overflow-x: auto;
+  }
+  .runlog .done-l { color: var(--teal); }
+  .runlog .live-l { color: var(--text); }
+  .runlog .dim-l { color: var(--faint); }
+
+  .rctl { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .rctl .sbtn {
+    font-size: 11.5px; padding: 5px 11px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--dim); font-weight: 600;
+  }
+  .rctl .sbtn:hover { color: var(--text); border-color: var(--iris); }
+  .rctl .hint { font-size: 11px; color: var(--faint); margin-left: auto; }
+
+  @media (max-width: 620px) { .theater canvas { height: 230px; } .runner { padding: 16px 14px 12px; } }
+
+  .foot { text-align: center; color: var(--faint); font-size: 11.5px; padding: 20px; border-top: 1px solid var(--border); }
+  .foot .mono { color: var(--dim); }
+  .demo-tag {
+    position: fixed; left: 12px; bottom: 12px; z-index: 50; font-size: 11px; color: var(--faint);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 4px 11px; box-shadow: var(--shadow);
+  }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  @media (max-width: 560px) {
+    .brand .wm { display: none; }
+    .subhead h1 { font-size: 18px; }
+    main { padding: 18px 14px 70px; }
+    .topbar { padding: 0 12px; }
+    .subhead, .tabs { padding-left: 14px; padding-right: 14px; }
+  }
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <canvas id="seal-top" width="60" height="60" aria-hidden="true"></canvas>
+      <span class="wm">GRIM<b>O</b>IRE</span>
+    </div>
+    <span class="repo-pill"><span class="dot"></span>github.com/acme/payments-api</span>
+    <span class="spacer"></span>
+    <button class="run-btn" id="run"><span class="glyph">◆</span> スキャン実行</button>
+    <button class="icon-btn" id="theme" title="テーマ切替" aria-label="テーマ切替">◐</button>
+  </header>
+
+  <div class="subhead">
+    <h1>スキャン結果</h1>
+    <span class="meta-line">対象 <b>/acme/payments-api</b> · ブランチ <b>main@abcdef12</b> · <b>128</b> ファイル · <b>17.4秒</b> · 依存 <b>34</b> · 入口 <b>7</b></span>
+    <span class="health ok" id="health"><span class="tick"></span><span id="health-txt">走査完了</span></span>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="overview">概要</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="findings">検出一覧 <span class="count">9</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="chains">攻撃チェーン <span class="count">1</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="heatmap">ヒートマップ</button>
+  </nav>
+
+  <main>
+    <!-- 健全性バナー（未完走デモ時のみ） -->
+    <div class="health-banner" role="alert">
+      <span class="mark">⚠</span>
+      <div>
+        <h3>このスキャンは完走していません</h3>
+        <p>分析タスクの 85/85 件が失敗しました（APIキー未設定）。検出0件は「安全」ではなく「調べられなかった」を意味します。<b>この結果を安全の根拠に使わないでください。</b></p>
+        <div class="tasks">分析タスク: 成功 0 / 失敗 85 / 拒否 0 / 全 85 · 終了コード <b style="color:var(--crit)">3</b></div>
+      </div>
+    </div>
+
+    <!-- 概要 -->
+    <section class="panel" id="p-overview" role="tabpanel">
+      <div class="tiles" id="tiles"></div>
+      <div class="grid-2">
+        <div class="card exec">
+          <h2>エグゼクティブサマリ</h2>
+          <div class="normal">
+            <p>128ファイルの走査で <b>9件</b> のセキュリティ問題を検出しました（至急対応すべき「緊急・高」が6件）。特に <span class="mono">GET /api/users/:id</span> を起点に<b>全ユーザーの個人情報の閲覧と管理者権限の奪取</b>へ至る攻撃経路が1本成立しうる点が重大です（成立可能性: 高）。</p>
+            <p>まず着手すべきは <b>SQLインジェクションのパラメータ化</b>。この1箇所で1件の問題と1本の攻撃経路を同時に断てます。前回比は新規5 / 継続4 / 解消1 でリスクは増加傾向です。</p>
+          </div>
+          <div class="failnote">
+            <p>走査が完走していないため、リスクの全体像は描けません。まずAPIキー・ネットワーク・トークン予算を確認して再実行してください。ここに脆弱性が「無い」ことの根拠はありません。</p>
+          </div>
+        </div>
+        <div class="card">
+          <h2>深刻度の内訳</h2>
+          <div class="sevbars" id="sevbars"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h2>優先対応アクション</h2>
+        <div class="actions" id="actions"></div>
+      </div>
+    </section>
+
+    <!-- 検出一覧 -->
+    <section class="panel" id="p-findings" role="tabpanel" hidden>
+      <div class="table-wrap">
+        <table class="findings">
+          <thead><tr>
+            <th>深刻度</th><th>CVSS</th><th>タイトル</th><th>CWE</th><th>差分</th><th></th>
+          </tr></thead>
+          <tbody id="ftbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 攻撃チェーン -->
+    <section class="panel" id="p-chains" role="tabpanel" hidden>
+      <div class="chain">
+        <div class="chain-head">
+          <div class="score">92<small>優先度</small></div>
+          <div class="ct">
+            <h3>SQLインジェクション経由で認証情報を奪取し横展開</h3>
+            <div class="cmeta">
+              <span>起点 <b class="mono">GET /api/users/:id</b></span>
+              <span>成立可能性 <b>高</b></span>
+              <span><b>2</b> ステップ</span>
+            </div>
+          </div>
+        </div>
+        <div class="chain-steps">
+          <div class="cstep choke">
+            <div class="num">1</div>
+            <div>
+              <div class="tactic">Exploitation · Initial-Access</div>
+              <div class="sdesc">検索APIにSQL断片を注入し、認証を回避してユーザーテーブルを読み出す</div>
+              <span class="choke-tag">✂ チョークポイント — ここを塞げば後続は成立しない（VS-3f9a1c04b2d7）</span>
+            </div>
+          </div>
+          <div class="cstep">
+            <div class="num">2</div>
+            <div>
+              <div class="tactic">Actions-on-Objectives · Credential-Access</div>
+              <div class="sdesc">取得した資格情報で管理APIを叩き、権限を昇格させる</div>
+            </div>
+          </div>
+        </div>
+        <div class="impact-bar">想定される影響: <b>全ユーザーの個人情報の閲覧と管理者権限の奪取</b></div>
+      </div>
+    </section>
+
+    <!-- ヒートマップ -->
+    <section class="panel" id="p-heatmap" role="tabpanel" hidden>
+      <div class="heat-legend">
+        <span class="li"><span class="swatch obs"></span> 実測リスク（事実・塗り）</span>
+        <span class="li"><span class="swatch inf"></span> 想定リスク（推測・破線）</span>
+        <span class="li"><span class="swatch blind"></span> 死角 — 検出は無いが構成上は危ない</span>
+      </div>
+      <div class="heat-wrap"><div id="heat"></div></div>
+      <p class="heat-note">▲ <span><b>死角（blind spot）</b>は「本当に安全」なのか「まだ見ていないだけ」なのかを切り分けて表示します。ここでは APIサーバ×認証・認可 が高い想定リスクを持ちながら検出0 ＝ レンズ未有効の可能性。</span></p>
+    </section>
+  </main>
+
+  <div class="foot">
+    <span class="mono">GRIMOIRE 0.1.0</span> — 禁書「九五九」 · これはサンプルデータで動くUIデモです
+  </div>
+</div>
+
+<div class="demo-tag" id="demo-tag">デモ状態: 正常完走 ▸ クリックで切替</div>
+
+<!-- 実行アニメ: パイプライン劇場 -->
+<div class="overlay" id="overlay">
+  <div class="runner" role="dialog" aria-label="スキャン実行中">
+    <div class="rh">
+      <canvas id="seal-run" width="80" height="80" aria-hidden="true"></canvas>
+      <div>
+        <div class="t">禁書を開いています…</div>
+        <div class="s" id="run-sub">7工程を詠唱中</div>
+      </div>
+      <span class="clock" id="run-clock">0:00</span>
+      <button class="xbtn" id="run-close" aria-label="閉じる">✕</button>
+    </div>
+
+    <div class="rail" id="rail"></div>
+
+    <div class="theater"><canvas id="stage-canvas" aria-label="実行中の工程の可視化"></canvas></div>
+
+    <div class="runlog" id="runlog"></div>
+
+    <div class="rctl">
+      <button class="sbtn" id="btn-replay">↻ 最初から</button>
+      <button class="sbtn" id="btn-pause">⏸ 一時停止</button>
+      <span class="hint">レールの工程をクリックするとその場面へ移動します</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var root = document.documentElement;
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ── テーマ ── */
+  document.getElementById("theme").addEventListener("click", function () {
+    var cur = root.getAttribute("data-theme");
+    if (!cur) cur = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    root.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+    drawAllSeals();
+  });
+
+  /* ── 封印紋章（canvas 生成）── */
+  function cssvar(n) { return getComputedStyle(root).getPropertyValue(n).trim(); }
+  function drawSeal(cv, t) {
+    var ctx = cv.getContext("2d"), S = cv.width, c = S / 2, R = S * 0.44;
+    ctx.clearRect(0, 0, S, S);
+    var iris = cssvar("--iris"), brass = cssvar("--brass"), dim = cssvar("--faint");
+    ctx.lineWidth = Math.max(1, S / 60);
+    // 外環（真鍮）
+    ctx.strokeStyle = brass; ctx.globalAlpha = .9;
+    ctx.beginPath(); ctx.arc(c, c, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(c, c, R * 0.82, 0, Math.PI * 2); ctx.stroke();
+    // 目盛り（959 → 40刻みの環）回転
+    ctx.save(); ctx.translate(c, c); ctx.rotate(t * 0.15);
+    ctx.strokeStyle = iris; ctx.globalAlpha = .85;
+    for (var i = 0; i < 40; i++) {
+      var a = (i / 40) * Math.PI * 2, r1 = R * 0.82, r2 = R * (i % 5 === 0 ? 0.70 : 0.76);
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1); ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2); ctx.stroke();
+    }
+    ctx.restore();
+    // 内側: 7工程の放射線（逆回転）
+    ctx.save(); ctx.translate(c, c); ctx.rotate(-t * 0.22);
+    ctx.strokeStyle = iris; ctx.globalAlpha = .55; ctx.lineWidth = Math.max(1, S / 90);
+    for (var j = 0; j < 7; j++) {
+      var b = (j / 7) * Math.PI * 2 - Math.PI / 2;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(b) * R * 0.55, Math.sin(b) * R * 0.55); ctx.stroke();
+    }
+    ctx.restore();
+    // 中央の宝珠
+    ctx.globalAlpha = 1; ctx.fillStyle = iris;
+    ctx.beginPath(); ctx.arc(c, c, R * 0.15, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = brass; ctx.globalAlpha = .8; ctx.lineWidth = Math.max(1, S / 80);
+    ctx.beginPath(); ctx.arc(c, c, R * 0.28, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  var seals = [document.getElementById("seal-top"), document.getElementById("seal-run")];
+  var tphase = 0;
+  function drawAllSeals() { seals.forEach(function (s) { if (s) drawSeal(s, tphase); }); }
+  function animateSeals() { tphase += 0.02; drawAllSeals(); requestAnimationFrame(animateSeals); }
+  drawAllSeals();
+  if (!reduce) animateSeals();
+
+  /* ── データ ── */
+  var SEV = { critical: "緊急", high: "高", medium: "中", low: "低", info: "情報" };
+  var findings = [
+    { id: "VS-3f9a1c04b2d7", sev: "critical", cvss: "9.8", cwe: "CWE-89", diff: "new", conf: 0.9,
+      title: "SQLクエリへのユーザー入力の直接連結", loc: "src/api/users.ts:42",
+      flow: [
+        { role: "source", code: "req.params.id", desc: "HTTPリクエストのパスパラメータ（攻撃者が制御可能）" },
+        { role: "sink", code: "db.query(`SELECT * FROM users WHERE id=${id}`)", desc: "文字列連結でSQL文を構築し実行" }
+      ],
+      reason: "外部から渡る id が検証・エスケープ・パラメータ化のいずれも通らず、そのままSQL文に埋め込まれている。認証回避と全テーブル読み出しが可能。",
+      fix: "プレースホルダを用いたパラメータ化クエリ（プリペアドステートメント）へ書き換える。" },
+    { id: "VS-8b21e7d5a0c3", sev: "high", cvss: "8.6", cwe: "CWE-918", diff: "new", conf: 0.82,
+      title: "外部から渡されたURLをそのまま fetch している", loc: "src/api/proxy.ts:88",
+      flow: [
+        { role: "source", code: "req.query.url", desc: "クエリ文字列で受け取る任意のURL" },
+        { role: "sink", code: "await fetch(url)", desc: "内部ネットワークやメタデータendpointにも到達しうる" }
+      ],
+      reason: "ホストの許可リストが無く、内部アドレス（169.254.169.254 等）への到達を拒否していない。クラウド資格情報の窃取につながる。",
+      fix: "許可リストでホストを制限し、内部アドレスへの名前解決を拒否する。" },
+    { id: "VS-c40d92f18ae6", sev: "medium", cvss: "5.3", cwe: "CWE-798", diff: "persistent", conf: 0.95,
+      title: "APIトークンがソースに直書きされている", loc: "src/config/keys.ts:12",
+      flow: [
+        { role: "source", code: 'const TOKEN = "sk_live_..."', desc: "リポジトリにコミットされた資格情報" },
+        { role: "sink", code: "Authorization: Bearer ${TOKEN}", desc: "履歴から永続的に漏洩する" }
+      ],
+      reason: "資格情報がバージョン管理下に平文で存在する。リポジトリを読める全員に漏れ、Git履歴からは削除しても残る。",
+      fix: "トークンを環境変数（またはシークレットマネージャ）へ移し、露出した値を直ちに失効させる。" },
+    { id: "VS-5d7c31a90fb2", sev: "critical", cvss: "9.1", cwe: "CWE-78", diff: "new", conf: 0.88,
+      title: "エクスポート処理でシェルに文字列を渡している", loc: "src/jobs/export.ts:57",
+      flow: [
+        { role: "source", code: "job.filename", desc: "利用者が指定したファイル名がそのまま渡る" },
+        { role: "sink", code: "exec(`zip -r ${out} ${job.filename}`)", desc: "シェル経由で実行され、任意コマンドが混入しうる" }
+      ],
+      reason: "シェルを介する API に未検証の文字列を連結している。`;` や `$()` を含む名前で任意コマンドを実行できる。",
+      fix: "execFile で引数配列として渡し、シェルを経由させない。" },
+    { id: "VS-a1e6b840c27d", sev: "critical", cvss: "9.0", cwe: "CWE-502", diff: "persistent", conf: 0.79,
+      title: "キューのペイロードを検証せず復元している", loc: "src/queue/consumer.ts:34",
+      flow: [
+        { role: "source", code: "msg.body", desc: "外部から投入されうるキューメッセージ" },
+        { role: "sink", code: "deserialize(msg.body)", desc: "型の検証なしにオブジェクトへ復元" }
+      ],
+      reason: "信頼できない入力を型検証なしに復元しており、プロトタイプ汚染や意図しないクラス生成につながる。",
+      fix: "スキーマ検証（zod 等）を通し、許可した型だけを復元する。" },
+    { id: "VS-2c98f0e5417a", sev: "high", cvss: "7.5", cwe: "CWE-862", diff: "new", conf: 0.84,
+      title: "管理APIに認可チェックが無い", loc: "src/api/admin.ts:23",
+      flow: [
+        { role: "source", code: "GET /api/admin/users", desc: "認証のみで到達できるルート" },
+        { role: "sink", code: "return allUsers()", desc: "ロール確認をせず全件を返す" }
+      ],
+      reason: "認証は通るが権限の確認が無い。一般利用者のトークンで管理者向けデータを取得できる。",
+      fix: "ロール確認のミドルウェアを必須化し、既定拒否にする。" },
+    { id: "VS-6f04ba2d8e91", sev: "high", cvss: "7.1", cwe: "CWE-79", diff: "persistent", conf: 0.72,
+      title: "検索語をエスケープせず描画している", loc: "src/views/search.tsx:66",
+      flow: [
+        { role: "source", code: "req.query.q", desc: "検索クエリ文字列" },
+        { role: "sink", code: "dangerouslySetInnerHTML", desc: "エスケープを迂回して描画" }
+      ],
+      reason: "利用者の入力を生のHTMLとして挿入している。反射型XSSでセッションを奪取されうる。",
+      fix: "通常の描画に戻すか、サニタイザを通してから挿入する。" },
+    { id: "VS-b83e17c604fa", sev: "low", cvss: "3.7", cwe: "CWE-319", diff: "persistent", conf: 0.9,
+      title: "Webhook送信が平文HTTPになっている", loc: "src/lib/webhook.ts:19",
+      flow: [
+        { role: "source", code: "endpoint = cfg.url", desc: "設定値の既定が http://" },
+        { role: "sink", code: "fetch(endpoint, { body })", desc: "経路上で内容を読まれうる" }
+      ],
+      reason: "送信内容が暗号化されない経路で流れている。中間者に本文とヘッダを読まれる。",
+      fix: "https を必須にし、http のエンドポイントを拒否する。" },
+    { id: "VS-e520d9fa3b16", sev: "low", cvss: "3.1", cwe: "CWE-532", diff: "new", conf: 0.86,
+      title: "ログに認証ヘッダをそのまま出力している", loc: "src/lib/logger.ts:41",
+      flow: [
+        { role: "source", code: "req.headers", desc: "Authorization を含むヘッダ全体" },
+        { role: "sink", code: "logger.debug(req.headers)", desc: "ログ基盤へ平文で送られる" }
+      ],
+      reason: "トークンがログに残り、ログ閲覧権限を持つ全員に露出する。保管期間中ずっと有効な資格情報が残る。",
+      fix: "ヘッダをマスクしてから出力する（Authorization / Cookie を除外）。" }
+  ];
+  // ⑦編纂が算出する優先順。進捗画面の「優先度の計算」と同じ並び・同じスコア。
+  var actions = [
+    { t: "プレースホルダを用いたパラメータ化クエリに書き換える", loc: "CWE-89 / src/api/users.ts", effort: "low", resolves: "Finding 1件 / チェーン 1本を遮断" },
+    { t: "許可リストでホストを制限し、内部アドレスへの解決を拒否する", loc: "CWE-918 / src/api/proxy.ts", effort: "low", resolves: "Finding 1件" },
+    { t: "トークンを環境変数へ移し、露出した値を失効させる", loc: "CWE-798 / src/config/keys.ts", effort: "low", resolves: "Finding 2件（ログ出力を含む）" },
+    { t: "認可チェックのミドルウェアを必須化する", loc: "CWE-862 / src/api/admin.ts", effort: "medium", resolves: "Finding 1件" },
+    { t: "出力エスケープを統一し、生HTML挿入をやめる", loc: "CWE-79 / src/views/search.tsx", effort: "medium", resolves: "Finding 1件" }
+  ];
+  var sevCounts = { critical: 3, high: 3, medium: 1, low: 2, info: 0 };
+
+  /* ── 概要レンダリング ── */
+  var tiles = [
+    { k: "検出件数", v: "9", sub: "緊急3 · 高3 · 中1 · 低2", stripe: "var(--crit)", mask: true },
+    { k: "最大 CVSS", v: "9.8", sub: "Critical", stripe: "var(--high)", mask: true },
+    { k: "攻撃チェーン", v: "1", sub: "優先度 92", stripe: "var(--iris)", mask: true },
+    { k: "前回比", v: "+4", sub: "新規5 · 継続4 · 解消1", stripe: "var(--med)", mask: true }
+  ];
+  document.getElementById("tiles").innerHTML = tiles.map(function (t) {
+    return '<div class="tile"><span class="stripe" style="background:' + t.stripe + '"></span>' +
+      '<div class="k">' + t.k + '</div><div class="v ' + (t.mask ? "masked" : "") + '">' + t.v + '</div><div class="sub">' + t.sub + '</div></div>';
+  }).join("");
+
+  // 最大件数を基準にした相対表示。ここを固定値にすると件数が増えたときバーがはみ出す。
+  var maxSev = Math.max(1, Math.max.apply(null, Object.keys(sevCounts).map(function (k) { return sevCounts[k]; })));
+  document.getElementById("sevbars").innerHTML = ["critical", "high", "medium", "low", "info"].map(function (s) {
+    var n = sevCounts[s], pct = maxSev ? (n / maxSev) * 100 : 0;
+    return '<div class="sevrow"><span class="lab">' + SEV[s] + '</span><span class="n">' + n + '</span>' +
+      '<span class="track"><span style="width:' + pct + '%;background:var(--' + (s === "critical" ? "crit" : s === "high" ? "high" : s === "medium" ? "med" : s === "low" ? "low" : "info") + ')"></span></span></div>';
+  }).join("");
+
+  var EFFORT_JA = { low: "小", medium: "中", high: "大" };
+  document.getElementById("actions").innerHTML = actions.map(function (a, i) {
+    return '<div class="action"><div class="ord">' + (i + 1) + '</div><div class="body">' +
+      '<div class="t">' + a.t + '</div><div class="meta"><span class="chip effort-' + a.effort + '">工数 ' + EFFORT_JA[a.effort] + '</span>' +
+      '<span class="mono">' + a.loc + '</span><span>' + a.resolves + '</span></div></div></div>';
+  }).join("");
+
+  /* ── 検出テーブル ── */
+  var tb = document.getElementById("ftbody");
+  findings.forEach(function (f, idx) {
+    var tr = document.createElement("tr");
+    tr.className = "frow";
+    tr.innerHTML =
+      '<td><span class="badge ' + f.sev + '">' + SEV[f.sev] + '</span></td>' +
+      '<td><span class="cvss" style="color:var(--' + ({ critical: "crit", high: "high", medium: "med", low: "low" }[f.sev] || "info") + ')">' + f.cvss + '</span></td>' +
+      '<td><div class="title">' + f.title + '</div><div class="loc">' + f.loc + ' · ' + f.id + '</div></td>' +
+      '<td class="mono" style="font-size:12px;color:var(--dim)">' + f.cwe + '</td>' +
+      '<td><span class="diff ' + f.diff + '">' + f.diff + '</span></td>' +
+      '<td style="color:var(--faint)" class="chevron">▾</td>';
+    var ex = document.createElement("tr");
+    ex.className = "expand-row";
+    var flowHtml = f.flow.map(function (s, i) {
+      var arrow = i < f.flow.length - 1 ? '<div class="arrow">→</div>' : '';
+      return '<div class="step ' + s.role + '"><div class="role">' + (s.role === "source" ? "SOURCE 入力元" : "SINK 危険な処理") + '</div><div class="code">' + s.code + '</div><div class="desc">' + s.desc + '</div></div>' + arrow;
+    }).join("");
+    ex.innerHTML = '<td colspan="6"><div class="expand-inner">' +
+      '<div class="flow">' + flowHtml + '</div>' +
+      '<div class="detail-grid"><div><div class="lab">なぜ脆弱か</div><p>' + f.reason + '</p>' +
+      '<div class="lab" style="margin-top:12px">確信度 ' + f.conf.toFixed(2) + '</div><div class="conf-meter"><span style="width:' + (f.conf * 100) + '%"></span></div></div>' +
+      '<div><div class="lab">修正方針</div><p>' + f.fix + '</p></div></div></div></td>';
+    tr.addEventListener("click", function () { ex.classList.toggle("open"); tr.querySelector(".chevron").textContent = ex.classList.contains("open") ? "▴" : "▾"; });
+    tb.appendChild(tr); tb.appendChild(ex);
+  });
+
+  /* ── ヒートマップ ── */
+  var comps = [
+    { name: "API サーバ", tech: "Express", exp: "public", expLab: "公開" },
+    { name: "PostgreSQL", tech: "DB", exp: "internal", expLab: "内部" },
+    { name: "シークレット", tech: "設定", exp: "local", expLab: "ローカル" }
+  ];
+  var cats = ["インジェクション", "SSRF", "認証・認可", "暗号・秘密情報", "XSS"];
+  // observed 0-100, inferred 0-100, blind=true で死角
+  var cells = {
+    "0-0": { o: 95, i: 80 }, "0-1": { o: 78, i: 70 }, "0-2": { o: 0, i: 72, blind: true }, "0-3": { o: 0, i: 30 }, "0-4": { o: 0, i: 45, blind: true },
+    "1-0": { o: 0, i: 55, blind: true }, "1-1": { o: 0, i: 10 }, "1-2": { o: 0, i: 40 }, "1-3": { o: 0, i: 25 }, "1-4": { o: 0, i: 0 },
+    "2-0": { o: 0, i: 0 }, "2-1": { o: 0, i: 0 }, "2-2": { o: 0, i: 20 }, "2-3": { o: 60, i: 65 }, "2-4": { o: 0, i: 0 }
+  };
+  function cellStyle(cd) {
+    if (!cd || (cd.o === 0 && cd.i < 20)) return "background:var(--surface-2)";
+    var s = "";
+    if (cd.blind) {
+      s = "background:repeating-linear-gradient(45deg,var(--surface-2),var(--surface-2) 3px,var(--iris-soft) 3px,var(--iris-soft) 6px);border:2px dashed var(--iris)";
+    } else if (cd.o > 0) {
+      var alpha = 0.25 + (cd.o / 100) * 0.65;
+      s = "background:color-mix(in srgb,var(--crit) " + Math.round(alpha * 100) + "%,transparent)";
+      if (cd.i >= 40) s += ";box-shadow:0 0 0 2px var(--iris) inset;border:2px dashed transparent";
+    } else {
+      s = "border:2px dashed var(--iris);background:var(--iris-soft)";
+    }
+    return s;
+  }
+  var html = '<table class="heat"><thead><tr><th class="row"></th>';
+  cats.forEach(function (c) { html += '<th class="col">' + c + '</th>'; });
+  html += '</tr></thead><tbody>';
+  comps.forEach(function (comp, ri) {
+    html += '<tr><th class="row">' + comp.name + '<small><span class="exposure-tag exp-' + comp.exp + '">' + comp.expLab + '</span> ' + comp.tech + '</small></th>';
+    cats.forEach(function (c, ci) {
+      var cd = cells[ri + "-" + ci];
+      var val = cd && cd.o > 0 ? cd.o : "";
+      var blindMark = cd && cd.blind ? '<span class="badge-blind">▲</span>' : "";
+      html += '<td><div class="cell" style="' + cellStyle(cd) + '">' + blindMark + (val ? '<span class="cval">' + val + '</span>' : "") + '</div></td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById("heat").innerHTML = html;
+
+  /* ── タブ切替 ── */
+  var tabs = [].slice.call(document.querySelectorAll(".tab"));
+  tabs.forEach(function (t) {
+    t.addEventListener("click", function () {
+      tabs.forEach(function (x) { x.setAttribute("aria-selected", "false"); });
+      t.setAttribute("aria-selected", "true");
+      ["overview", "findings", "chains", "heatmap"].forEach(function (name) {
+        document.getElementById("p-" + name).hidden = (name !== t.dataset.tab);
+      });
+    });
+  });
+
+  /* ── デモ状態切替（正常 / 未完走）── */
+  var tag = document.getElementById("demo-tag");
+  tag.addEventListener("click", function () {
+    var fail = document.body.getAttribute("data-state") === "fail";
+    document.body.setAttribute("data-state", fail ? "ok" : "fail");
+    var h = document.getElementById("health"), ht = document.getElementById("health-txt");
+    if (!fail) {
+      h.className = "health fail"; ht.textContent = "未完走 — 判定不能";
+      tag.innerHTML = "デモ状態: 走査未完了 ▸ クリックで切替";
+    } else {
+      h.className = "health ok"; ht.textContent = "走査完了";
+      tag.innerHTML = "デモ状態: 正常完走 ▸ クリックで切替";
+    }
+  });
+
+  /* ══════════════════════════════════════════════════════════════
+     実行アニメ ─ パイプライン劇場
+     実機（src/core/orchestrator.ts）の挙動に合わせてある:
+       - ④連鎖演算 と ⑤構造把握 だけが Promise.all で並列。
+         並列のときだけ画面を2分割し、それ以外は単独クローズアップ。
+       - 進捗カウンタ(onProgress)が配線されているのは ② だけ。
+         他の工程は実機と同じく数値バーを出さず説明ラベルにする。
+       - ② は analyze → verify の2フェーズで、バーが100%まで進んだあと
+         別の母数(候補件数)で引き直される。実機の挙動そのまま。
+       - ⑥ヒートマップは純粋同期関数なので体感時間がほぼ無い。短く出す。
+     描画は「時刻 u の純粋関数」にしてあるので、レール上のどの工程へでも
+     ジャンプ（スクラブ）できる。
+     ══════════════════════════════════════════════════════════════ */
+
+  var META = {
+    context:      { ord: "①", spell: "索敵",     label: "コンテキスト収集",   detail: "128 ファイル" },
+    analyze:      { ord: "②", spell: "解析詠唱", label: "ソースコード分析",   detail: "14 件の候補（分析 85/85 タスク成功）" },
+    /* 14候補 − 自己検証で3件反証 = 11、うち重複2件を統合して 9 件。
+       この数字はダッシュボード側の集計とそのまま一致させてある。 */
+    vuln:         { ord: "③", spell: "照合",     label: "脆弱性情報管理",     detail: "9 件に正規化" },
+    killchain:    { ord: "④", spell: "連鎖演算", label: "キルチェーン分析",   detail: "1 本の攻撃経路" },
+    architecture: { ord: "⑤", spell: "構造把握", label: "アーキテクチャ推定", detail: "3 構成要素（事実 5 / 推測 7）" },
+    heatmap:      { ord: "⑥", spell: "熱図描画", label: "ヒートマップ生成",   detail: "死角 3 件（推測依存度 62%）" },
+    report:       { ord: "⑦", spell: "編纂",     label: "レポート生成",       detail: "" }
+  };
+  var ORDER = ["context", "analyze", "vuln", "killchain", "architecture", "heatmap", "report"];
+  /* 各セグメント = 同時に動いている工程の集合。④⑤ だけが2つ入る */
+  var SEG = [
+    { on: ["context"],                    dur: 1500 },
+    { on: ["analyze"],                    dur: 5400 },
+    { on: ["vuln"],                       dur: 2500 },
+    { on: ["killchain", "architecture"],  dur: 3800 },
+    { on: ["heatmap"],                    dur: 1000 },
+    { on: ["report"],                     dur: 3000 }
+  ];
+  var TOTAL = SEG.reduce(function (s, x) { return s + x.dur; }, 0);
+
+  /**
+   * 進捗カウンタを持つステージと、その数え方（実機の配線と同じ4つ）。
+   *   ① 前処理したファイル数      ② 走査タスク → 自己検証の候補
+   *   ③ OSVから取得した依存脆弱性  ④ 候補グループ（1グループ=LLM1回）
+   * ⑤⑦ は LLM 1回の応答待ち、⑥ は純粋な同期関数なので刻みが無く、
+   * ここに載せない = 数値を出さない。
+   */
+  var COUNTERS = {
+    context: function (u) {
+      return { c: Math.floor(ease(u) * 128), t: 128, u: 'ファイル' };
+    },
+    analyze: function (u) {
+      var inP1 = u < PH1;
+      return inP1
+        ? { c: Math.floor(u / PH1 * TASKS), t: TASKS, u: 'タスク', ph: '走査' }
+        : { c: Math.floor((u - PH1) / (1 - PH1) * 14), t: 14, u: '候補', ph: '自己検証' };
+    },
+    vuln: function (u) {
+      return { c: Math.floor(clamp01(u / .5) * 12), t: 12, u: '依存脆弱性' };
+    },
+    killchain: function (u) {
+      return { c: Math.floor(clamp01(u / .8) * 3), t: 3, u: 'グループ' };
+    }
+  };
+
+  /* ── レール構築（④⑤ は分岐して並走し ⑥ で合流する） ── */
+  var railEl = document.getElementById("rail");
+  function nodeHtml(id) {
+    var m = META[id];
+    return '<button class="rnode" data-s="' + id + '" data-st="idle" title="' + m.spell + '（' + m.label + '）">' +
+      '<span class="ring">' + m.ord + '</span><span class="cap">' + m.spell + '</span></button>';
+  }
+  railEl.innerHTML =
+    nodeHtml("context") + '<span class="rlink" data-lk="0"></span>' +
+    nodeHtml("analyze") + '<span class="rlink" data-lk="1"></span>' +
+    nodeHtml("vuln") + '<span class="rlink" data-lk="2"></span>' +
+    '<span class="rfork"><span class="lanes" id="lanes"><span class="par">並行実行</span>' +
+      nodeHtml("killchain") + nodeHtml("architecture") + '</span></span>' +
+    '<span class="rlink" data-lk="3"></span>' +
+    nodeHtml("heatmap") + '<span class="rlink" data-lk="4"></span>' +
+    nodeHtml("report");
+  var nodeEls = {};
+  [].slice.call(railEl.querySelectorAll(".rnode")).forEach(function (b) { nodeEls[b.dataset.s] = b; });
+
+  /* ── キャンバス ── */
+  var cvs = document.getElementById("stage-canvas"), cx = cvs.getContext("2d"), CW = 0, CH = 0;
+  function fitCanvas() {
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var r = cvs.getBoundingClientRect();
+    CW = r.width; CH = r.height;
+    cvs.width = Math.round(CW * dpr); cvs.height = Math.round(CH * dpr);
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", function () { if (overlay.classList.contains("on")) fitCanvas(); });
+
+  /* ── 描画ヘルパ ── */
+  function rr(c, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    c.beginPath(); c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+  }
+  var F_JP = '"Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif';
+  var F_MIN = '"Hiragino Mincho ProN","Yu Mincho",serif';
+  var F_MONO = 'ui-monospace,Menlo,Consolas,"DejaVu Sans Mono",monospace';
+  function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+  function ease(v) { return v < .5 ? 2 * v * v : 1 - Math.pow(-2 * v + 2, 2) / 2; }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  var SEVC = ["--crit", "--high", "--med", "--low"];
+  function sevColor(i) { return cssvar(SEVC[i] || "--info"); }
+  function mixA(hex, a) {
+    var h = hex.replace("#", "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+  }
+
+  /* パネルの枠と見出し。u は 0..1、live=数値カウンタ or null */
+  function panel(R, id, sub, live) {
+    var m = META[id], b = cssvar("--border"), sf = cssvar("--surface");
+    cx.fillStyle = sf; rr(cx, R.x, R.y, R.w, R.h, 12); cx.fill();
+    cx.strokeStyle = b; cx.lineWidth = 1; rr(cx, R.x + .5, R.y + .5, R.w - 1, R.h - 1, 12); cx.stroke();
+    cx.textBaseline = "middle";
+    cx.fillStyle = cssvar("--iris"); cx.font = '600 12px ' + F_MONO;
+    cx.textAlign = "left"; cx.fillText(m.ord, R.x + 13, R.y + 17);
+    cx.fillStyle = cssvar("--text"); cx.font = '600 13.5px ' + F_MIN;
+    cx.fillText(m.spell, R.x + 30, R.y + 17);
+    cx.fillStyle = cssvar("--faint"); cx.font = '11px ' + F_JP;
+    cx.textAlign = "right";
+    cx.fillText(live || sub, R.x + R.w - 13, R.y + 17);
+    cx.textAlign = "left";
+    return { x: R.x + 13, y: R.y + 34, w: R.w - 26, h: R.h - 47 };
+  }
+  /* パネル内の細い注記（いま何をしているか） */
+  function beat(R, text) {
+    cx.fillStyle = cssvar("--dim"); cx.font = '11px ' + F_JP; cx.textAlign = "center";
+    cx.fillText(text, R.x + R.w / 2, R.y + R.h - 8); cx.textAlign = "left";
+  }
+
+  /* ══ 各工程のシーン。すべて u（0..1）の純粋関数 ══ */
+
+  /** パネル見出しに出す数値。ログ行と同じ元データから作る */
+  function counterText(id, u) {
+    var f = COUNTERS[id]; if (!f) return null;
+    var g = f(u);
+    return (g.ph ? g.ph + " " : "") + Math.min(g.c, g.t) + "/" + g.t + " " + g.u;
+  }
+
+
+  function sceneContext(R, u) {
+    var C = panel(R, "context", "ファイル走査・シンボル抽出・信頼境界", counterText("context", u));
+    // 22×6 = 132 タイル ≒ 走査対象の128ファイル。パネルの高さいっぱいに敷く
+    var cols = 22, rows = 6, gap = 3;
+    var tw = (C.w - gap * (cols - 1)) / cols, th = Math.min(26, (C.h - 28 - gap * (rows - 1)) / rows);
+    var total = cols * rows, done = Math.floor(ease(u) * total);
+    var iris = cssvar("--iris"), teal = cssvar("--teal");
+    for (var i = 0; i < total; i++) {
+      var c = i % cols, r = (i / cols) | 0;
+      var x = C.x + c * (tw + gap), y = C.y + 6 + r * (th + gap);
+      if (i < done) {
+        // 深く解析できる9言語のファイルだけがシンボル抽出まで進む
+        var deep = (i * 7 % 11) < 4;
+        cx.fillStyle = deep ? mixA(teal, .5) : mixA(iris, .22);
+      } else { cx.fillStyle = cssvar("--surface-2"); }
+      rr(cx, x, y, tw, th, 2); cx.fill();
+    }
+    // 走査線
+    var sx = C.x + ease(u) * C.w;
+    var g = cx.createLinearGradient(sx - 26, 0, sx, 0);
+    g.addColorStop(0, mixA(iris, 0)); g.addColorStop(1, mixA(iris, .5));
+    cx.fillStyle = g; cx.fillRect(sx - 26, C.y + 4, 26, rows * (th + gap));
+    cx.strokeStyle = iris; cx.lineWidth = 1.5;
+    cx.beginPath(); cx.moveTo(sx, C.y + 4); cx.lineTo(sx, C.y + 4 + rows * (th + gap)); cx.stroke();
+    beat(R, u < .5 ? "ファイルを走査し、シンボルと呼び出し関係を抽出" : "外部からの入口と信頼境界を特定");
+  }
+
+  /* ② 解析詠唱: レンズ×チャンク → 候補が湧く → 自己検証で反証される */
+  var LENSES = ["injection", "authz", "crypto-secrets", "deserialization-ssrf", "web-output"];
+  var CELLS = 17, TASKS = LENSES.length * CELLS;           // 85 タスク
+  var FIND_AT = [7, 19, 26, 33, 41, 48, 55, 60, 67, 71, 76, 79, 82, 84]; // 14 候補
+  var REFUTED = [2, 6, 11];                                 // 自己検証で落ちる3件
+  var SEV_OF = [0, 1, 2, 1, 3, 0, 2, 1, 2, 3, 1, 2, 0, 3];
+  var PH1 = .6;                                             // analyze / verify の境目
+
+  function poolSlot(C, j) {
+    var pw = C.w * .3, px = C.x + C.w - pw;
+    return { x: px + 16 + (j % 3) * 26, y: C.y + 30 + Math.floor(j / 3) * 24 };
+  }
+  function sceneAnalyze(R, u) {
+    var inP1 = u < PH1;
+    var live = inP1
+      ? Math.min(TASKS, Math.floor(u / PH1 * TASKS)) + "/" + TASKS + " タスク"
+      : Math.min(14, Math.floor((u - PH1) / (1 - PH1) * 14)) + "/14 候補";
+    var C = panel(R, "analyze", "", live);
+    var gw = C.w * .66, iris = cssvar("--iris");
+    // レンズ行はパネルの高さいっぱいに割り付ける（上に寄せると下が間延びする）
+    var rowH = (C.h - 26) / LENSES.length;
+    var gy0 = C.y + 4;
+    var cw = (gw - 74 - 2 * (CELLS - 1)) / CELLS;
+    var doneTasks = Math.floor(clamp01(u / PH1) * TASKS);
+
+    for (var L = 0; L < LENSES.length; L++) {
+      var y = gy0 + L * rowH;
+      cx.fillStyle = cssvar("--faint"); cx.font = '9px ' + F_MONO;
+      cx.fillText(LENSES[L].slice(0, 9), C.x, y + rowH / 2);
+      for (var k = 0; k < CELLS; k++) {
+        var idx = L * CELLS + k, x = C.x + 74 + k * (cw + 2);
+        var hit = FIND_AT.indexOf(idx) >= 0;
+        if (idx < doneTasks) cx.fillStyle = hit ? mixA(cssvar("--crit"), .75) : mixA(iris, .32);
+        else cx.fillStyle = cssvar("--surface-2");
+        rr(cx, x, y + 3, cw, rowH - 9, 2); cx.fill();
+        if (idx === doneTasks - 1 && inP1) { cx.strokeStyle = iris; cx.lineWidth = 1.5; rr(cx, x - 1, y + 2, cw + 2, rowH - 7, 3); cx.stroke(); }
+      }
+    }
+    // 保留プール（③へ渡される前の候補）
+    var pw = C.w * .3, px = C.x + C.w - pw;
+    cx.strokeStyle = cssvar("--border-strong"); cx.lineWidth = 1; cx.setLineDash([3, 3]);
+    rr(cx, px, C.y + 4, pw, C.h - 20, 9); cx.stroke(); cx.setLineDash([]);
+    cx.fillStyle = cssvar("--faint"); cx.font = '9.5px ' + F_JP;
+    cx.fillText("候補プール", px + 10, C.y + 16);
+
+    for (var j = 0; j < FIND_AT.length; j++) {
+      var spawnU = (FIND_AT[j] / TASKS) * PH1;
+      if (u < spawnU) continue;
+      var fly = clamp01((u - spawnU) / .07);
+      var L2 = (FIND_AT[j] / CELLS) | 0, k2 = FIND_AT[j] % CELLS;
+      var sx = C.x + 74 + k2 * (cw + 2) + cw / 2, sy = gy0 + L2 * rowH + rowH / 2;
+      var sl = poolSlot(C, j);
+      var mx = lerp(sx, sl.x, ease(fly)), my = lerp(sy, sl.y, ease(fly)) - Math.sin(ease(fly) * Math.PI) * 16;
+      var alpha = 1, ring = 0, verdict = 0;
+      if (!inP1) {
+        var v = (u - PH1) / (1 - PH1), st = j / 14 * .75, p = clamp01((v - st) / .18);
+        ring = p;
+        if (p >= 1) verdict = REFUTED.indexOf(j) >= 0 ? -1 : 1;
+        if (verdict === -1) alpha = clamp01(1 - (v - st - .18) / .12);
+      }
+      if (alpha <= 0) continue;
+      cx.globalAlpha = alpha;
+      cx.fillStyle = sevColor(SEV_OF[j]);
+      cx.beginPath(); cx.arc(mx, my, 5, 0, 6.2832); cx.fill();
+      if (ring > 0 && ring < 1) { // 反証を試みている輪
+        cx.strokeStyle = cssvar("--iris"); cx.lineWidth = 1.5;
+        cx.beginPath(); cx.arc(mx, my, 5 + (1 - ring) * 9, 0, 6.2832); cx.stroke();
+      }
+      if (verdict === 1) { cx.strokeStyle = cssvar("--teal"); cx.lineWidth = 1.6; cx.beginPath(); cx.arc(mx, my, 8, 0, 6.2832); cx.stroke(); }
+      if (verdict === -1) { cx.strokeStyle = cssvar("--faint"); cx.lineWidth = 1.4;
+        cx.beginPath(); cx.moveTo(mx - 5, my - 5); cx.lineTo(mx + 5, my + 5); cx.moveTo(mx + 5, my - 5); cx.lineTo(mx - 5, my + 5); cx.stroke(); }
+      cx.globalAlpha = 1;
+    }
+    beat(R, inP1 ? "レンズ × チャンクを並列走査 — 候補が見つかるたび候補プールへ積む"
+                 : "自己検証パス: 別プロンプトで反証を試みる（反証された候補は破棄）");
+  }
+
+  /* ③ 照合: CVSS付与 → 重複統合 → 深刻度で仕分け */
+  var KEPT = [0, 1, 3, 4, 5, 7, 8, 9, 10, 12, 13];  // 自己検証を通った11件
+  var MERGE_PAIRS = [[2, 3], [7, 8]];               // KEPT上の添字で重複統合される組
+  var CVSS_TXT = ["9.8", "8.6", "7.5", "6.1", "5.3", "8.8", "4.3", "7.2", "7.2", "5.9", "6.5"];
+  function sceneVuln(R, u) {
+    var C = panel(R, "vuln", "正規化・CVSS算出・重複統合", counterText("vuln", u));
+    var iris = cssvar("--iris");
+    var b1 = clamp01(u / .34), b2 = clamp01((u - .34) / .22), b3 = clamp01((u - .58) / .42);
+    var cols = 4, colW = C.w / cols;
+    var merged = {}; MERGE_PAIRS.forEach(function (p) { merged[p[1]] = p[0]; });
+
+    // 上段に一列で並べ、統合したあと下段の深刻度カラムへ落とす。
+    // 縦の移動そのものが「取り込まれて整理される」動きになる。
+    var slotX = function (j) { return C.x + 26 + j * ((C.w - 52) / (KEPT.length - 1)); };
+    var topY = C.y + 26, baseY = C.y + C.h - 34;
+    if (b3 > 0) {  // 仕分け先のビンを先に敷く。落ちた先が「枠」だと分かるように
+      for (var s0 = 0; s0 < 4; s0++) {
+        cx.globalAlpha = clamp01(b3 * 1.6) * .5;
+        cx.strokeStyle = cssvar("--border-strong"); cx.lineWidth = 1; cx.setLineDash([3, 4]);
+        rr(cx, C.x + s0 * colW + colW / 2 - 26, topY + 12, 52, baseY - topY + 6, 8); cx.stroke();
+        cx.setLineDash([]); cx.globalAlpha = 1;
+      }
+    }
+    for (var j = 0; j < KEPT.length; j++) {
+      var sev = SEV_OF[KEPT[j]];
+      var gx = slotX(j), gy = topY;
+      var tgt = merged[j];
+      var x = gx, y = gy, a = 1, rad = 6;
+      if (tgt !== undefined && b2 > 0) {           // 重複統合: 相手へ吸い込まれて消える
+        x = lerp(gx, slotX(tgt), ease(b2)); y = gy; a = 1 - b2 * .92;
+      }
+      if (b3 > 0 && tgt === undefined) {           // 深刻度カラムへ積む
+        var order = 0;
+        for (var q = 0; q < j; q++) { if (merged[q] === undefined && SEV_OF[KEPT[q]] === sev) order++; }
+        var cxx = C.x + sev * colW + colW / 2, cyy = baseY - order * 15;
+        x = lerp(x, cxx, ease(b3)); y = lerp(y, cyy, ease(b3));
+      }
+      cx.globalAlpha = a; cx.fillStyle = sevColor(sev);
+      cx.beginPath(); cx.arc(x, y, rad, 0, 6.2832); cx.fill();
+      if (b1 > (j / KEPT.length) && b3 < .35 && a > .5) {   // CVSSスタンプ
+        cx.fillStyle = cssvar("--dim"); cx.font = '9px ' + F_MONO; cx.textAlign = "center";
+        cx.fillText(CVSS_TXT[j], x, y + 19); cx.textAlign = "left";
+      }
+      cx.globalAlpha = 1;
+    }
+    if (b2 > 0 && b2 < 1) {
+      cx.fillStyle = iris; cx.font = '600 11px ' + F_JP; cx.textAlign = "center";
+      cx.fillText("重複統合 −2", C.x + C.w / 2, C.y + 8); cx.textAlign = "left";
+    }
+    if (b3 > .3) {  // 深刻度カラムのラベル
+      var names = ["緊急", "高", "中", "低"];
+      for (var s = 0; s < 4; s++) {
+        cx.globalAlpha = clamp01((b3 - .3) / .4);
+        cx.fillStyle = sevColor(s); cx.font = '600 10px ' + F_JP; cx.textAlign = "center";
+        cx.fillText(names[s], C.x + s * colW + colW / 2, C.y + C.h - 12);
+        cx.globalAlpha = 1;
+      }
+      cx.textAlign = "left";
+    }
+    beat(R, b3 > .3 ? "深刻度で仕分けし、前回スキャンとの差分(new/persistent/fixed)を付ける"
+       : b2 > 0 ? "同一箇所・同一CWEの指摘をひとつに統合"
+       : "CWEを正規化し、CVSS v3.1 基本値を算出");
+  }
+
+  /* ④ 連鎖演算: Union-Findで束ね → 並べ替え → 重複除去 → 経路を張る */
+  var CHIPS = ["CWE-89", "CWE-918", "CWE-798", "CWE-287", "CWE-22", "CWE-79", "CWE-89", "CWE-352"];
+  var CLUSTER = [0, 0, 0, 1, 1, 1, 0, 1];
+  function sceneKill(R, u) {
+    var C = panel(R, "killchain", "到達性で束ね、攻撃経路へ", counterText("killchain", u));
+    var iris = cssvar("--iris"), dim = cssvar("--faint");
+    var b1 = clamp01(u / .2), b2 = clamp01((u - .2) / .2), b3 = clamp01((u - .4) / .16),
+        b4 = clamp01((u - .56) / .14), b5 = clamp01((u - .7) / .3);
+    var rnd = rng(9);
+    var scat = CHIPS.map(function () { return { x: C.x + 20 + rnd() * (C.w - 70), y: C.y + 14 + rnd() * (C.h - 54) }; });
+    var chainOrder = [0, 1, 2, 6];   // クラスタ0 を深さ→CVSS順に並べたもの
+    var lineY = C.y + C.h * .42;
+    var pos = [];
+    for (var i = 0; i < CHIPS.length; i++) {
+      var p = { x: scat[i].x, y: scat[i].y, a: 1 };
+      if (b2 > 0) {  // Union-Find でクラスタへ引き寄せ
+        var cyc = CLUSTER[i] === 0 ? C.y + C.h * .34 : C.y + C.h * .68;
+        var members = CHIPS.filter(function (_, q) { return CLUSTER[q] === CLUSTER[i]; }).length;
+        var oi = 0; for (var q2 = 0; q2 < i; q2++) if (CLUSTER[q2] === CLUSTER[i]) oi++;
+        var cxx = C.x + 26 + (C.w - 90) * (oi + .5) / members;
+        p.x = lerp(p.x, cxx, ease(b2)); p.y = lerp(p.y, cyc, ease(b2));
+      }
+      if (b3 > 0 && CLUSTER[i] === 0) {  // 並べ替え（深さ→CVSS降順）
+        var oj = chainOrder.indexOf(i); if (oj < 0) oj = 3;
+        var tx = C.x + 34 + oj * ((C.w - 90) / 4);
+        p.x = lerp(p.x, tx, ease(b3)); p.y = lerp(p.y, lineY, ease(b3));
+      }
+      if (b4 > 0 && i === 6) { // 重複ステップの圧縮（CWE-89 が2つ → 1つ）
+        var t0 = C.x + 34; p.x = lerp(p.x, t0, ease(b4)); p.y = lerp(p.y, lineY, ease(b4)); p.a = 1 - b4;
+      }
+      if (CLUSTER[i] === 1 && b3 > 0) p.a = Math.min(p.a, 1 - b3 * .78); // 採用されなかった群は退場
+      pos.push(p);
+    }
+    if (b5 > 0) {  // 経路のリンクを順に張る
+      for (var L = 0; L < 3; L++) {
+        var seg = clamp01((b5 - L * .22) / .3); if (seg <= 0) continue;
+        var A = pos[chainOrder[L]], B = pos[chainOrder[L + 1]];
+        cx.strokeStyle = iris; cx.lineWidth = 2;
+        cx.beginPath(); cx.moveTo(A.x + 20, A.y); cx.lineTo(lerp(A.x + 20, B.x - 20, seg), B.y); cx.stroke();
+        if (seg > .9) { cx.fillStyle = iris; cx.beginPath();
+          cx.moveTo(B.x - 20, B.y); cx.lineTo(B.x - 26, B.y - 4); cx.lineTo(B.x - 26, B.y + 4); cx.fill(); }
+      }
+    }
+    for (var i2 = 0; i2 < CHIPS.length; i2++) {
+      var q3 = pos[i2]; if (q3.a <= .02) continue;
+      cx.globalAlpha = q3.a;
+      var isChain = CLUSTER[i2] === 0 && b3 > .2;
+      cx.fillStyle = isChain ? mixA(iris, .16) : cssvar("--surface-2");
+      cx.strokeStyle = isChain ? iris : cssvar("--border-strong"); cx.lineWidth = 1.2;
+      rr(cx, q3.x - 20, q3.y - 8, 40, 16, 8); cx.fill(); cx.stroke();
+      cx.fillStyle = isChain ? cssvar("--text") : dim; cx.font = '8.5px ' + F_MONO; cx.textAlign = "center";
+      cx.fillText(CHIPS[i2], q3.x, q3.y + 3);
+      if (b5 > .3 && isChain) {  // order を 1..n に振り直す
+        var oo = chainOrder.indexOf(i2);
+        if (oo >= 0 && i2 !== 6) { cx.fillStyle = iris; cx.font = '600 8px ' + F_MONO;
+          cx.fillText(String(oo + 1), q3.x, q3.y - 12); }
+      }
+      cx.globalAlpha = 1; cx.textAlign = "left";
+    }
+    if (b5 > .75) {  // チョークポイント
+      var ck = pos[chainOrder[0]], pl = .5 + .5 * Math.sin(u * 22);
+      cx.strokeStyle = iris; cx.globalAlpha = .35 + .45 * pl; cx.lineWidth = 2;
+      cx.beginPath(); cx.arc(ck.x, ck.y, 24 + pl * 3, 0, 6.2832); cx.stroke(); cx.globalAlpha = 1;
+      cx.fillStyle = iris; cx.font = '600 10px ' + F_JP; cx.textAlign = "center";
+      cx.fillText("✂ チョークポイント", ck.x, ck.y + 34); cx.textAlign = "left";
+    }
+    beat(R, b5 > .3 ? "ステップの重複を圧縮し、order を 1..n に振り直す"
+       : b4 > 0 ? "同一の指摘が重なるステップを1つに統合"
+       : b3 > 0 ? "呼び出し深さ → CVSS 降順に並べ替え"
+       : b2 > 0 ? "Union-Find でデータフローを共有する指摘を束ねる"
+       : "候補の絞り込み: 到達可能性を計算");
+  }
+
+  /* ⑤ 構造把握: 露出度の層に構成要素が現れ、事実と推測が積み上がる */
+  var COMPS = [
+    { n: "API サーバ", lane: 0 }, { n: "CDN", lane: 0 },
+    { n: "PostgreSQL", lane: 1 }, { n: "Redis", lane: 1 },
+    { n: "シークレット", lane: 2 }
+  ];
+  var LANES = ["public-internet", "internal", "local"];
+  function sceneArch(R, u) {
+    var C = panel(R, "architecture", "", "事実 " + Math.floor(clamp01(u / .6) * 5) + " / 推測 " + Math.floor(clamp01((u - .3) / .7) * 7));
+    var iris = cssvar("--iris"), teal = cssvar("--teal");
+    var laneH = (C.h - 26) / 3;
+    for (var l = 0; l < 3; l++) {
+      var ly = C.y + 6 + l * laneH;
+      cx.globalAlpha = clamp01(u / .25);
+      cx.strokeStyle = cssvar("--border-strong"); cx.lineWidth = 1; cx.setLineDash([4, 4]);
+      cx.beginPath(); cx.moveTo(C.x, ly + laneH - 3); cx.lineTo(C.x + C.w, ly + laneH - 3); cx.stroke();
+      cx.setLineDash([]);
+      cx.fillStyle = cssvar("--faint"); cx.font = '8.5px ' + F_MONO;
+      cx.fillText(LANES[l], C.x + 2, ly + 8);
+      cx.globalAlpha = 1;
+    }
+    COMPS.forEach(function (co, i) {
+      var ap = clamp01((u - .18 - i * .1) / .22); if (ap <= 0) return;
+      var oi = 0; COMPS.forEach(function (c2, q) { if (c2.lane === co.lane && q < i) oi++; });
+      var w = 78, x = C.x + 34 + oi * 96, y = C.y + 12 + co.lane * laneH;
+      cx.globalAlpha = ap;
+      cx.fillStyle = cssvar("--surface-2"); cx.strokeStyle = co.lane === 0 ? cssvar("--crit") : cssvar("--border-strong");
+      cx.lineWidth = 1.3; rr(cx, x, y, w, 22, 6); cx.fill(); cx.stroke();
+      cx.fillStyle = cssvar("--text"); cx.font = '9.5px ' + F_JP; cx.textAlign = "center";
+      cx.fillText(co.n, x + w / 2, y + 12); cx.textAlign = "left";
+      cx.globalAlpha = 1;
+    });
+    // 事実(実線teal)と推測(破線iris)の主張が積まれていく
+    var claims = Math.floor(clamp01((u - .3) / .6) * 12);
+    for (var k = 0; k < claims; k++) {
+      var fact = k < 5;
+      var bx = C.x + C.w - 12 - (k % 6) * 13, by = C.y + C.h - 16 - Math.floor(k / 6) * 11;
+      cx.strokeStyle = fact ? teal : iris; cx.lineWidth = 1.6;
+      if (!fact) cx.setLineDash([2, 2]);
+      cx.beginPath(); cx.arc(bx, by, 4, 0, 6.2832); cx.stroke(); cx.setLineDash([]);
+    }
+    beat(R, u < .3 ? "マニフェストから事実を収集（引用付き）"
+       : u < .7 ? "露出度・機微度・認証要求をLLMが推測"
+       : "LLMが返した引用の実在を検証し、捏造分を落とす");
+  }
+
+  /* ⑥ 熱図描画: 純粋同期関数なので一気に描かれる */
+  function sceneHeat(R, u) {
+    var C = panel(R, "heatmap", "構成要素 × 31カテゴリ", null);
+    // 列は実際のカテゴリ数（CWEカタログのアンカー31種）、行は構成要素
+    var cols = 31, rows = 4, gap = 2;
+    var tw = (C.w - gap * (cols - 1)) / cols, th = Math.min(30, (C.h - 28 - gap * (rows - 1)) / rows);
+    var rnd = rng(31), iris = cssvar("--iris"), crit = cssvar("--crit");
+    for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
+      var i = r * cols + c, v = rnd(), inf = rnd();
+      var x = C.x + c * (tw + gap), y = C.y + 8 + r * (th + gap);
+      var ap = clamp01((u - (i / (cols * rows)) * .5) / .18); if (ap <= 0) continue;
+      cx.globalAlpha = ap;
+      if (v > .82) { cx.fillStyle = mixA(crit, .3 + v * .55); rr(cx, x, y, tw, th, 3); cx.fill(); }
+      else { cx.fillStyle = cssvar("--surface-2"); rr(cx, x, y, tw, th, 3); cx.fill(); }
+      if (v <= .82 && inf > .74) {   // 想定リスク（推測）＝破線
+        cx.strokeStyle = iris; cx.lineWidth = 1.2; cx.setLineDash([2, 2]);
+        rr(cx, x + .5, y + .5, tw - 1, th - 1, 3); cx.stroke(); cx.setLineDash([]);
+        if (u > .72 && inf > .9) {   // 死角バッジ
+          cx.fillStyle = iris; cx.font = '8px ' + F_MONO; cx.fillText("▲", x + tw - 8, y + 8);
+        }
+      }
+      cx.globalAlpha = 1;
+    }
+    beat(R, u < .55 ? "検出結果を構成要素へ割り当て、実測層を敷く"
+       : u < .8 ? "CWEカタログとスタックから想定層を重ねる"
+       : "実測 低 × 想定 高 のセルを死角として抽出");
+  }
+
+  /* ⑦ 編纂: 優先度計算（機械）→ 文章生成（LLM）→ 書き出し */
+  var ACTS = [
+    { t: "パラメータ化クエリへ書き換え", s: 1387 },
+    { t: "ホスト許可リストを導入", s: 512 },
+    { t: "トークンを環境変数へ", s: 236 },
+    { t: "認可チェックを追加", s: 198 },
+    { t: "出力エスケープを統一", s: 141 }
+  ];
+  function sceneReport(R, u) {
+    var C = panel(R, "report", "優先度計算 → 文章生成 → 書き出し", null);
+    var half = C.w * .5 - 8, iris = cssvar("--iris"), teal = cssvar("--teal");
+    var pPri = clamp01(u / .5), pDoc = clamp01((u - .45) / .55);
+    // 左: 優先度の計算（実際の重み付けをそのまま出す）
+    cx.globalAlpha = pDoc > .15 ? .45 : 1;
+    cx.fillStyle = cssvar("--text"); cx.font = '600 10.5px ' + F_JP;
+    cx.fillText("優先度の計算", C.x, C.y + 6);
+    cx.fillStyle = cssvar("--faint"); cx.font = '8.5px ' + F_MONO;
+    cx.fillText("choke1000 + chain×300 + CVSS×20 + 深刻度", C.x, C.y + 19);
+    var sorted = ACTS.map(function (a, i) { return i; });
+    if (pPri > .55) sorted.sort(function (a, b) { return ACTS[b].s - ACTS[a].s; });
+    var rowY = (C.h - 40) / ACTS.length;
+    ACTS.forEach(function (a, i) {
+      var slot = sorted.indexOf(i);
+      var yTgt = C.y + 30 + slot * rowY, yNow = lerp(C.y + 30 + i * rowY, yTgt, ease(clamp01((pPri - .55) / .35)));
+      var grow = clamp01((pPri - i * .07) / .3);
+      var bw = (a.s / 1400) * (half - 6) * grow;
+      // バーは「背景の量」として薄く敷き、文字はその上に十分な明度で置く。
+      // 不透明なバーの上に文字を載せると読めなくなる。
+      cx.fillStyle = mixA(iris, .26); rr(cx, C.x, yNow, Math.max(2, bw), 15, 3); cx.fill();
+      cx.fillStyle = cssvar("--text"); cx.font = '9px ' + F_JP;
+      cx.fillText(a.t, C.x + 6, yNow + 10);
+      cx.fillStyle = cssvar("--faint"); cx.font = '600 9px ' + F_MONO; cx.textAlign = "right";
+      cx.fillText(Math.round(a.s * grow), C.x + half - 2, yNow + 10); cx.textAlign = "left";
+    });
+    cx.globalAlpha = 1;
+    // 右: レポートへの書き出し
+    var rx = C.x + C.w - half;
+    cx.fillStyle = pDoc > 0 ? cssvar("--text") : cssvar("--faint"); cx.font = '600 10.5px ' + F_JP;
+    cx.fillText("レポートへ書き出し", rx, C.y + 6);
+    cx.strokeStyle = cssvar("--border-strong"); cx.lineWidth = 1;
+    rr(cx, rx, C.y + 14, half, C.h - 30, 6); cx.stroke();
+    var LINEW = [.82, .64, .93, .55, .88, .7, .4, .86, .6];
+    for (var i2 = 0; i2 < LINEW.length; i2++) {
+      var lp = clamp01((pDoc - i2 * .085) / .12); if (lp <= 0) continue;
+      var ly = C.y + 26 + i2 * 12;
+      cx.fillStyle = i2 === 0 ? mixA(teal, .85) : mixA(cssvar("--dim"), .55);
+      rr(cx, rx + 8, ly, (half - 16) * LINEW[i2] * lp, i2 === 0 ? 5 : 3.5, 2); cx.fill();
+    }
+    if (pDoc > .05 && pDoc < .95) {  // 書き出し中のキャレット
+      var ci = Math.min(LINEW.length - 1, Math.floor(pDoc * LINEW.length));
+      cx.fillStyle = iris; cx.globalAlpha = .5 + .5 * Math.sin(u * 30);
+      cx.fillRect(rx + 8 + (half - 16) * LINEW[ci] + 2, C.y + 25 + ci * 12, 2, 7); cx.globalAlpha = 1;
+    }
+    beat(R, u < .45 ? "チョークポイント > 複数経路 > CVSS の順に機械的にスコア化"
+       : u < .8 ? "同じ修正で片付く指摘をまとめ、LLMが要約を書く"
+       : "CLI / JSON / SARIF / Markdown / HTML へレンダリング");
+  }
+
+  var SCENES = { context: sceneContext, analyze: sceneAnalyze, vuln: sceneVuln,
+                 killchain: sceneKill, architecture: sceneArch, heatmap: sceneHeat, report: sceneReport };
+  function rng(seed) { var s = seed >>> 0; return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+
+  /* ── 再生制御 ── */
+  var overlay = document.getElementById("overlay"), runBtn = document.getElementById("run");
+  var clockEl = document.getElementById("run-clock"), subEl = document.getElementById("run-sub");
+  var logEl = document.getElementById("runlog");
+  var playing = false, paused = false, elapsed = 0, lastTs = 0, rafId = 0;
+  var fade = {}; ORDER.forEach(function (id) { fade[id] = 0; });
+  var lastRect = {};
+
+  function segAt(ms) {
+    var acc = 0;
+    for (var i = 0; i < SEG.length; i++) {
+      if (ms < acc + SEG[i].dur) return { i: i, u: (ms - acc) / SEG[i].dur, start: acc };
+      acc += SEG[i].dur;
+    }
+    return { i: SEG.length - 1, u: 1, start: acc - SEG[SEG.length - 1].dur };
+  }
+  function clock(ms) {
+    var s = Math.floor(ms / 1000);
+    return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2);
+  }
+  var RING = ["◐", "◓", "◑", "◒"];
+
+  function drawFrame() {
+    var st = segAt(Math.min(elapsed, TOTAL - 1));
+    var active = SEG[st.i].on;
+    // レール状態
+    var finished = elapsed >= TOTAL;
+    ORDER.forEach(function (id) {
+      var idx = ORDER.indexOf(id), aIdx = ORDER.indexOf(active[0]);
+      var isOn = active.indexOf(id) >= 0;
+      nodeEls[id].dataset.st = finished ? "done" : (isOn ? "active" : (idx < aIdx ? "done" : "idle"));
+      // 表示用の状態とは別に、描画の出し入れは「実際に動いている工程か」で決める。
+      // 完走時に done へ倒すと最後のシーンが消えて画面が空になる。
+      fade[id] += ((isOn ? 1 : 0) - fade[id]) * .18;
+    });
+    document.getElementById("lanes").classList.toggle("hot", active.length > 1);
+    [].slice.call(railEl.querySelectorAll(".rlink")).forEach(function (el, i) {
+      el.classList.toggle("hot", st.i > i);
+    });
+
+    // パネル矩形（並列なら2分割、単独ならクローズアップ）
+    cx.clearRect(0, 0, CW, CH);
+    var pad = 12, gut = 12;
+    var targets = {};
+    active.forEach(function (id, k) {
+      var w = active.length > 1 ? (CW - pad * 2 - gut) / 2 : CW - pad * 2;
+      targets[id] = { x: pad + k * (w + gut), y: pad, w: w, h: CH - pad * 2 };
+    });
+    ORDER.forEach(function (id) {
+      if (targets[id]) lastRect[id] = targets[id];
+      var R = lastRect[id], f = fade[id];
+      if (!R || f < .02) return;
+      cx.save();
+      cx.globalAlpha = Math.min(1, f);
+      var sc = .955 + .045 * f;   // 立ち上がりの寄り（クローズアップ）
+      cx.translate(R.x + R.w / 2, R.y + R.h / 2); cx.scale(sc, sc); cx.translate(-(R.x + R.w / 2), -(R.y + R.h / 2));
+      var u = targets[id] ? clamp01(st.u) : 1;
+      SCENES[id](R, u);
+      cx.restore();
+    });
+    if (active.length > 1) {   // 並列であることの明示
+      cx.fillStyle = cssvar("--faint"); cx.font = '9.5px ' + F_MONO;
+      cx.textAlign = "center"; cx.fillText("‖", CW / 2, CH / 2); cx.textAlign = "left";
+    }
+
+    // CLI と同じ書式のログ
+    var lines = [];
+    for (var i = 0; i < SEG.length; i++) {
+      if (i > st.i) break;
+      SEG[i].on.forEach(function (id) {
+        var m = META[id], n = ORDER.indexOf(id) + 1;
+        if (i < st.i || elapsed >= TOTAL) {
+          lines.push('<span class="done-l">✔ [' + n + '/7] ' + m.spell + '（' + m.label + '）' +
+            (m.detail ? " — " + m.detail : "") + '</span>');
+        } else {
+          var ring = RING[Math.floor(elapsed / 130) % 4];
+          var live = "";
+          // 進捗カウンタを持つのは ①②③④ だけ（実機と同じ）。
+          // ⑤⑦ は LLM 1回の応答待ち、⑥ は純粋な同期関数で刻みが無いため、
+          // 数値を出さず説明ラベルにする。
+          var ctr = COUNTERS[id];
+          if (ctr) {
+            var seg = ctr(st.u);
+            var fill = Math.round(clamp01(seg.c / seg.t) * 12);
+            live = (seg.ph ? '  <span class="dim-l">' + seg.ph + '</span> ' : '  ') +
+              "▓".repeat(fill) + "░".repeat(12 - fill) +
+              "  " + Math.min(seg.c, seg.t) + "/" + seg.t + " " + seg.u;
+          } else {
+            live = '  <span class="dim-l">' + m.label + '</span>';
+          }
+          lines.push('<span class="live-l">' + ring + ' [' + n + '/7] ' + m.spell + '</span>' + live +
+            '  <span class="dim-l">' + clock(elapsed - st.start) + '</span>');
+        }
+      });
+    }
+    logEl.innerHTML = lines.slice(-5).join("\n");
+    clockEl.textContent = clock(Math.min(elapsed, TOTAL));
+    subEl.textContent = active.length > 1
+      ? "④⑤ を並行実行中（Promise.all）"
+      : "[" + (ORDER.indexOf(active[0]) + 1) + "/7] " + META[active[0]].spell;
+  }
+
+  function tick(ts) {
+    if (!playing) return;
+    if (!lastTs) lastTs = ts;
+    var dt = Math.min(64, ts - lastTs); lastTs = ts;
+    if (!paused) elapsed += dt * (reduce ? 3 : 1);
+    if (elapsed >= TOTAL) { elapsed = TOTAL; drawFrame(); finish(); return; }
+    drawFrame();
+    rafId = requestAnimationFrame(tick);
+  }
+  function finish() {
+    // ここで自動的に閉じない。この画面は「見せる」ためのものなので、
+    // 完走後も最後の場面を残し、再生し直せるようにしておく。
+    playing = false;
+    subEl.textContent = "詠唱完了 — 7工程すべて";
+    runBtn.disabled = false;
+    var h = document.querySelector(".rctl .hint");
+    if (h) h.textContent = "完了 — 工程をクリックするとその場面を見返せます";
+  }
+  function start(from) {
+    elapsed = from || 0; lastTs = 0; paused = false;
+    if (!playing) { playing = true; rafId = requestAnimationFrame(tick); }
+  }
+  function openRunner() {
+    overlay.classList.add("on"); runBtn.disabled = true;
+    fitCanvas(); ORDER.forEach(function (id) { fade[id] = 0; }); lastRect = {};
+    start(0);
+  }
+  function closeRunner() {
+    playing = false; cancelAnimationFrame(rafId);
+    overlay.classList.remove("on"); runBtn.disabled = false;
+  }
+  runBtn.addEventListener("click", openRunner);
+  document.getElementById("run-close").addEventListener("click", closeRunner);
+  document.getElementById("btn-replay").addEventListener("click", function () { start(0); });
+  document.getElementById("btn-pause").addEventListener("click", function (e) {
+    paused = !paused; e.currentTarget.textContent = paused ? "▶ 再開" : "⏸ 一時停止";
+  });
+  overlay.addEventListener("click", function (e) { if (e.target === overlay) closeRunner(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && overlay.classList.contains("on")) closeRunner(); });
+  // レールのクリックでその場面へジャンプ
+  [].slice.call(railEl.querySelectorAll(".rnode")).forEach(function (b) {
+    b.addEventListener("click", function () {
+      var id = b.dataset.s, acc = 0;
+      for (var i = 0; i < SEG.length; i++) { if (SEG[i].on.indexOf(id) >= 0) { start(acc + 1); return; } acc += SEG[i].dur; }
+    });
+  });
+})();
+</script>

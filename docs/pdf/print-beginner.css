@@ -1,0 +1,10 @@
+/* 超入門: 画面では余白で読ませるが、紙では詰める */
+section { padding: 18px 0 !important; }
+.hero { padding: 26px 22px 16px !important; }
+
+/* 割れると意味が壊れる最小単位にだけ avoid を掛ける。
+   外側の大きなカード（.read-card）にも掛けると、入りきらない塊が
+   丸ごと次ページへ送られてページ下半分が白紙になる。 */
+.step, .worry, .next-card, .read-item, .keystone { break-inside: avoid; page-break-inside: avoid; }
+.read-card { break-inside: auto; page-break-inside: auto; }
+.sec-head, h2, h3 { break-after: avoid; page-break-after: avoid; }
