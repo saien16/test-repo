@@ -28,6 +28,7 @@ import type { ScanHealthLevel } from '../../types/health.js';
 import { buildSbomIndex, reportableFindings, sbomPackageKey } from '../collect.js';
 import { PHASE_JA, ROLE_JA, TACTIC_JA, effortJa, likelihoodJa } from '../labels.js';
 import { SEVERITY_LABEL_JA, SEVERITY_ORDER, isActiveFinding } from '../severity.js';
+import { buildTargetSummary, formatBytes, formatTimestamp } from '../target.js';
 import {
   escapeMdCell,
   escapeMdCode,
@@ -119,6 +120,88 @@ function renderHeader(result: ScanResult, analyzed: AnalyzedReport): string[] {
   return lines;
 }
 
+/**
+ * 何を走査したのかの節。
+ *
+ * ヘッダの1行では「どこを見たか」までしか判らない。
+ * 対象がどんなものか（README からの引用）と、どの範囲を見たか（階層の内訳）を
+ * 検出内容より前に置く。引用と推測は出所を分けて書く。
+ */
+function renderTarget(result: ScanResult): string[] {
+  const t = buildTargetSummary(result.context, result.summary.durationMs, result.architecture);
+  const lines: string[] = ['## 走査対象', ''];
+
+  lines.push('| 項目 | 内容 |');
+  lines.push('| --- | --- |');
+  lines.push(`| 対象ディレクトリ | \`${escapeMdCode(t.root)}\` |`);
+  lines.push(`| 実施日時 | ${formatTimestamp(t.scannedAt)}（所要 ${formatDuration(t.durationMs)}） |`);
+  if (t.git) {
+    lines.push(
+      `| Git | \`${escapeMdCode(t.git.branch)}\` @ \`${escapeMdCode(truncate(t.git.headSha, 12, ''))}\` |`,
+    );
+  }
+  lines.push(`| ファイル数 | ${formatNumber(t.fileCount)} ファイル / ${formatBytes(t.totalBytes)} |`);
+  if (t.languages.length > 0) {
+    lines.push(
+      `| 言語構成 | ${t.languages.map((l: { name: string; ratio: number }) => `${l.name} ${Math.round(l.ratio * 100)}%`).join(' / ')} |`,
+    );
+  }
+  if (t.frameworks.length > 0) {
+    lines.push(`| 検出フレームワーク | ${t.frameworks.join(', ')} |`);
+  }
+  lines.push('');
+
+  // ---- これは何か ----
+  lines.push('### これは何か');
+  lines.push('');
+  if (t.readme !== null) {
+    const text = [t.readme.title, t.readme.lead].filter((x) => x !== '').join(' — ');
+    lines.push(`> ${text}`);
+    lines.push('>');
+    lines.push(`> — \`${escapeMdCode(t.readme.path)}\` からの引用（**事実**）`);
+  } else {
+    lines.push('README が見つからなかったため、対象が何であるかの説明は取得できていません。');
+  }
+  lines.push('');
+  if (t.style !== null) {
+    const conf = t.style.confidence === null ? '' : `（確信度 ${t.style.confidence.toFixed(2)}）`;
+    lines.push(`アーキテクチャ様式の**推測**: ${t.style.value}${conf}`);
+    lines.push('');
+  }
+
+  // ---- 範囲 ----
+  if (t.files !== null) {
+    lines.push('### 対象ファイル');
+    lines.push('');
+    for (const f of t.files) lines.push(`- \`${escapeMdCode(f)}\``);
+    lines.push('');
+  } else if (t.directories !== null) {
+    lines.push('### 構成（上位2階層）');
+    lines.push('');
+    lines.push('| ディレクトリ | ファイル数 | サイズ |');
+    lines.push('| --- | ---: | ---: |');
+    for (const dir of t.directories) {
+      const name = dir.path === '.' ? '(ルート直下)' : `${dir.path}/`;
+      lines.push(`| **${escapeMdCode(name)}** | ${formatNumber(dir.fileCount)} | ${formatBytes(dir.bytes)} |`);
+      for (const child of dir.children) {
+        lines.push(
+          `| &nbsp;&nbsp;&nbsp;&nbsp;${escapeMdCode(`${child.path}/`)} | ${formatNumber(child.fileCount)} | ${formatBytes(child.bytes)} |`,
+        );
+      }
+    }
+    lines.push('');
+    const omitted: string[] = [];
+    if (t.truncatedDirectories > 0) omitted.push(`上位 ${formatNumber(t.truncatedDirectories)} 個`);
+    if (t.truncatedChildren > 0) omitted.push(`2階層目 ${formatNumber(t.truncatedChildren)} 個`);
+    if (omitted.length > 0) {
+      lines.push(`表示を省略したディレクトリ: ${omitted.join(' / ')}。`);
+      lines.push('');
+    }
+  }
+
+  return lines;
+}
+
 const HEALTH_LABEL: Record<ScanHealthLevel, string> = {
   complete: '✅ 完走',
   degraded: '⚠️ 部分的',
@@ -154,6 +237,7 @@ function renderHealthNotice(result: ScanResult): string[] {
 
 function renderToc(hasChains: boolean, hasFindings: boolean, hasDeps: boolean): string[] {
   const items = [
+    '- [走査対象](#走査対象)',
     '- [エグゼクティブサマリ](#エグゼクティブサマリ)',
     '- [リスクの全体像](#リスクの全体像)',
     '- [優先対応アクション](#優先対応アクション)',
@@ -495,6 +579,9 @@ export function renderMarkdown(
   const lines: string[] = [
     ...renderHeader(result, analyzed),
     ...renderHealthNotice(result),
+    '---',
+    '',
+    ...renderTarget(result),
     '---',
     '',
     ...renderToc(hasChains, hasFindings, hasDeps),

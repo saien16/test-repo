@@ -28,6 +28,7 @@ import { collectDependencies } from './dependencies.js';
 import { detectEntryPoints } from './entrypoints.js';
 import { detectFrameworks } from './frameworks.js';
 import { collectGitContext } from './git.js';
+import { readReadme } from './readme.js';
 import { isAnalyzable, summarizeLanguages } from './language.js';
 import { maskSource } from './mask.js';
 import { buildSymbolTable, type AnalyzableSource } from './symbols.js';
@@ -180,6 +181,9 @@ export async function collectContext(
     git = undefined;
   }
 
+  // 8. README（「この対象は何か」の説明に使う。include で外れていても読む）
+  const readme = safely('README の読み取り', warnings, null, () => readReadme(root));
+
   if (files.length === 0) {
     warnings.push('走査対象のファイルが1件もありません。include / exclude の設定を確認してください');
   }
@@ -187,6 +191,7 @@ export async function collectContext(
   return {
     repoRoot: root,
     scannedAt: new Date().toISOString(),
+    readme,
     languages,
     frameworks,
     dependencies,

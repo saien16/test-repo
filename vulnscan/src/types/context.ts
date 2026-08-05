@@ -103,6 +103,16 @@ export interface TrustBoundary {
   symbolId?: string;
 }
 
+/** README から引用した「この対象は何か」。要約はせず引用のみ */
+export interface ReadmeInfo {
+  /** リポジトリルートからの相対パス */
+  path: string;
+  /** 先頭の見出し。無ければ空文字 */
+  title: string;
+  /** 見出し直後の導入段落。無ければ空文字 */
+  lead: string;
+}
+
 export interface GitContext {
   branch: string;
   headSha: string;
@@ -114,6 +124,8 @@ export interface GitContext {
 export interface ScanContext {
   repoRoot: string;
   scannedAt: string;
+  /** README から引用した対象の説明。無ければ null */
+  readme: ReadmeInfo | null;
   languages: LanguageInfo[];
   frameworks: FrameworkInfo[];
   dependencies: Dependency[];

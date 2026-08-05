@@ -14,6 +14,12 @@ import { reportableFindings } from '../collect.js';
 import { effortJa, likelihoodJa } from '../labels.js';
 import { SEVERITY_LABEL_JA, SEVERITY_ORDER } from '../severity.js';
 import {
+  buildTargetSummary,
+  formatBytes,
+  formatTimestamp,
+  formatDuration as formatTargetDuration,
+} from '../target.js';
+import {
   displayWidth,
   formatDuration,
   formatNumber,
@@ -38,6 +44,11 @@ interface Ctx {
   out: string[];
   style: Styler;
   width: number;
+}
+
+/** 全角混じりの文字列を表示幅で右詰めする（String#padEnd は文字数なのでずれる） */
+function padDisplay(text: string, cols: number): string {
+  return text + ' '.repeat(Math.max(1, cols - displayWidth(text)));
 }
 
 function rule(ctx: Ctx, char = '─'): void {
@@ -110,6 +121,85 @@ function renderHeader(ctx: Ctx, result: ScanResult): void {
       ),
     ),
   );
+}
+
+/**
+ * 何を走査したのかを、検出内容より先に示す。
+ *
+ * 「対象・日時・範囲」が書いていないレポートは、検出が0件でも100件でも
+ * 解釈できない。数週間後に読み返すのは自分であり、そのときには
+ * どのディレクトリにどの設定で当てたかを覚えていない。
+ */
+function renderTarget(ctx: Ctx, result: ScanResult): void {
+  const t = buildTargetSummary(result.context, result.summary.durationMs, result.architecture);
+  heading(ctx, '走査対象');
+
+  // 全角ラベルは String#padEnd では揃わない（文字数と表示幅が違う）
+  const LABEL_COLS = 12;
+  const label = (k: string, v: string): void => {
+    ctx.out.push(
+      `  ${ctx.style.dim(padDisplay(k, LABEL_COLS))}${truncate(v, ctx.width - LABEL_COLS - 2)}`,
+    );
+  };
+
+  label('対象', t.root);
+  label('実施日時', `${formatTimestamp(t.scannedAt)}（所要 ${formatTargetDuration(t.durationMs)}）`);
+  if (t.git) {
+    label('Git', `${t.git.branch} @ ${truncate(t.git.headSha, 8, '')}`);
+  }
+  label(
+    '規模',
+    `${formatNumber(t.fileCount)} ファイル / ${formatBytes(t.totalBytes)}` +
+      (t.languages.length > 0
+        ? ` / ${t.languages.map((l) => `${l.name} ${Math.round(l.ratio * 100)}%`).join(' ')}`
+        : ''),
+  );
+  if (t.frameworks.length > 0) label('検出FW', t.frameworks.join(', '));
+
+  // ---- これは何か（README は引用、様式は推測。混ぜずに出所を書く） ----
+  if (t.readme !== null || t.style !== null) {
+    ctx.out.push('');
+    ctx.out.push(`  ${ctx.style.bold('これは何か')}`);
+    if (t.readme !== null) {
+      const text = [t.readme.title, t.readme.lead].filter((x) => x !== '').join(' — ');
+      paragraph(ctx, text, '    ');
+      ctx.out.push(`    ${ctx.style.dim(`（${t.readme.path} からの引用）`)}`);
+    }
+    if (t.style !== null) {
+      const conf = t.style.confidence === null ? '' : ` 確信度 ${t.style.confidence.toFixed(2)}`;
+      ctx.out.push(`    ${ctx.style.dim(`様式の推測: ${t.style.value}${conf}`)}`);
+    }
+    if (t.readme === null) {
+      ctx.out.push(`    ${ctx.style.dim('README が見つからなかったため、対象の説明は取得できていません')}`);
+    }
+  }
+
+  // ---- 範囲（少数なら実物、多数なら2階層の集計） ----
+  ctx.out.push('');
+  if (t.files !== null) {
+    ctx.out.push(`  ${ctx.style.bold('対象ファイル')}`);
+    for (const f of t.files) ctx.out.push(`    ${truncate(f, ctx.width - 4)}`);
+  } else if (t.directories !== null) {
+    ctx.out.push(`  ${ctx.style.bold('構成（上位2階層）')}`);
+    for (const dir of t.directories) {
+      ctx.out.push(
+        `    ${padDisplay(truncate(dir.path === '.' ? '(ルート直下)' : `${dir.path}/`, 32), 34)}` +
+          ctx.style.dim(`${formatNumber(dir.fileCount)} ファイル`),
+      );
+      for (const child of dir.children) {
+        ctx.out.push(
+          `      ${padDisplay(truncate(`${child.path.split('/').slice(1).join('/')}/`, 30), 32)}` +
+            ctx.style.dim(`${formatNumber(child.fileCount)}`),
+        );
+      }
+    }
+    const omitted: string[] = [];
+    if (t.truncatedDirectories > 0) omitted.push(`上位 ${formatNumber(t.truncatedDirectories)} 個`);
+    if (t.truncatedChildren > 0) omitted.push(`2階層目 ${formatNumber(t.truncatedChildren)} 個`);
+    if (omitted.length > 0) {
+      ctx.out.push(`    ${ctx.style.dim(`表示を省略したディレクトリ: ${omitted.join(' / ')}`)}`);
+    }
+  }
 }
 
 /**
@@ -326,6 +416,8 @@ export function renderCli(
   renderHeader(ctx, result);
   // 健全性はサマリより前。読み手が最初に見る位置に置く。
   renderHealth(ctx, result);
+  // 何を見た結果なのかは、検出内容より先に示す
+  renderTarget(ctx, result);
   renderSummary(ctx, result);
   renderNarrative(ctx, analyzed);
   renderChains(ctx, result, options.verbose ? 10 : 3);

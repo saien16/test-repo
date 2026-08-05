@@ -30,6 +30,7 @@ import {
 } from '../text.js';
 import { ARCHITECTURE_MAP_STYLE, renderArchitectureMap } from './architecture-map.js';
 import { scrollTable } from '../html-util.js';
+import { buildTargetSummary, formatBytes, formatTimestamp } from '../target.js';
 
 /** 段落分割（空行区切りを <p> にする） */
 function paragraphs(text: string): string {
@@ -127,6 +128,22 @@ a { color: var(--accent); }
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 10px; padding: 16px 18px; margin: 16px 0;
 }
+.target-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 18px; margin: 0; font-size: 0.9rem; }
+.target-facts dt { color: var(--text-dim); white-space: nowrap; }
+.target-facts dd { margin: 0; word-break: break-word; }
+@media (max-width: 520px) { .target-facts { grid-template-columns: 1fr; gap: 0 0; } .target-facts dd { margin: 0 0 8px; } }
+.readme-quote {
+  margin: 12px 0; padding: 14px 18px; border-left: 4px solid var(--teal, #0E9E78);
+  background: var(--surface); border-radius: 0 8px 8px 0;
+}
+.readme-quote p { margin: 0 0 8px; }
+/* ページ末尾の footer 用スタイル（余白64px＋上罫線）を引用内で打ち消す */
+.readme-quote footer { font-size: 0.8rem; color: var(--text-dim); margin-top: 0; padding-top: 0; border-top: 0; }
+.inferred-note { font-size: 0.88rem; color: var(--text-dim); margin: 8px 0 0; }
+.file-list { font-size: 0.88rem; }
+.dir-child { padding-left: 1.6em; color: var(--text-dim); display: inline-block; }
+.dir-table td:nth-child(2), .dir-table td:nth-child(3), .dir-table th:nth-child(2), .dir-table th:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; }
+
 .stat-grid {
   display: grid; gap: 10px; margin: 20px 0;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -288,6 +305,113 @@ function renderHealthNotice(result: ScanResult): string {
   ].join('\n');
 }
 
+/**
+ * 何を走査したのかの節。検出内容より前に置く。
+ *
+ * README からの引用（事実）と様式の推測を、別々の見た目で示す。
+ * 引用は出所つき、推測は確信度つきで、混ぜない。
+ *
+ * 事実の一覧は表ではなく dl で組む。表にすると全テーブル共通の
+ * 横スクロール容器（scrollTable）に載せる必要があり、
+ * 見出し1列＋値1列の短い並びには過剰なため。
+ */
+function renderTarget(result: ScanResult): string {
+  const t = buildTargetSummary(result.context, result.summary.durationMs, result.architecture);
+  const out: string[] = [];
+  out.push('<section id="target">');
+  out.push('<h2>走査対象</h2>');
+
+  out.push('<div class="card">');
+  out.push('<dl class="target-facts">');
+  const row = (k: string, v: string): void => {
+    out.push(`<dt>${escapeHtml(k)}</dt><dd>${v}</dd>`);
+  };
+  row('対象ディレクトリ', `<code>${escapeHtml(t.root)}</code>`);
+  row(
+    '実施日時',
+    `${escapeHtml(formatTimestamp(t.scannedAt))}<span class="dim">（所要 ${escapeHtml(formatDuration(t.durationMs))}）</span>`,
+  );
+  if (t.git) {
+    row(
+      'Git',
+      `<code>${escapeHtml(t.git.branch)}</code> @ <code>${escapeHtml(truncate(t.git.headSha, 12, ''))}</code>`,
+    );
+  }
+  row(
+    'ファイル数',
+    `${formatNumber(t.fileCount)} ファイル<span class="dim"> / ${escapeHtml(formatBytes(t.totalBytes))}</span>`,
+  );
+  if (t.languages.length > 0) {
+    row(
+      '言語構成',
+      escapeHtml(
+        t.languages
+          .map((l: { name: string; ratio: number }) => `${l.name} ${Math.round(l.ratio * 100)}%`)
+          .join(' / '),
+      ),
+    );
+  }
+  if (t.frameworks.length > 0) row('検出フレームワーク', escapeHtml(t.frameworks.join(', ')));
+  out.push('</dl>');
+  out.push('</div>');
+
+  // ---- これは何か ----
+  out.push('<h3>これは何か</h3>');
+  if (t.readme !== null) {
+    const text = [t.readme.title, t.readme.lead].filter((x) => x !== '').join(' — ');
+    out.push('<blockquote class="readme-quote">');
+    out.push(`<p>${escapeHtml(text)}</p>`);
+    out.push(`<footer><code>${escapeHtml(t.readme.path)}</code> からの引用 — <b>事実</b></footer>`);
+    out.push('</blockquote>');
+  } else {
+    out.push(
+      '<p class="meta">README が見つからなかったため、対象が何であるかの説明は取得できていません。</p>',
+    );
+  }
+  if (t.style !== null) {
+    const conf = t.style.confidence === null ? '' : `（確信度 ${t.style.confidence.toFixed(2)}）`;
+    out.push(
+      `<p class="inferred-note">アーキテクチャ様式の<b>推測</b>: ${escapeHtml(t.style.value)}${escapeHtml(conf)}</p>`,
+    );
+  }
+
+  // ---- 範囲 ----
+  if (t.files !== null) {
+    out.push('<h3>対象ファイル</h3>');
+    out.push('<ul class="file-list">');
+    for (const f of t.files) out.push(`<li><code>${escapeHtml(f)}</code></li>`);
+    out.push('</ul>');
+  } else if (t.directories !== null) {
+    out.push('<h3>構成（上位2階層）</h3>');
+    const rows: string[][] = [];
+    for (const dir of t.directories) {
+      const name = dir.path === '.' ? '(ルート直下)' : `${dir.path}/`;
+      rows.push([
+        `<b>${escapeHtml(name)}</b>`,
+        formatNumber(dir.fileCount),
+        escapeHtml(formatBytes(dir.bytes)),
+      ]);
+      for (const child of dir.children) {
+        rows.push([
+          `<span class="dir-child">${escapeHtml(`${child.path}/`)}</span>`,
+          formatNumber(child.fileCount),
+          escapeHtml(formatBytes(child.bytes)),
+        ]);
+      }
+    }
+    out.push(scrollTable(['ディレクトリ', 'ファイル数', 'サイズ'], rows, 'dir-table'));
+    const omitted: string[] = [];
+    if (t.truncatedDirectories > 0) omitted.push(`上位 ${formatNumber(t.truncatedDirectories)} 個`);
+    if (t.truncatedChildren > 0) omitted.push(`2階層目 ${formatNumber(t.truncatedChildren)} 個`);
+    if (omitted.length > 0) {
+      out.push(`<p class="meta">表示を省略したディレクトリ: ${escapeHtml(omitted.join(' / '))}</p>`);
+    }
+  }
+
+  out.push('</section>');
+  return out.join('\n');
+}
+
 function renderToc(
   chains: readonly AttackChain[],
   findings: readonly Finding[],
@@ -295,6 +419,7 @@ function renderToc(
   hasArchitectureMap: boolean,
 ): string {
   const items: string[] = [
+    '<li><a href="#target">走査対象</a></li>',
     '<li><a href="#executive">エグゼクティブサマリ</a></li>',
     '<li><a href="#risk">リスクの全体像</a></li>',
   ];
@@ -625,6 +750,7 @@ export function renderHtml(
   const body = [
     renderHeader(result, analyzed),
     renderHealthNotice(result),
+    renderTarget(result),
     renderToc(chains, active, result.context.dependencies.length > 0, architectureMap !== ''),
     renderExecutive(analyzed),
     renderRisk(analyzed),
