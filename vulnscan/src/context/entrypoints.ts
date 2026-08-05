@@ -176,6 +176,30 @@ const RULES: readonly Rule[] = [
     metadata: () => ({ framework: 'jax-rs' }),
   },
   {
+    // @WebServlet("/x") / @WebServlet(value = "/x") / @WebServlet(urlPatterns = {"/x", "/y"})
+    languages: ['java'],
+    kind: 'http-route',
+    re: /@WebServlet\s*\(\s*(?:(?:value|urlPatterns)\s*=\s*)?\{?\s*["']([^"']*)["']/g,
+    identifier: (m) => m[1] ?? '',
+    metadata: () => ({ framework: 'servlet' }),
+  },
+  {
+    /*
+     * サーブレットの doGet / doPost 等。@WebServlet とは別に持つ理由は2つある:
+     *   - web.xml で登録するサーブレットには注釈が無く、注釈だけでは取りこぼす
+     *   - 注釈はクラスに1つでも、実際の入口はメソッドごとに分かれる（GETとPOSTで挙動が違う）
+     * 重複除去のキーに行番号と識別子が入るので、注釈と二重には数えない。
+     */
+    languages: ['java'],
+    kind: 'http-route',
+    re: /\b(?:public|protected)\s+(?:final\s+)?void\s+(doGet|doPost|doPut|doDelete|doHead|doOptions|doTrace)\s*\(/g,
+    identifier: (m) => m[1] ?? '',
+    metadata: (m) => ({
+      method: (m[1] ?? '').replace(/^do/, '').toUpperCase(),
+      framework: 'servlet',
+    }),
+  },
+  {
     languages: ['java'],
     kind: 'message-handler',
     re: /@(KafkaListener|JmsListener|RabbitListener|EventListener|SqsListener)\b/g,

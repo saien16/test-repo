@@ -291,6 +291,33 @@ describe('detectEntryPoints', () => {
     expect(route?.metadata?.['framework']).toBe('spring');
   });
 
+  it('サーブレットの @WebServlet と doGet/doPost を検出する', () => {
+    // OWASP Benchmark をはじめ、Servlet API のアプリはこの形が主流。
+    // Spring / JAX-RS の注釈だけを見ていると、入口を1つも拾えない。
+    const entries = entryPointsOf(
+      src('BenchmarkTest00008.java', 'java', [
+        '@WebServlet(value = "/sqli-00/BenchmarkTest00008")',
+        'public class BenchmarkTest00008 extends HttpServlet {',
+        '    public void doGet(HttpServletRequest request, HttpServletResponse response) {}',
+        '    public void doPost(HttpServletRequest request, HttpServletResponse response) {}',
+        '}',
+      ]),
+    );
+    const routes = entries.filter((e) => e.kind === 'http-route');
+    const annotation = routes.find((e) => e.identifier === '/sqli-00/BenchmarkTest00008');
+    expect(annotation?.metadata?.['framework']).toBe('servlet');
+    // 注釈が無い（web.xml 登録の）サーブレットも拾えるよう、メソッド側も入口として数える
+    expect(routes.find((e) => e.identifier === 'doGet')?.metadata?.['method']).toBe('GET');
+    expect(routes.find((e) => e.identifier === 'doPost')?.metadata?.['method']).toBe('POST');
+  });
+
+  it('@WebServlet の urlPatterns 形式も検出する', () => {
+    const entries = entryPointsOf(
+      src('Multi.java', 'java', ['@WebServlet(urlPatterns = {"/a", "/b"})', 'class Multi {}']),
+    );
+    expect(entries.some((e) => e.kind === 'http-route' && e.identifier === '/a')).toBe(true);
+  });
+
   it('Go の main 関数と HandleFunc を検出する', () => {
     const entries = entryPointsOf(
       src('main.go', 'go', ['func main() {', '\thttp.HandleFunc("/health", ok)', '}']),
