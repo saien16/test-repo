@@ -150,6 +150,26 @@ export const CONFIG_SPEC = {
       '明示指定が無い限り自動で旧名へフォールバックします（警告が1行出ます）。',
     cli: '--baseline',
   },
+  reportDir: {
+    kind: 'path',
+    default: 'reports',
+    doc:
+      'HTML控えの保存先ディレクトリ。走査のたびに\n' +
+      '`grimoire-<対象名>-YYYYMMDD-HHMMSS.html` を1つ残し、\n' +
+      '同じ内容を `latest.html` にも置きます（URLを固定して開きっぱなしにできます）。\n' +
+      '-f / -o で何を指定していても、この控えは必ず作られます。\n' +
+      'baselinePath と同じくリポジトリ内へ封じ込められます。\n' +
+      'リポジトリ外へ出したい場合は --report-dir で明示指定してください。',
+    cli: '--report-dir',
+  },
+  archiveReport: {
+    kind: 'plain',
+    default: true,
+    doc:
+      'HTML控えを残すか。false にすると reportDir へは何も書きません。\n' +
+      'CIなど、成果物を別途回収する仕組みがある場合だけ切ってください。',
+    cli: '--no-archive',
+  },
   ignorePath: {
     kind: 'path',
     default: '.grimoireignore',

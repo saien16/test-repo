@@ -197,9 +197,11 @@ grimoire ./my-app --lens injection -e low --no-kill-chain --no-architecture
 見当違いの範囲を分析していることになります。違ったら `Ctrl+C` で止めて、
 `include` / `exclude` の設定を直してください。
 
-終わると、どれだけ見ていくら使ったかが出ます。
+終わると、控えの保存先と、どれだけ見ていくら使ったかが出ます。
 
 ```
+✔ HTML控え: /home/user/my-app/reports/grimoire-my-app-20260806-142207.html
+  最新版へのリンク: /home/user/my-app/reports/latest.html
 処理: 128 ファイル / 18,452 行 / 17秒
 トークン使用量: 入力 412,338 / 出力 38,112 (キャッシュ読み 286,004 / 書き 9,820)
 ```
@@ -216,6 +218,32 @@ grimoire ./my-app --lens injection -e low --no-kill-chain --no-architecture
 ```bash
 grimoire ./my-app
 ```
+
+### HTML控えは黙っていても残ります
+
+**`-f` や `-o` に何を指定していても、走査のたびに HTML が1つ必ず保存されます。**
+標準出力へ流して消えてしまった、どこへ出したか分からなくなった、を無くすためです。
+
+```
+reports/
+  grimoire-my-app-20260806-142207.html   ← 実行ごとに1つ。上書きされない
+  grimoire-my-app-20260806-151033.html
+  latest.html                            ← 常に最新と同じ内容
+```
+
+保存先は既定で走査対象の直下 `reports/` です。変えるなら `--report-dir`、
+不要なら `--no-archive` を付けてください。
+
+`latest.html` があるので、**ブラウザのURLを固定できます**。
+リモートのマシンで走らせているなら、この置き方が楽です。
+
+```bash
+cd /path/to/my-app && python3 -m http.server 8000
+# → http://localhost:8000/reports/latest.html を開いたまま、実行後に再読み込み
+```
+
+失敗した走査の控えも残ります。その場合レポート冒頭に
+「このスキャンは完走していません」が出るので、**後から見ても取り違えません**。
 
 ### 結果をファイルに残す
 

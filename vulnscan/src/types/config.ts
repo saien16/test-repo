@@ -84,6 +84,10 @@ export interface VulnScanConfig {
   baselinePath: string;
   /** 抑制リスト */
   ignorePath: string;
+  /** HTML控えの保存先ディレクトリ */
+  reportDir: string;
+  /** HTML控えを残すか */
+  archiveReport: boolean;
   /** キルチェーン分析を実行するか */
   killChain: boolean;
   /** アーキテクチャ・デプロイスタックの推定を行うか */
@@ -114,6 +118,8 @@ export interface VulnScanConfig {
 export const LEGACY_DEFAULT_PATHS: Readonly<Record<PathKey, string>> = {
   baselinePath: '.vulnscan/baseline.json',
   ignorePath: '.vulnignore',
+  // vulnscan 時代に相当するものが無いため、現在値と同じ値を置く（旧名フォールバックは働かない）
+  reportDir: 'reports',
 };
 
 /** spec の `default` をそのまま並べた型。リテラル型が保たれる */

@@ -14,8 +14,9 @@ import { loadConfig } from '../config/index.js';
 import { runScan, type StageName } from '../core/orchestrator.js';
 import { createAnimation } from './animation.js';
 import { LlmClient } from '../llm/client.js';
-import { analyzeResult, generateReport, evaluateGate } from '../reporter/index.js';
-import { saveBaseline } from '../vuln/index.js';
+import { analyzeResult, generateReport, evaluateGate, renderToString } from '../reporter/index.js';
+import { writeArchive } from '../reporter/archive.js';
+import { resolvePath, saveBaseline } from '../vuln/index.js';
 import { isOperatorProvidedPath } from '../types/config.js';
 import { registerScanOptions, toConfigOverrides, type CliOptions } from './options.js';
 import type { ReportOptions } from '../types/report.js';
@@ -83,6 +84,34 @@ async function runScanCommand(target: string, opts: CliOptions): Promise<void> {
     };
 
     const rendered = await generateReport(result, analyzed, reportOptions);
+
+    /*
+     * HTML控えを必ず1つ残す。
+     *
+     * -f / -o が何であってもここは走る。走査したのに成果物が
+     * どこにも残らない（stdout へ流れて消えた）状態を作らないため。
+     * 既に html を書いている場合だけ、その文字列を再利用する。
+     */
+    if (config.archiveReport) {
+      const dir = resolvePath(config.reportDir, repoRoot, {
+        allowOutside: isOperatorProvidedPath(config, 'reportDir'),
+      });
+      if (dir === null) {
+        log('警告: reportDir がリポジトリ外を指しているため、HTML控えを保存しませんでした');
+      } else {
+        const html =
+          opts.format === 'html'
+            ? rendered
+            : renderToString(result, analyzed, {
+                format: 'html',
+                color: false,
+                verbose: opts.verbose,
+              });
+        const archived = await writeArchive(html, dir, repoRoot, new Date());
+        log(`✔ HTML控え: ${archived.path}`);
+        log(`  最新版へのリンク: ${archived.latestPath}`);
+      }
+    }
 
     if (opts.output) {
       const outPath = resolve(opts.output);

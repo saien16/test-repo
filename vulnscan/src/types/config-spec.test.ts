@@ -40,7 +40,7 @@ function sortedKeys(obj: object): string[] {
 
 describe('CONFIG_SPEC の派生', () => {
   it('PATH_KEYS は kind=path のフィールドから導出される', () => {
-    expect([...PATH_KEYS]).toEqual(['baselinePath', 'ignorePath']);
+    expect([...PATH_KEYS]).toEqual(['baselinePath', 'reportDir', 'ignorePath']);
 
     // spec 側の kind と完全に一致すること（手書きの allowlist ではない）
     const fromSpec = Object.entries(CONFIG_SPEC)
@@ -123,6 +123,7 @@ describe('CONFIG_SPEC の派生', () => {
     expect(DEFAULT_CONFIG.pathSources).toEqual({
       baselinePath: 'default',
       ignorePath: 'default',
+      reportDir: 'default',
     });
   });
 

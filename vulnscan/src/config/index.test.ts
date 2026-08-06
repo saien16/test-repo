@@ -40,7 +40,11 @@ describe('loadConfig', () => {
     const { config, warnings } = await loadConfig(repoRoot);
     expect(warnings).toEqual([]);
     expect(config.baselinePath).toBe(DEFAULT_CONFIG.baselinePath);
-    expect(config.pathSources).toEqual({ baselinePath: 'default', ignorePath: 'default' });
+    expect(config.pathSources).toEqual({
+      baselinePath: 'default',
+      ignorePath: 'default',
+      reportDir: 'default',
+    });
   });
 
   it('リポジトリ内のパス設定は採用され、出所が config-file になる', async () => {
@@ -52,6 +56,7 @@ describe('loadConfig', () => {
     expect(config.pathSources).toEqual({
       baselinePath: 'config-file',
       ignorePath: 'config-file',
+      reportDir: 'default',
     });
   });
 
@@ -124,7 +129,11 @@ describe('loadConfig', () => {
       ),
     );
     const { config } = await loadConfig(repoRoot);
-    expect(config.pathSources).toEqual({ baselinePath: 'default', ignorePath: 'default' });
+    expect(config.pathSources).toEqual({
+      baselinePath: 'default',
+      ignorePath: 'default',
+      reportDir: 'default',
+    });
     expect(config.ignorePath).toBe(DEFAULT_CONFIG.ignorePath);
   });
 

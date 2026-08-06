@@ -423,7 +423,7 @@ describe('パストラバーサルの封じ込め', () => {
   });
 
   it('設定ファイル由来の baselinePath ではリポジトリ外を読まない', async () => {
-    const pathSources: PathSources = { baselinePath: 'config-file', ignorePath: 'config-file' };
+    const pathSources: PathSources = { baselinePath: 'config-file', ignorePath: 'config-file' , reportDir: 'default' };
     const { findings, errors } = await manageFindings(
       [makeRaw()],
       makeContext(),
@@ -437,7 +437,7 @@ describe('パストラバーサルの封じ込め', () => {
 
   it('設定ファイル由来の ignorePath ではリポジトリ外を読まない', async () => {
     await writeFile(join(outsideDir, '.vulnignore'), 'CWE-89\n', 'utf8');
-    const pathSources: PathSources = { baselinePath: 'config-file', ignorePath: 'config-file' };
+    const pathSources: PathSources = { baselinePath: 'config-file', ignorePath: 'config-file' , reportDir: 'default' };
     const { findings, suppressedCount, errors } = await manageFindings(
       [makeRaw()],
       makeContext(),
@@ -451,7 +451,7 @@ describe('パストラバーサルの封じ込め', () => {
   });
 
   it('CLI由来（pathSources=cli）ならリポジトリ外のベースラインを読む', async () => {
-    const pathSources: PathSources = { baselinePath: 'cli', ignorePath: 'default' };
+    const pathSources: PathSources = { baselinePath: 'cli', ignorePath: 'default' , reportDir: 'default' };
     const first = await manageFindings([makeRaw()], makeContext(), makeConfig(), {
       ...NO_OSV,
       now: LAST_YEAR,

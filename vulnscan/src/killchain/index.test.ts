@@ -70,6 +70,8 @@ const config: VulnScanConfig = {
   failOnNewOnly: false,
   baselinePath: '.vulnscan/baseline.json',
   ignorePath: '.vulnignore',
+  reportDir: 'reports',
+  archiveReport: false,
   killChain: true,
   failOnIncompleteScan: true,
   architecture: false,

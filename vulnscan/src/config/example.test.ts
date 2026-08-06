@@ -56,7 +56,11 @@ describe('.grimoire.yml.example', () => {
       const { pathSources: _defaultSources, ...defaults } = DEFAULT_CONFIG;
       expect(rest).toEqual(defaults);
       // サンプルはリポジトリ内のパスしか書いていないので採用される（出所は設定ファイル）
-      expect(pathSources).toEqual({ baselinePath: 'config-file', ignorePath: 'config-file' });
+      expect(pathSources).toEqual({
+        baselinePath: 'config-file',
+        ignorePath: 'config-file',
+        reportDir: 'config-file',
+      });
     } finally {
       await rm(repoRoot, { recursive: true, force: true });
     }

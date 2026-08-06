@@ -119,7 +119,19 @@ export async function walkRepository(
   config: VulnScanConfig,
   warnings: string[],
 ): Promise<WalkOutput> {
-  const exclude = config.scan?.exclude ?? [];
+  /*
+   * 自分が書いた成果物は走査しない。
+   *
+   * reportDir は既定でリポジトリ直下（reports/）に置かれるので、
+   * これを除かないと2回目以降の走査が前回のHTML控えを解析対象に含めてしまう
+   * （ファイル数が実行のたびに増え、規模の表示も費用も狂う）。
+   * ベースラインとキャッシュを置く .grimoire/ も同じ理由で外す。
+   */
+  const exclude = [
+    ...(config.scan?.exclude ?? []),
+    '**/.grimoire/**',
+    ...(config.reportDir ? [`${config.reportDir.replace(/\/+$/, '')}/**`] : []),
+  ];
   const include = config.scan?.include ?? [];
   const maxFileBytes =
     typeof config.scan?.maxFileBytes === 'number' && config.scan.maxFileBytes > 0

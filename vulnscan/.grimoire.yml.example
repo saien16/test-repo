@@ -76,6 +76,20 @@ failOnIncompleteScan: true
 # CLIフラグ: --baseline
 baselinePath: .grimoire/baseline.json
 
+# HTML控えの保存先ディレクトリ。走査のたびに
+# `grimoire-<対象名>-YYYYMMDD-HHMMSS.html` を1つ残し、
+# 同じ内容を `latest.html` にも置きます（URLを固定して開きっぱなしにできます）。
+# -f / -o で何を指定していても、この控えは必ず作られます。
+# baselinePath と同じくリポジトリ内へ封じ込められます。
+# リポジトリ外へ出したい場合は --report-dir で明示指定してください。
+# CLIフラグ: --report-dir
+reportDir: reports
+
+# HTML控えを残すか。false にすると reportDir へは何も書きません。
+# CIなど、成果物を別途回収する仕組みがある場合だけ切ってください。
+# CLIフラグ: --no-archive
+archiveReport: true
+
 # 抑制リストのパス。baselinePath と同じくリポジトリ内へ封じ込められます。
 # 旧名（.vulnignore）しか存在しない場合は自動でフォールバックします。
 # CLIフラグ: --ignore-file
