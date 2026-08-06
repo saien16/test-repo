@@ -1,0 +1,7 @@
+{
+  "kicker": "MEASURING DETECTION RATE",
+  "doctitle": "OWASP Benchmark v1.2 で GRIMOIRE を測る",
+  "title": "OWASP Benchmark v1.2 で<br>GRIMOIRE を測る",
+  "sub": "真値付きテストケース2,740件を使って、検出率と誤検知率を数字で出す手順。<br>ダウンロードから走査範囲の絞り込み、採点、結果の限界まで通しで扱います。",
+  "foot": "禁書「九五九」 — MITRE CWE 959件を収めた、LLMベースのソースコード脆弱性スキャナー<br>v0.1.0"
+}

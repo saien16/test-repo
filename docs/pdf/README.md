@@ -5,6 +5,7 @@
 | 出力 | 入力 | 経路 |
 | --- | --- | --- |
 | GRIMOIRE-はじめてのガイド.pdf | `docs/getting-started.md` | `mkpdf.py` → `topdf.mjs` |
+| GRIMOIRE-OWASP-Benchmark測定手順.pdf | `docs/owasp-benchmark.md` | `mkpdf.py` → `topdf.mjs` |
 | GRIMOIRE-設計書.pdf | `docs/vuln-scanner-design.md` | `mkpdf.py` → `topdf.mjs` |
 | GRIMOIRE-サービス紹介.pdf | `docs/web/grimoire-service.html` | `htmlpdf.mjs` |
 | GRIMOIRE-3分でわかる超入門.pdf | `docs/web/grimoire-beginner.html` | `htmlpdf.mjs` |
@@ -17,6 +18,9 @@ Web UI デモ（`docs/web/grimoire-webui.html`）は操作して意味が出る�
 # Markdown → 印刷用HTML → PDF
 python3 docs/pdf/mkpdf.py docs/getting-started.md /tmp/guide.html docs/pdf/cover-guide.json
 node docs/pdf/topdf.mjs /tmp/guide.html "GRIMOIRE-はじめてのガイド.pdf"
+
+python3 docs/pdf/mkpdf.py docs/owasp-benchmark.md /tmp/bench.html docs/pdf/cover-benchmark.json
+node docs/pdf/topdf.mjs /tmp/bench.html "GRIMOIRE-OWASP-Benchmark測定手順.pdf"
 
 # 画面用HTML → PDF（第4引数は縮小率）
 node docs/pdf/htmlpdf.mjs \

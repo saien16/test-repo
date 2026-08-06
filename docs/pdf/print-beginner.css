@@ -8,3 +8,7 @@ section { padding: 18px 0 !important; }
 .step, .worry, .next-card, .read-item, .keystone { break-inside: avoid; page-break-inside: avoid; }
 .read-card { break-inside: auto; page-break-inside: auto; }
 .sec-head, h2, h3 { break-after: avoid; page-break-after: avoid; }
+
+/* ページ末尾のクレジット行は、PDF では冒頭と各ページ下部に同じ情報が出るため重複。
+   残すと1行のためだけに最終ページが1枚増える（本文は2ページに収まっている）ので落とす。 */
+body > footer { display: none !important; }
