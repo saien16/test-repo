@@ -235,7 +235,7 @@ function main() {
   const summary = {
     testCases: cases.size,
     findings: findings.length,
-    health: health?.state ?? null,
+    health: health?.level ?? null,
     strictCwe: args.strictCwe,
     minConfidence: args.minConfidence,
     perCategory: rows,
@@ -256,8 +256,8 @@ function main() {
   const pct = (v) => `${(v * 100).toFixed(1)}%`;
   const out = [];
   out.push(`テストケース ${cases.size} 件 / Finding ${findings.length} 件`);
-  if (health != null && health.state !== 'complete') {
-    out.push(`⚠ 走査が完走していない（health=${health.state}）。この採点結果は下振れしている。`);
+  if (health != null && health.level !== 'complete') {
+    out.push(`⚠ 走査が完走していない（health=${health.level}）。この採点結果は下振れしている。`);
   }
   out.push('');
   out.push('カテゴリ        CWE     TP   FN   FP   TN     TPR     FPR   Youden');

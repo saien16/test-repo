@@ -152,7 +152,7 @@ grimoire . \
 node -e "
   const r = require('/tmp/bench-pilot.json');
   const s = r.result.summary;
-  console.log('health:', r.result.health.state);
+  console.log('health:', r.result.health.level);
   console.log('findings:', r.result.findings.length);
   console.log(JSON.stringify(s.tokenUsage ?? s, null, 2));
 "
