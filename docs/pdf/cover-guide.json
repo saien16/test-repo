@@ -1,0 +1,7 @@
+{
+  "kicker": "SOURCE CODE VULNERABILITY SCANNER",
+  "doctitle": "GRIMOIRE はじめてのガイド",
+  "title": "GRIMOIRE<br>はじめてのガイド",
+  "sub": "準備から、実行、レポートの読み方、CIへの組み込みまで。<br>セキュリティ診断ツールを使ったことがない人向けの導入資料です。",
+  "foot": "禁書「九五九」 — MITRE CWE 959件を収めた、LLMベースのソースコード脆弱性スキャナー<br>v0.1.0"
+}

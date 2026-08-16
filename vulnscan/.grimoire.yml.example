@@ -1,0 +1,115 @@
+# GRIMOIRE 設定ファイルのサンプル
+# `.grimoire.yml` にリネームしてリポジトリルートに置くと自動で読み込まれます。
+# 指定しなかった項目は既定値が使われます。
+# 値はすべて既定値そのものです。
+#
+# 後方互換: 旧名の `.vulnscan.yml` / `.vulnscan.yaml` も読み込みます。
+# 新旧が同居する場合は `.grimoire.yml` が優先されます。
+#
+# このファイルは src/types/config-spec.ts から生成しています。
+# 手で編集せず spec 側を直してください（一致は src/config/example.test.ts が検証します）。
+
+# LLM（分析エンジン）の設定
+llm:
+  # 使用するモデル。既定は claude-opus-5
+  model: claude-opus-5
+  # 思考の深さ。low / medium / high / xhigh / max
+  # 低いほど高速・安価。まず high から始めて評価しながら下げるのが推奨
+  effort: high
+  maxTokens: 16000
+  # LLMの同時実行数
+  concurrency: 4
+  # このスキャン全体の出力トークン上限。null なら無制限
+  tokenBudget: null
+  # 安全分類器に解析を拒否された場合のフォールバックモデル
+  fallbackModel: claude-opus-4-8
+  # チャンク単位の結果キャッシュ（変更のないコードを再分析しない）
+  cache: true
+
+# 走査対象の絞り込みと分析の設定
+scan:
+  exclude:
+    - '**/node_modules/**'
+    - '**/dist/**'
+    - '**/build/**'
+    - '**/.git/**'
+    - '**/vendor/**'
+    - '**/*.min.js'
+    - '**/*.lock'
+  include: []
+  # 実行する分析レンズ
+  lenses:
+    - injection
+    - authz
+    - crypto-secrets
+    - deserialization-ssrf
+    - web-output
+  # 自己検証パス。誤検知を大きく減らすので原則有効のまま
+  selfVerify: true
+  # この確信度未満の検出は破棄する
+  minConfidence: 0.5
+  # 1ファイルあたりの最大バイト数。超過分はスキップ
+  maxFileBytes: 512000
+
+# この深刻度以上が存在すれば非ゼロ終了（CIゲート）。'never' で無効化
+# CLIフラグ: --fail-on
+failOn: high
+
+# 新規検出のみでゲートする（既存の負債でCIを落とさない）
+# CLIフラグ: --fail-on-new-only
+failOnNewOnly: false
+
+# 走査が完走しなかった場合に非ゼロ終了する（終了コード 3）。
+# 分析タスクの多くが失敗した（APIキー未設定・通信障害・予算切れなど）とき、
+# 検出0件は「安全」ではなく「判定できなかった」ことを意味します。
+# これを 0 で通すとCIが偽の緑になるため既定で有効。
+# failOn: 'never' でもこの判定は独立に効きます（軸が違うため）。
+# CLIフラグ: --no-fail-on-incomplete
+failOnIncompleteScan: true
+
+# ベースラインJSONの保存先。
+# パス系設定はスキャン対象リポジトリの中だけを指せます。
+# 絶対パスや `..` でリポジトリ外へ出る指定は拒否され、既定値が使われます
+# （設定ファイルは解析対象リポジトリの一部であり、未信頼入力として扱うため）。
+# 旧名（.vulnscan/baseline.json）しか存在しない場合は、
+# 明示指定が無い限り自動で旧名へフォールバックします（警告が1行出ます）。
+# CLIフラグ: --baseline
+baselinePath: .grimoire/baseline.json
+
+# HTML控えの保存先ディレクトリ。走査のたびに
+# `grimoire-<対象名>-YYYYMMDD-HHMMSS.html` を1つ残し、
+# 同じ内容を `latest.html` にも置きます（URLを固定して開きっぱなしにできます）。
+# -f / -o で何を指定していても、この控えは必ず作られます。
+# baselinePath と同じくリポジトリ内へ封じ込められます。
+# リポジトリ外へ出したい場合は --report-dir で明示指定してください。
+# CLIフラグ: --report-dir
+reportDir: reports
+
+# HTML控えを残すか。false にすると reportDir へは何も書きません。
+# CIなど、成果物を別途回収する仕組みがある場合だけ切ってください。
+# CLIフラグ: --no-archive
+archiveReport: true
+
+# 抑制リストのパス。baselinePath と同じくリポジトリ内へ封じ込められます。
+# 旧名（.vulnignore）しか存在しない場合は自動でフォールバックします。
+# CLIフラグ: --ignore-file
+ignorePath: .grimoireignore
+
+# キルチェーン分析（個別の検出を攻撃経路として連鎖させる）
+# CLIフラグ: --no-kill-chain
+killChain: true
+
+# アーキテクチャ・デプロイスタックの推定を行うか
+# （マニフェストから読み取れる「事実」とLLMによる「推測」を分けて収集する）
+# CLIフラグ: --no-architecture
+architecture: true
+
+# 脆弱性ヒートマップを生成するか（architecture が true である必要がある）
+# 実測層（検出された脆弱性＝事実）と想定層（スタックから導かれる想定リスク＝推測）を
+# 重ね合わせ、「検出は無いが想定リスクが高い」死角を洗い出す
+# CLIフラグ: --no-heatmap
+heatmap: true
+
+# ヒートマップの想定リスク層に採用する最低確信度。
+# これ未満の推測はセルに反映せず、死角判定にも使わない
+minInferenceConfidence: 0.3

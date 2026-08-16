@@ -1,0 +1,274 @@
+<title>はじめての GRIMOIRE — 3分でわかるコード脆弱性スキャン</title>
+<meta name="description" content="セキュリティツールを触ったことがない人へ。GRIMOIRE が何をして、どう使い、結果をどう読むかを、いちばんやさしく。">
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #F4F6FA; --surface: #FFFFFF; --surface-2: #EDF0F6; --border: #DCE1EC; --border-strong: #C4CBDC;
+    --text: #1A1D28; --dim: #566072; --faint: #8B93A6;
+    --iris: #5B4FD6; --iris-soft: #ECEAFB; --teal: #0E9E78; --teal-soft: #DEF3EC; --brass: #B4863A;
+    --crit: #D8353E; --high: #E4611A; --med: #C58A17; --low: #2F84C7;
+    --shadow: 0 2px 4px rgba(20,24,40,.04), 0 14px 40px rgba(20,24,40,.07);
+    --serif-latin: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --serif-jp: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+    --sans: "Hiragino Kaku Gothic ProN", "Yu Gothic", "YuGothic", "Noto Sans JP", Meiryo, system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#0D0F15;--surface:#151924;--surface-2:#1C212E;--border:#2A3040;--border-strong:#3A4257;
+      --text:#E7E9F0;--dim:#A1A8BA;--faint:#727A8E;--iris:#8A82FF;--iris-soft:#1e1f3a;--teal:#2FD3A5;--teal-soft:#10352c;--brass:#C79A4B;
+      --crit:#F0565E;--high:#F5811F;--med:#E3A72B;--low:#55A6E5;--shadow:0 2px 4px rgba(0,0,0,.3),0 16px 44px rgba(0,0,0,.4); }
+  }
+  :root[data-theme="light"] { --ink:#F4F6FA;--surface:#FFFFFF;--surface-2:#EDF0F6;--border:#DCE1EC;--border-strong:#C4CBDC;--text:#1A1D28;--dim:#566072;--faint:#8B93A6;--iris:#5B4FD6;--iris-soft:#ECEAFB;--teal:#0E9E78;--teal-soft:#DEF3EC;--brass:#B4863A;--crit:#D8353E;--high:#E4611A;--med:#C58A17;--low:#2F84C7;--shadow:0 2px 4px rgba(20,24,40,.04),0 14px 40px rgba(20,24,40,.07); }
+  :root[data-theme="dark"] { --ink:#0D0F15;--surface:#151924;--surface-2:#1C212E;--border:#2A3040;--border-strong:#3A4257;--text:#E7E9F0;--dim:#A1A8BA;--faint:#727A8E;--iris:#8A82FF;--iris-soft:#1e1f3a;--teal:#2FD3A5;--teal-soft:#10352c;--brass:#C79A4B;--crit:#F0565E;--high:#F5811F;--med:#E3A72B;--low:#55A6E5;--shadow:0 2px 4px rgba(0,0,0,.3),0 16px 44px rgba(0,0,0,.4); }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--ink); color: var(--text); font-family: var(--sans); font-size: 16px; line-height: 1.9; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 22px; }
+  .mono { font-family: var(--mono); }
+  a { color: var(--iris); text-decoration: none; }
+  :focus-visible { outline: 2px solid var(--iris); outline-offset: 3px; border-radius: 6px; }
+
+  .theme-btn { position: fixed; top: 16px; right: 16px; z-index: 30; width: 38px; height: 38px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--dim); font-size: 16px; cursor: pointer; box-shadow: var(--shadow); }
+  .theme-btn:hover { color: var(--text); }
+
+  /* ── ヒーロー ── */
+  .hero { text-align: center; padding: 74px 22px 20px; }
+  .hero canvas { width: 86px; height: 86px; margin: 0 auto 20px; display: block; }
+  .eyebrow { font-family: var(--mono); font-size: 12.5px; letter-spacing: .16em; color: var(--iris); text-transform: uppercase; }
+  .hero h1 { font-family: var(--serif-jp); font-weight: 600; font-size: clamp(28px, 6.5vw, 42px); line-height: 1.35; margin: 14px 0 8px; text-wrap: balance; letter-spacing: .01em; }
+  .hero .lede { font-size: clamp(15px, 2.6vw, 18px); color: var(--dim); max-width: 30em; margin: 0 auto; text-wrap: balance; }
+  .wm-mini { font-family: var(--serif-latin); letter-spacing: .18em; font-weight: 600; }
+  .wm-mini b { color: var(--iris); }
+
+  section { padding: 46px 0; }
+  .lead-sentence {
+    font-family: var(--serif-jp); font-size: clamp(20px, 4vw, 27px); line-height: 1.75; text-align: center;
+    max-width: 20em; margin: 20px auto 0; text-wrap: balance;
+  }
+  .lead-sentence .hl { color: var(--iris); }
+  .lead-sentence .hl2 { color: var(--teal); }
+
+  h2 { font-family: var(--serif-jp); font-weight: 600; font-size: clamp(21px, 4vw, 26px); margin: 0 0 6px; text-wrap: balance; }
+  .sec-head { text-align: center; margin-bottom: 30px; }
+  .sec-head p { color: var(--dim); margin: 4px 0 0; font-size: 15px; }
+
+  /* ── 悩み ── */
+  .worries { display: grid; gap: 12px; }
+  .worry { display: flex; gap: 14px; align-items: flex-start; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); }
+  .worry .q { font-size: 22px; line-height: 1.2; flex-shrink: 0; }
+  .worry p { margin: 0; font-size: 14.5px; }
+  .worry b { color: var(--iris); }
+
+  /* ── 3ステップ ── */
+  .steps { display: flex; flex-direction: column; gap: 18px; }
+  .step { display: grid; grid-template-columns: 64px 1fr; gap: 20px; align-items: start; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 22px 22px; box-shadow: var(--shadow); position: relative; }
+  .step .num { font-family: var(--serif-latin); font-size: 40px; font-weight: 700; color: var(--iris); line-height: 1; text-align: center; }
+  .step .num small { display: block; font-family: var(--sans); font-size: 10px; letter-spacing: .12em; color: var(--faint); font-weight: 700; margin-top: 4px; }
+  .step h3 { margin: 0 0 6px; font-size: 18px; }
+  .step p { margin: 0 0 10px; font-size: 14.5px; color: var(--dim); }
+  .step .cmd { font-family: var(--mono); font-size: 13px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 9px 13px; overflow-x: auto; white-space: nowrap; color: var(--text); }
+  .step .cmd .c { color: var(--teal); }
+  .step .cmd .p { color: var(--faint); }
+
+  /* ── 結果の読み方 ── */
+  .read-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 6px 22px 22px; box-shadow: var(--shadow); }
+  .read-item { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; padding: 18px 0; border-top: 1px solid var(--border); }
+  .read-item:first-child { border-top: none; }
+  .sev-demo { display: flex; flex-direction: column; gap: 4px; }
+  .sev-pill { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 6px; text-align: center; }
+  .sev-pill.critical { color: var(--crit); background: color-mix(in srgb, var(--crit) 13%, transparent); }
+  .sev-pill.high { color: var(--high); background: color-mix(in srgb, var(--high) 13%, transparent); }
+  .sev-pill.medium { color: var(--med); background: color-mix(in srgb, var(--med) 15%, transparent); }
+  .read-item .rt { font-size: 14.5px; }
+  .read-item .rt b { color: var(--text); }
+  .prio-demo { font-family: var(--serif-latin); font-size: 34px; font-weight: 700; color: var(--iris); width: 64px; text-align: center; }
+  .num-demo { font-family: var(--serif-latin); font-size: 30px; font-weight: 700; color: var(--high); width: 64px; text-align: center; }
+
+  /* ── いちばん大事 ── */
+  .keystone { background: var(--iris-soft); border: 1px solid color-mix(in srgb, var(--iris) 30%, transparent); border-radius: 20px; padding: 30px 28px; text-align: center; }
+  .keystone .badge { display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; color: var(--iris); text-transform: uppercase; margin-bottom: 12px; }
+  .keystone .big { font-family: var(--serif-jp); font-size: clamp(22px, 4.6vw, 30px); font-weight: 600; line-height: 1.6; margin: 0 0 14px; text-wrap: balance; }
+  .keystone .big s { text-decoration-color: var(--crit); text-decoration-thickness: 2px; color: var(--faint); }
+  .keystone .big em { font-style: normal; color: var(--iris); }
+  .keystone p { margin: 0 auto; max-width: 30em; font-size: 14.5px; color: var(--dim); }
+  .keystone .scope-hint { margin-top: 14px; padding-top: 14px; border-top: 1px solid color-mix(in srgb, var(--iris) 22%, transparent); }
+  .keystone .scope-hint b { color: var(--iris); }
+
+  /* ── 次は ── */
+  .next { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 620px) { .next { grid-template-columns: 1fr 1fr; } }
+  .next-card { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; box-shadow: var(--shadow); transition: transform .15s, border-color .15s; }
+  .next-card:hover { transform: translateY(-2px); border-color: var(--iris); }
+  .next-card .k { font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; color: var(--iris); text-transform: uppercase; }
+  .next-card h3 { margin: 8px 0 6px; font-size: 18px; color: var(--text); }
+  .next-card p { margin: 0; font-size: 13.5px; color: var(--dim); }
+  .next-card .go { margin-top: 12px; font-size: 13px; color: var(--iris); font-weight: 600; }
+
+  footer { text-align: center; padding: 40px 22px 60px; color: var(--faint); font-size: 12.5px; border-top: 1px solid var(--border); margin-top: 30px; }
+  footer .wm-mini { color: var(--dim); }
+
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s, transform .6s; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .reveal { opacity: 1; transform: none; transition: none; } * { animation: none !important; } }
+</style>
+
+<button class="theme-btn" id="theme" aria-label="テーマ切替">◐</button>
+
+<div class="hero">
+  <canvas id="seal" width="172" height="172" aria-hidden="true"></canvas>
+  <div class="eyebrow">はじめての方へ</div>
+  <h1>コードの「危ないところ」を<br>見つけてくれる道具</h1>
+  <p class="lede"><span class="wm-mini">GRIM<b>O</b>IRE</span>（グリモワール）は、セキュリティに詳しくなくても使える脆弱性スキャナーです。3分で全体像がつかめます。</p>
+</div>
+
+<div class="wrap">
+
+  <section class="reveal">
+    <p class="lead-sentence">あなたのコードを読んで、<br><span class="hl">危ないところ</span>を見つけ、<br><span class="hl2">直す順番</span>まで教えてくれます。</p>
+  </section>
+
+  <section class="reveal">
+    <div class="sec-head"><h2>こんな不安、ありませんか</h2></div>
+    <div class="worries">
+      <div class="worry"><span class="q">🤔</span><p>「自分のコードにセキュリティの穴があるか、<b>そもそも分からない</b>」</p></div>
+      <div class="worry"><span class="q">😵</span><p>「診断ツールを入れても、<b>警告が何百件も出て</b>どれから手をつければいいのか」</p></div>
+      <div class="worry"><span class="q">😨</span><p>「一つひとつは小さな問題でも、<b>繋がると大事故</b>になるのが怖い」</p></div>
+    </div>
+    <p style="text-align:center; color:var(--dim); margin-top:22px; font-size:15px;">GRIMOIRE はこの3つに答えます。</p>
+  </section>
+
+  <section class="reveal">
+    <div class="sec-head"><h2>使い方は3ステップ</h2><p>ターミナルにコマンドを打つだけ</p></div>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1<small>じゅんび</small></div>
+        <div>
+          <h3>準備する</h3>
+          <p>Node.js と、AIを使うためのAPIキーを用意します。最初の一回だけです。</p>
+          <div class="cmd"><span class="p">$</span> npm install <span class="p">&&</span> npm run build</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2<small>じっこう</small></div>
+        <div>
+          <h3>スキャンする</h3>
+          <p>調べたいフォルダを指定して実行します。あとは待つだけ。AIがコードを読んでいきます。</p>
+          <div class="cmd"><span class="c">grimoire</span> ./my-app</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3<small>よむ</small></div>
+        <div>
+          <h3>結果を読む</h3>
+          <p>読みやすいレポートが出ます。ブラウザで見るなら HTML で出力してください。</p>
+          <div class="cmd"><span class="c">grimoire</span> ./my-app <span class="p">-f</span> html <span class="p">-o</span> report.html</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="reveal">
+    <div class="sec-head"><h2>結果は、ここだけ見れば大丈夫</h2><p>最初は3つだけ覚えれば十分です</p></div>
+    <div class="read-card">
+      <div class="read-item">
+        <div class="sev-demo">
+          <span class="sev-pill critical">緊急</span>
+          <span class="sev-pill high">高</span>
+          <span class="sev-pill medium">中</span>
+        </div>
+        <div class="rt"><b>色 = 深刻さ。</b> 赤（緊急）や橙（高）から順に見ます。数字（CVSS 0〜10）が大きいほど危険です。</div>
+      </div>
+      <div class="read-item">
+        <div class="prio-demo">92</div>
+        <div class="rt"><b>「優先対応アクション」を上から。</b> 順番はAIの気分ではなく機械が計算しています。1番から直すのが、いちばん効率のいい減らし方です。</div>
+      </div>
+      <div class="read-item">
+        <div class="num-demo">✂</div>
+        <div class="rt"><b>チョークポイント＝急所。</b> このマークがある箇所は、1つ直すだけで複数の攻撃経路を断てます。いちばん得な直し方です。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="reveal">
+    <div class="keystone">
+      <span class="badge">いちばん大事なこと</span>
+      <p class="big"><s>検出0件だから安全</s><br><em>検出0件は「まだ調べきれていない」かもしれない</em></p>
+      <p>だから GRIMOIRE は、スキャンが最後まで走ったかを別に伝えます。「0件」で安心する前に、そこを確かめてください。「見つからなかった」は「無い」の証明ではありません。</p>
+      <p class="scope-hint">レポートの冒頭には <b>いつ・どこを・何ファイル／何行</b> 見たかが出ます。設定を間違えて数ファイルしか見ていなければ、そこに出ます。まずここを見て、思っていた範囲と合っているか確かめてください。</p>
+    </div>
+  </section>
+
+  <section class="reveal">
+    <div class="sec-head"><h2>次にやってみること</h2></div>
+    <div class="next">
+      <a class="next-card" id="link-demo" href="#">
+        <div class="k">▸ さわってみる</div>
+        <h3>Web UIデモ</h3>
+        <p>実際のレポート画面をブラウザで操作できます。検出一覧を開いたり、攻撃経路やヒートマップを見たり。</p>
+        <div class="go">デモを開く →</div>
+      </a>
+      <a class="next-card" id="link-service" href="#">
+        <div class="k">▸ もっと知る</div>
+        <h3>GRIMOIRE とは</h3>
+        <p>どんな仕組みで、なぜAIを使い、他と何が違うのか。サービスの全体像を紹介します。</p>
+        <div class="go">紹介ページへ →</div>
+      </a>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <span class="wm-mini">GRIM<b>O</b>IRE</span> — 禁書「九五九」 · MITRE CWE 959件を収めた、LLMベースのソースコード脆弱性スキャナー
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var root = document.documentElement;
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById("theme").addEventListener("click", function () {
+    var cur = root.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    root.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+  });
+
+  function cssvar(n) { return getComputedStyle(root).getPropertyValue(n).trim(); }
+  var cv = document.getElementById("seal"), ctx = cv.getContext("2d"), t = 0;
+  function seal() {
+    var S = cv.width, c = S / 2, R = S * 0.44;
+    ctx.clearRect(0, 0, S, S);
+    var iris = cssvar("--iris"), brass = cssvar("--brass");
+    ctx.lineWidth = S / 60;
+    ctx.strokeStyle = brass; ctx.globalAlpha = .9;
+    ctx.beginPath(); ctx.arc(c, c, R, 0, 6.2832); ctx.stroke();
+    ctx.beginPath(); ctx.arc(c, c, R * .82, 0, 6.2832); ctx.stroke();
+    ctx.save(); ctx.translate(c, c); ctx.rotate(t * .15); ctx.strokeStyle = iris; ctx.globalAlpha = .85;
+    for (var i = 0; i < 40; i++) { var a = i / 40 * 6.2832, r2 = R * (i % 5 === 0 ? .70 : .76); ctx.beginPath(); ctx.moveTo(Math.cos(a) * R * .82, Math.sin(a) * R * .82); ctx.lineTo(Math.cos(a) * r2, Math.sin(a) * r2); ctx.stroke(); }
+    ctx.restore();
+    ctx.save(); ctx.translate(c, c); ctx.rotate(-t * .22); ctx.strokeStyle = iris; ctx.globalAlpha = .5; ctx.lineWidth = S / 90;
+    for (var j = 0; j < 7; j++) { var b = j / 7 * 6.2832 - 1.5708; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(b) * R * .55, Math.sin(b) * R * .55); ctx.stroke(); }
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.fillStyle = iris; ctx.beginPath(); ctx.arc(c, c, R * .15, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = brass; ctx.globalAlpha = .8; ctx.lineWidth = S / 80; ctx.beginPath(); ctx.arc(c, c, R * .28, 0, 6.2832); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  seal();
+  if (!reduce) (function loop() { t += .02; seal(); requestAnimationFrame(loop); })();
+
+  // スクロール表示
+  if (!reduce && "IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }); }, { threshold: .12 });
+    document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+  } else { document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); }); }
+
+  // 相互リンク（公開後にURLを差し込む）
+  var LINKS = {
+    demo: "https://claude.ai/code/artifact/b7ee2d71-cff7-4344-beb2-9bba3cd7a9be",
+    service: "https://claude.ai/code/artifact/61fe5cf6-d47d-466e-95db-edc23d2c5612"
+  };
+  var ld = document.getElementById("link-demo"); if (LINKS.demo.indexOf("http") === 0) ld.href = LINKS.demo;
+  var ls = document.getElementById("link-service"); if (LINKS.service.indexOf("http") === 0) ls.href = LINKS.service; else ls.style.display = "none";
+})();
+</script>

@@ -1,0 +1,20 @@
+{
+  /*
+   * 型検査だけを目的とした設定。
+   *
+   * tsconfig.json は「dist に何を出すか」を決める設定でもあるため、
+   * テストとフィクスチャを exclude している（公開パッケージにダミーの
+   * 脆弱性データを同梱しないため）。その副作用として、それらは
+   * 型検査からも外れていた。
+   *
+   * 実際に事故が起きた: SourceFile に必須フィールドを追加しても
+   * フィクスチャ側はコンパイルエラーにならず、実行時に undefined が
+   * 流れる状態のまま気づけなかった。
+   *
+   * ここでは全ファイルを対象に noEmit で検査だけ行う。
+   */
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*.ts", "scripts/**/*.mjs"],
+  "exclude": ["node_modules", "dist"]
+}
