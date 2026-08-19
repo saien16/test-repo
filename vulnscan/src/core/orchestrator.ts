@@ -33,6 +33,7 @@
 import { collectContext } from '../context/index.js';
 import { analyze, ANALYZE_PHASES } from '../analyzer/index.js';
 import { manageFindings } from '../vuln/index.js';
+import { isOperatorProvidedPath } from '../types/config.js';
 import { analyzeKillChains } from '../killchain/index.js';
 import { inferArchitecture } from '../architecture/index.js';
 import { buildHeatmap } from '../heatmap/index.js';
@@ -138,6 +139,13 @@ export async function runScan(options: RunScanOptions): Promise<ScanResult> {
   const vulnProgress = progressFor('vuln');
   const managed = await manageFindings(analyzed.findings, context, config, {
     ...(vulnProgress ? { onProgress: vulnProgress } : {}),
+    // CISA KEV 照合。取得できなければ注記が付かないだけで、走査は続行する
+    matchKev: config.kev !== false,
+    kev: {
+      catalogPath: config.kevPath,
+      // 既定パスに無いのは正常なので取得へ進む。--kev-file の明示指定ならエラーにする
+      fallbackToFetch: !isOperatorProvidedPath(config, 'kevPath'),
+    },
   });
   errors.push(...managed.errors);
   hooks?.onStageEnd?.('vuln', `${managed.findings.length} 件に正規化`);

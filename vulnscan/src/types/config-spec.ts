@@ -150,6 +150,28 @@ export const CONFIG_SPEC = {
       '明示指定が無い限り自動で旧名へフォールバックします（警告が1行出ます）。',
     cli: '--baseline',
   },
+  kev: {
+    kind: 'plain',
+    default: true,
+    doc:
+      'CISA KEV（実際に悪用が確認された脆弱性の一覧）と照合するか。\n' +
+      'ネットワーク取得を伴います。取得できなくても走査は続行し、注記が付かないだけです。\n' +
+      '多数のリポジトリを続けて走査する場合は kevPath に落としたファイルを指すと確実です。',
+    cli: '--no-kev',
+  },
+  kevPath: {
+    kind: 'path',
+    default: '.grimoire/kev.json',
+    doc:
+      'ローカルの KEV カタログJSON。\n' +
+      'このファイルがあればネットワークを使わず、無ければ CISA から取得します。\n' +
+      '閉域網や大量走査では、1度落として置いておくのが確実です:\n' +
+      '  curl -o .grimoire/kev.json \\\n' +
+      '    https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json\n' +
+      '--kev-file で明示した場合、そのファイルが読めなければ取得へは進まずエラーにします\n' +
+      '（指定したのに黙って別経路へ流れるほうが危険なため）。',
+    cli: '--kev-file',
+  },
   reportDir: {
     kind: 'path',
     default: 'reports',

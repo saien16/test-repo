@@ -360,8 +360,15 @@ function renderFindings(ctx: Ctx, result: ScanResult, verbose: boolean): void {
     const prefix = `  ${badge} ${ctx.style.dim(padStart(score, 4))} `;
     const budget = ctx.width - displayWidth(prefix) - 1;
     ctx.out.push(prefix + truncate(finding.title, Math.max(20, budget)));
+    // KEV 収載は「実際に悪用されている」ので、一覧の時点で目に入るようにする
+    const kevMark = finding.kev?.listed === true ? '  ⚑KEV' : '';
     ctx.out.push(
-      ctx.style.dim(truncate(`        ${finding.cwe}  ${loc}  [${finding.id}] ${finding.diffStatus}`, ctx.width)),
+      ctx.style.dim(
+        truncate(
+          `        ${finding.cwe}  ${loc}  [${finding.id}] ${finding.diffStatus}${kevMark}`,
+          ctx.width,
+        ),
+      ),
     );
   }
   if (findings.length > limit) {

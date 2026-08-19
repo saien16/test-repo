@@ -72,6 +72,8 @@ const config: VulnScanConfig = {
   ignorePath: '.vulnignore',
   reportDir: 'reports',
   archiveReport: false,
+  kev: false,
+  kevPath: '.grimoire/kev.json',
   killChain: true,
   failOnIncompleteScan: true,
   architecture: false,

@@ -44,6 +44,7 @@ describe('loadConfig', () => {
       baselinePath: 'default',
       ignorePath: 'default',
       reportDir: 'default',
+      kevPath: 'default',
     });
   });
 
@@ -57,6 +58,7 @@ describe('loadConfig', () => {
       baselinePath: 'config-file',
       ignorePath: 'config-file',
       reportDir: 'default',
+      kevPath: 'default',
     });
   });
 
@@ -133,6 +135,7 @@ describe('loadConfig', () => {
       baselinePath: 'default',
       ignorePath: 'default',
       reportDir: 'default',
+      kevPath: 'default',
     });
     expect(config.ignorePath).toBe(DEFAULT_CONFIG.ignorePath);
   });

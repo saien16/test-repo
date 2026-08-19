@@ -76,6 +76,22 @@ failOnIncompleteScan: true
 # CLIフラグ: --baseline
 baselinePath: .grimoire/baseline.json
 
+# CISA KEV（実際に悪用が確認された脆弱性の一覧）と照合するか。
+# ネットワーク取得を伴います。取得できなくても走査は続行し、注記が付かないだけです。
+# 多数のリポジトリを続けて走査する場合は kevPath に落としたファイルを指すと確実です。
+# CLIフラグ: --no-kev
+kev: true
+
+# ローカルの KEV カタログJSON。
+# このファイルがあればネットワークを使わず、無ければ CISA から取得します。
+# 閉域網や大量走査では、1度落として置いておくのが確実です:
+#   curl -o .grimoire/kev.json \
+#     https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+# --kev-file で明示した場合、そのファイルが読めなければ取得へは進まずエラーにします
+# （指定したのに黙って別経路へ流れるほうが危険なため）。
+# CLIフラグ: --kev-file
+kevPath: .grimoire/kev.json
+
 # HTML控えの保存先ディレクトリ。走査のたびに
 # `grimoire-<対象名>-YYYYMMDD-HHMMSS.html` を1つ残し、
 # 同じ内容を `latest.html` にも置きます（URLを固定して開きっぱなしにできます）。

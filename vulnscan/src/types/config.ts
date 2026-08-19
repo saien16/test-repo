@@ -84,6 +84,10 @@ export interface VulnScanConfig {
   baselinePath: string;
   /** 抑制リスト */
   ignorePath: string;
+  /** CISA KEV と照合するか */
+  kev: boolean;
+  /** ローカルの KEV カタログJSON。空ならネットワークから取得 */
+  kevPath: string;
   /** HTML控えの保存先ディレクトリ */
   reportDir: string;
   /** HTML控えを残すか */
@@ -120,6 +124,7 @@ export const LEGACY_DEFAULT_PATHS: Readonly<Record<PathKey, string>> = {
   ignorePath: '.vulnignore',
   // vulnscan 時代に相当するものが無いため、現在値と同じ値を置く（旧名フォールバックは働かない）
   reportDir: 'reports',
+  kevPath: '.grimoire/kev.json',
 };
 
 /** spec の `default` をそのまま並べた型。リテラル型が保たれる */

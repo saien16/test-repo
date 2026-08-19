@@ -31,6 +31,10 @@ export interface CliOptions {
   baseline?: string;
   /** 抑制リストのパス（設定の ignorePath に対応する CLI フラグ） */
   ignoreFile?: string;
+  /** KEV カタログJSONのパス（設定の kevPath に対応する CLI フラグ） */
+  kevFile?: string;
+  /** `--no-kev` が指定されると false になる */
+  kev: boolean;
   /** HTML控えの保存先（設定の reportDir に対応する CLI フラグ） */
   reportDir?: string;
   /** `--no-archive` が指定されると false になる */
@@ -92,6 +96,8 @@ export function registerScanOptions(command: Command): Command {
     .option('--lens <lens...>', '実行する分析レンズを指定')
     .option('--baseline <path>', 'ベースラインJSONのパス')
     .option('--ignore-file <path>', '抑制リストのパス')
+    .option('--kev-file <path>', 'ローカルのCISA KEVカタログJSON（指定するとネットワーク不要）')
+    .option('--no-kev', 'CISA KEV との照合を行わない')
     .option('--report-dir <path>', 'HTML控えの保存先ディレクトリ（既定: reports）')
     .option('--no-archive', 'HTML控えを残さない')
     .option('--update-baseline', 'スキャン後にベースラインを更新する')
@@ -126,6 +132,8 @@ export function toConfigOverrides(opts: CliOptions): Partial<VulnScanConfig> {
   // 出所が 'cli' になるのはここで拾った場合だけ。拾い忘れると
   // 設定ファイル由来と区別できなくなり、リポジトリ外の指定が常に拒否される。
   if (opts.ignoreFile) overrides.ignorePath = opts.ignoreFile;
+  if (opts.kevFile) overrides.kevPath = opts.kevFile;
+  if (opts.kev === false) overrides.kev = false;
   if (opts.reportDir) overrides.reportDir = opts.reportDir;
   if (opts.archive === false) overrides.archiveReport = false;
 

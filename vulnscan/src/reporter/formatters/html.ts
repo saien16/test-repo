@@ -224,6 +224,16 @@ ul.toc li.sub { padding-left: 20px; font-size: 0.9rem; color: var(--text-dim); }
   font-size: 0.75rem; background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 6px; padding: 1px 8px; color: var(--text-dim); word-break: break-all;
 }
+/* KEV は「実際に悪用されている」という事実なので、推測混じりの他タグと色で区別する */
+.tag-kev {
+  background: var(--crit-bg, #fdecec); border-color: var(--crit, #b3261e);
+  color: var(--crit, #b3261e); font-weight: 700;
+}
+.kev-hit {
+  border-left: 3px solid var(--crit, #b3261e); background: var(--crit-bg, #fdecec);
+  padding: 8px 12px; border-radius: 0 6px 6px 0; margin: 8px 0; font-size: 0.85rem;
+}
+.kev-class { color: var(--text-dim); }
 .ok { color: var(--ok); font-weight: 700; }
 .action-order {
   display: inline-flex; align-items: center; justify-content: center;
@@ -565,6 +575,46 @@ function renderChains(chains: readonly AttackChain[], rendered: ReadonlySet<stri
   return out.join('\n');
 }
 
+/**
+ * KEV 照合結果。
+ *
+ * 収載の有無は事実、CWE クラスの件数は参考値。両者を同じ見た目で並べると
+ * 「この検出が悪用されている」と誤読されるため、文言と枠で明確に分ける。
+ */
+function renderKev(finding: Finding): string {
+  const kev = finding.kev;
+  if (kev === undefined) return '';
+
+  if (kev.listed && kev.entry) {
+    const e = kev.entry;
+    const parts = [
+      '<div class="kev-hit"><b>CISA KEV 収載</b> — 実際に悪用が確認されています（事実）',
+      `<br>${escapeHtml(e.vendorProject)} ${escapeHtml(e.product)}: ${escapeHtml(e.name)}`,
+      `<br>収載日 ${escapeHtml(e.dateAdded)}` +
+        (e.dueDate ? ` / 米国政府機関の対応期限 ${escapeHtml(e.dueDate)}` : ''),
+    ];
+    if (e.ransomware) parts.push('<br><b>ランサムウェアキャンペーンでの使用が確認されています。</b>');
+    parts.push('</div>');
+    return parts.join('');
+  }
+
+  if (finding.cve !== undefined && finding.cve !== '') {
+    return `<p class="meta">CISA KEV: <code>${escapeHtml(finding.cve)}</code> は未収載（悪用実績の報告なし）</p>`;
+  }
+
+  // CVE を持たない＝ソースコード由来。原理的に KEV へは載りえないので、そう書く
+  if (kev.cweClassCount > 0) {
+    const ex = kev.cweExamples.map((c) => `<code>${escapeHtml(c)}</code>`).join(', ');
+    return (
+      '<p class="meta kev-class">CISA KEV: この検出自体はCVEを持たないため照合対象外。' +
+      `ただし同じ弱点クラス <code>${escapeHtml(finding.cwe)}</code> は KEV に ` +
+      `<b>${kev.cweClassCount} 件</b>あり、実際に悪用されています（参考値）` +
+      `${ex ? ` 例: ${ex}` : ''}</p>`
+    );
+  }
+  return '<p class="meta kev-class">CISA KEV: 照合対象外（CVEを持たない検出）。同じ弱点クラスの収載も0件</p>';
+}
+
 function renderFindingDetail(finding: Finding): string {
   const out: string[] = [];
   out.push(`<div class="finding sev-l-${finding.severity}" id="${idFor('finding', finding.id)}">`);
@@ -580,6 +630,11 @@ function renderFindingDetail(finding: Finding): string {
     `<span class="tag">${escapeHtml(finding.diffStatus)} / ${escapeHtml(finding.status)}</span>`,
   ];
   if (finding.cve) tags.push(`<span class="tag">${escapeHtml(finding.cve)}</span>`);
+  // KEV 収載は「実際に悪用されている」という事実。他のタグと見分けがつくようにする
+  if (finding.kev?.listed === true) {
+    const ransom = finding.kev.entry?.ransomware === true ? ' / ランサムウェア' : '';
+    tags.push(`<span class="tag tag-kev">KEV 収載${ransom}</span>`);
+  }
   out.push(`<div class="tags">${tags.join('')}</div>`);
 
   out.push(
@@ -588,6 +643,7 @@ function renderFindingDetail(finding: Finding): string {
   if (finding.cvss?.vector) {
     out.push(`<p class="meta">CVSSベクタ: <code>${escapeHtml(finding.cvss.vector)}</code></p>`);
   }
+  out.push(renderKev(finding));
   if (finding.affectedPackage) {
     const p = finding.affectedPackage;
     out.push(

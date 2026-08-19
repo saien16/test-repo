@@ -15,6 +15,7 @@ import { applyBaseline, loadBaseline } from './baseline.js';
 import { loadIgnoreList, matchIgnoreRule } from './ignore.js';
 import { mergeFindings, normalizeFinding } from './normalize.js';
 import { scanDependencies, type OsvOptions } from './osv.js';
+import { annotateWithKev, loadKevCatalog, type KevOptions } from './kev.js';
 
 export interface ManageFindingsResult {
   findings: Finding[];
@@ -29,6 +30,16 @@ export interface ManageFindingsOptions {
   osv?: OsvOptions;
   /** 依存脆弱性の照合を行うか（既定 true） */
   scanDependencies?: boolean;
+  /** CISA KEV 照合の設定 */
+  kev?: KevOptions;
+  /**
+   * KEV 照合を行うか。
+   *
+   * **ライブラリとしての既定は false**。KEV はネットワーク取得を伴うため、
+   * 呼んだ覚えのない通信が発生しないようにする。オペレータの意図が乗る
+   * CLI 側（orchestrator）で明示的に true を渡す。
+   */
+  matchKev?: boolean;
   /** 生成時刻の固定（テスト用） */
   now?: string;
   /** 進捗通知（OSV照合のみ。正規化・統合・差分は一瞬で終わる） */
@@ -125,7 +136,19 @@ export async function manageFindings(
   // 修正済みの Finding も抑制ルールの対象にする（ノイズを増やさないため）
   const keptFixed = fixed.filter((f) => !matchIgnoreRule(f, ignoreList));
 
-  return { findings: [...kept, ...keptFixed], suppressedCount, errors };
+  /*
+   * --- 6. CISA KEV 照合 ---
+   * 抑制を通ったものにだけ付ける（捨てる Finding のために取得しても意味がない）。
+   * カタログが取れなくても kev が undefined になるだけで、走査は続行する。
+   */
+  let result = [...kept, ...keptFixed];
+  if (options.matchKev === true && result.length > 0) {
+    const loaded = await loadKevCatalog(options.kev ?? {});
+    errors.push(...loaded.errors);
+    if (loaded.catalog !== null) result = annotateWithKev(result, loaded.catalog);
+  }
+
+  return { findings: result, suppressedCount, errors };
 }
 
 function describe(e: unknown): string {
@@ -148,6 +171,8 @@ export {
 export { normalizeCweId, extractCweId } from './catalog.js';
 
 export { saveBaseline, loadBaseline, applyBaseline, emptyBaseline, resolvePath } from './baseline.js';
+export { loadKevCatalog, parseKevCatalog, matchKev, annotateWithKev, countKevListed } from './kev.js';
+export type { KevCatalog, KevEntry, KevAnnotation, KevOptions } from './kev.js';
 export type { BaselineFile } from './baseline.js';
 
 export { loadIgnoreList, parseIgnoreList, matchIgnoreRule } from './ignore.js';

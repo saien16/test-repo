@@ -3,6 +3,7 @@
  */
 
 import type { Severity } from './context.js';
+import type { KevAnnotation } from '../vuln/kev.js';
 
 export type { Severity };
 
@@ -118,4 +119,9 @@ export interface Finding extends RawFinding {
   mergedFrom: string[];
   /** 参考リンク（CWE/OWASP/アドバイザリ） */
   references: string[];
+  /**
+   * CISA KEV 照合結果。カタログを取得できなかった場合は undefined。
+   * `listed` だけが事実で、CWE クラスの件数は参考値（{@link KevAnnotation}）。
+   */
+  kev?: KevAnnotation;
 }

@@ -60,7 +60,8 @@ describe('.grimoire.yml.example', () => {
         baselinePath: 'config-file',
         ignorePath: 'config-file',
         reportDir: 'config-file',
-      });
+      kevPath: 'config-file',
+    });
     } finally {
       await rm(repoRoot, { recursive: true, force: true });
     }

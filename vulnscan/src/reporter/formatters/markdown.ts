@@ -406,6 +406,30 @@ function renderFindingDetail(finding: Finding): string[] {
     lines.push('');
     lines.push(`**CVE**: ${escapeMdText(finding.cve)}`);
   }
+  const kev = finding.kev;
+  if (kev !== undefined) {
+    lines.push('');
+    if (kev.listed && kev.entry) {
+      const e = kev.entry;
+      lines.push(
+        `**CISA KEV**: 収載（事実）— ${escapeMdText(e.vendorProject)} ${escapeMdText(e.product)}: ` +
+          `${escapeMdText(e.name)} / 収載日 ${escapeMdText(e.dateAdded)}` +
+          (e.dueDate ? ` / 対応期限 ${escapeMdText(e.dueDate)}` : '') +
+          (e.ransomware ? ' / **ランサムウェアでの使用が確認済み**' : ''),
+      );
+    } else if (finding.cve) {
+      lines.push(`**CISA KEV**: 未収載（悪用実績の報告なし）`);
+    } else if (kev.cweClassCount > 0) {
+      const ex = kev.cweExamples.map((c) => `\`${escapeMdCode(c)}\``).join(', ');
+      lines.push(
+        `**CISA KEV**: 照合対象外（CVEを持たない検出）。ただし弱点クラス ` +
+          `\`${escapeMdCode(finding.cwe)}\` は KEV に **${kev.cweClassCount} 件**（参考値）` +
+          (ex ? ` 例: ${ex}` : ''),
+      );
+    } else {
+      lines.push('**CISA KEV**: 照合対象外（CVEを持たない検出）。同じ弱点クラスの収載も0件');
+    }
+  }
   if (finding.affectedPackage) {
     const p = finding.affectedPackage;
     lines.push('');
